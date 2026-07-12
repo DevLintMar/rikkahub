@@ -8,8 +8,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.takeOrElse
 import io.ratex.RaTeXEngine
 import io.ratex.compose.RaTeX
+import io.ratex.measure
 
 /**
  * 尺寸信息，替代原先 JLatexMath 的 Rect。
