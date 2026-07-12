@@ -1,120 +1,78 @@
 package me.rerere.rikkahub.ui.components.richtext
 
-import android.graphics.Rect
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.size
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.TextUnit
-import ru.noties.jlatexmath.JLatexMathDrawable
+import io.ratex.RaTeXEngine
+import io.ratex.compose.RaTeX
 
-fun assumeLatexSize(latex: String, fontSize: Float): Rect {
+/**
+ * 尺寸信息，替代原先 JLatexMath 的 Rect。
+ * [depth] 用于 InlineTextContent 基线对齐。
+ */
+data class LatexMetrics(
+    val widthPx: Float,
+    val heightPx: Float,
+    val depthPx: Float,
+)
+
+/**
+ * 同步计算公式尺寸，用于 [InlineTextContent] 的 Placeholder 预占位。
+ * 内部调用 [RaTeXEngine.parseBlocking] 阻塞解析。
+ */
+fun assumeLatexSize(
+    latex: String,
+    fontSizePx: Float,
+    displayMode: Boolean = false,
+): LatexMetrics? {
     return runCatching {
-        JLatexMathDrawable.builder(latex)
-            .textSize(fontSize)
-            .padding(0)
-            .build()
-            .bounds
-    }.getOrElse { Rect(0, 0, 0, 0) }
+        val dl = RaTeXEngine.parseBlocking(latex, displayMode = displayMode)
+        val m = dl.measure(fontSizePx)
+        LatexMetrics(m.widthPx, m.heightPx, m.depthPx)
+    }.getOrNull()
 }
 
+/**
+ * 用 RaTeX 引擎渲染 LaTeX 公式的 Composable。
+ *
+ * 签名兼容旧版 [LatexText]，新增 [displayMode] 参数供块级/行内选择。
+ * 渲染失败时退化到纯文本显示原始 LaTeX。
+ */
 @Composable
 fun LatexText(
     latex: String,
     modifier: Modifier = Modifier,
     fontSize: TextUnit = TextUnit.Unspecified,
     color: Color = Color.Unspecified,
-    style: TextStyle = LocalTextStyle.current
+    style: TextStyle = LocalTextStyle.current,
+    displayMode: Boolean = false,
 ) {
-    val style = style.merge(
-        fontSize = fontSize,
-        color = color
-    )
-    val density = LocalDensity.current
+    val resolvedColor = if (color == Color.Unspecified) style.color else color
+    val resolvedFontSize = fontSize.takeOrElse { style.fontSize }
 
-    val drawable = remember(latex, fontSize, style) {
+    val displayList = remember(latex, displayMode, resolvedColor) {
         runCatching {
-            with(density) {
-                getLatexDrawable(
-                    latex = processLatex(latex),
-                    fontSize = fontSize.toPx(),
-                    color = style.color.toArgb(),
-                    background = style.background.toArgb()
-                )
-            }
-        }.onFailure {
-            it.printStackTrace()
+            RaTeXEngine.parseBlocking(latex, displayMode = displayMode, color = resolvedColor)
         }.getOrNull()
     }
 
-    if (drawable != null) {
-        with(density) {
-            Canvas(
-                modifier = modifier
-                    .size(
-                        width = drawable.bounds.width().toDp(),
-                        height = drawable.bounds.height().toDp()
-                    )
-            ) {
-                drawable.draw(drawContext.canvas.nativeCanvas)
-            }
-        }
+    if (displayList != null) {
+        RaTeX(
+            displayList = displayList,
+            modifier = modifier,
+            fontSize = resolvedFontSize,
+        )
     } else {
+        // 降级：显示原始 LaTeX 文本
         Text(
             text = latex,
-            style = style,
-            modifier = modifier
+            style = style.merge(color = resolvedColor, fontSize = resolvedFontSize),
+            modifier = modifier,
         )
-    }
-}
-
-fun getLatexDrawable(
-    latex: String,
-    fontSize: Float,
-    color: Int,
-    background: Int
-): JLatexMathDrawable? {
-    return runCatching {
-        JLatexMathDrawable.builder(processLatex(latex))
-            .textSize(fontSize)
-            .color(color)
-            .background(background)
-            .padding(0)
-            .align(JLatexMathDrawable.ALIGN_LEFT)
-            .build()
-    }.onFailure {
-        it.printStackTrace()
-    }.getOrNull()
-}
-
-private val inlineDollarRegex = Regex("""^\$(.*?)\$""", RegexOption.DOT_MATCHES_ALL)
-private val displayDollarRegex = Regex("""^\$\$(.*?)\$\$""", RegexOption.DOT_MATCHES_ALL)
-private val inlineParenRegex = Regex("""^\\\((.*?)\\\)""", RegexOption.DOT_MATCHES_ALL)
-private val displayBracketRegex = Regex("""^\\\[(.*?)\\\]""", RegexOption.DOT_MATCHES_ALL)
-
-private fun processLatex(latex: String): String {
-    val trimmed = latex.trim()
-    return when {
-        displayDollarRegex.matches(trimmed) ->
-            displayDollarRegex.find(trimmed)?.groupValues?.get(1)?.trim() ?: trimmed
-
-        inlineDollarRegex.matches(trimmed) ->
-            inlineDollarRegex.find(trimmed)?.groupValues?.get(1)?.trim() ?: trimmed
-
-        displayBracketRegex.matches(trimmed) ->
-            displayBracketRegex.find(trimmed)?.groupValues?.get(1)?.trim() ?: trimmed
-
-        inlineParenRegex.matches(trimmed) ->
-            inlineParenRegex.find(trimmed)?.groupValues?.get(1)?.trim() ?: trimmed
-
-        else -> trimmed
     }
 }

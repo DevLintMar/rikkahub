@@ -491,7 +491,7 @@ private fun MarkdownNode(
         }
 
         GFMElementTypes.INLINE_MATH -> {
-            val formula = node.getTextInNode(content)
+            val formula = node.getTextInNode(content).trimStart('$').trimEnd('$').trim()
             val enableLatexRendering = LocalSettings.current.displaySetting.enableLatexRendering
             if (enableLatexRendering) {
                 MathInline(
@@ -507,7 +507,7 @@ private fun MarkdownNode(
         }
 
         GFMElementTypes.BLOCK_MATH -> {
-            val formula = node.getTextInNode(content)
+            val formula = node.getTextInNode(content).trimStart('$').trimEnd('$').trim()
             val enableLatexRendering = LocalSettings.current.displaySetting.enableLatexRendering
             if (enableLatexRendering) {
                 MathBlock(
@@ -1002,24 +1002,28 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
 
         node.type == GFMElementTypes.INLINE_MATH -> {
             if (enableLatexRendering) {
-                // formula as id
-                val formula = node.getTextInNode(content)
+                val rawFormula = node.getTextInNode(content)
+                val formula = rawFormula.trimStart('$').trimEnd('$').trim()
                 appendInlineContent(formula, "[Latex]")
-                val (width, height) = with(density) {
+                val metrics = with(density) {
                     assumeLatexSize(
-                        latex = formula, fontSize = style.fontSize.toPx()
-                    ).let {
-                        it.width().toSp() to it.height().toSp()
-                    }
+                        latex = formula, fontSizePx = style.fontSize.toPx()
+                    )
                 }
-                inlineContents.putIfAbsent(/* key = */ formula,/* value = */ InlineTextContent(
-                    placeholder = Placeholder(
-                        width = width, height = height, placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter
-                    ), children = {
-                        MathInline(
-                            latex = formula, modifier = Modifier
-                        )
-                    })
+                val placeholderWidth = metrics?.let { with(density) { it.widthPx.toSp() } }
+                val placeholderHeight = metrics?.let { with(density) { (it.heightPx + it.depthPx).toSp() } }
+                inlineContents.putIfAbsent(
+                    formula,
+                    InlineTextContent(
+                        placeholder = Placeholder(
+                            width = placeholderWidth ?: 0.sp,
+                            height = placeholderHeight ?: 0.sp,
+                            placeholderVerticalAlign = PlaceholderVerticalAlign.TextBaseline,
+                        ),
+                        children = {
+                            MathInline(latex = formula, modifier = Modifier)
+                        }
+                    )
                 )
             } else {
                 // 禁用 LaTeX 渲染时，以等宽字体显示原始公式

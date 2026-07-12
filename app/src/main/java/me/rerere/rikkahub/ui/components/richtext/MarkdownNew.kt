@@ -965,18 +965,18 @@ private fun AnnotatedString.Builder.appendHtmlInlineElement(
                 val formula = element.text()
                 if (enableLatexRendering) {
                     appendInlineContent(formula, "[Latex]")
-                    val (width, height) = with(density) {
-                        assumeLatexSize(latex = formula, fontSize = style.fontSize.toPx()).let {
-                            it.width().toSp() to it.height().toSp()
-                        }
+                    val metrics = with(density) {
+                        assumeLatexSize(latex = formula, fontSizePx = style.fontSize.toPx())
                     }
+                    val placeholderWidth = metrics?.let { with(density) { it.widthPx.toSp() } }
+                    val placeholderHeight = metrics?.let { with(density) { (it.heightPx + it.depthPx).toSp() } }
                     inlineContents.putIfAbsent(
                         formula,
                         InlineTextContent(
                             placeholder = Placeholder(
-                                width = width,
-                                height = height,
-                                placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
+                                width = placeholderWidth ?: 0.sp,
+                                height = placeholderHeight ?: 0.sp,
+                                placeholderVerticalAlign = PlaceholderVerticalAlign.TextBaseline,
                             ),
                             children = {
                                 MathInline(latex = formula, modifier = Modifier)
