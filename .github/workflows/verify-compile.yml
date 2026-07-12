@@ -1,4 +1,4 @@
-name: Verify Compile
+name: Build APK (Debug)
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ on:
       - '**'
 
 jobs:
-  compile:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,4 +23,9 @@ jobs:
           echo 'android.useAndroidX=true' > local.properties
           echo 'android.enableJetifier=false' >> local.properties
           echo '{"project_info":{"project_number":"0","project_id":"verify"},"client":[{"client_info":{"mobilesdk_app_id":"1:0:android:0000000000000000","android_client_info":{"package_name":"me.rerere.rikkahub.debug"}},"oauth_client":[],"api_key":[{"current_key":""}]}]}' > app/google-services.json
-      - run: ./gradlew app:compileDebugKotlin -x :web:buildWebUi
+      - run: ./gradlew app:assembleDebug -x :web:buildWebUi
+      - if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rikkahub-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
