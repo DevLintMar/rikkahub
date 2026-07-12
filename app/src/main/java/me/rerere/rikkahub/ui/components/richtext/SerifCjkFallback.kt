@@ -1,49 +1,57 @@
 package me.rerere.rikkahub.ui.components.richtext
 
+import android.content.Context
 import android.graphics.Typeface
+import android.os.Build
 import io.ratex.RaTeXFontLoader
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * 给 RaTeX FontCache 中每个 KaTeX 字体附加系统衬线体回退。
+ * 注册 Noto Serif CJK SC Light 作为 RaTeX 的 CJK 回退字体。
  *
- * 原理：RaTeX 将 KaTeX 字体解压到系统临时目录 → 找到临时 .ttf 文件 →
- * Typeface.Builder(file).setFallback("serif").build() 放入 FontCache，
- * 使 KaTeX 缺字（中文）时自动走系统衬线体。
+ * 顺序：ensureLoaded → registerCjkFallbackFont → 反射包装现有字体。
+ * [ensureLoaded] 确保 FontCache 中已有 KaTeX 字体，否则反射遍历空 map 无效。
  */
-suspend fun registerSerifCjkFallback() {
-    // 1. 触发 RaTeX 加载字体（解压到临时目录）
+suspend fun registerSerifCjkFallback(context: Context) {
+    // 1. 先确保 KaTeX 字体已加载
     RaTeXFontLoader.ensureLoaded()
 
-    // 2. 找到临时目录中 KaTeX 字体文件
-    val tmpDir = File(System.getProperty("java.io.tmpdir") ?: "/data/local/tmp")
-    val katexFiles = tmpDir.listFiles { f ->
-        f.isFile && f.name.startsWith("ratex-") && f.name.endsWith(".ttf")
-    }?.toList() ?: return
+    val cjkBytes = context.assets.open("fonts/NotoSerifCJKsc-Regular.otf").readBytes()
+    if (cjkBytes.isEmpty()) return
 
-    // 3. 反射 FontCache → 按文件名匹配字体 → 重建带 serif fallback
-    try {
-        val fontCacheClass = Class.forName("io.ratex.FontCache")
-        val instanceField = fontCacheClass.getDeclaredField("INSTANCE")
-        instanceField.isAccessible = true
-        val fontCache = instanceField.get(null)
+    // 2. 标准注册（兜底 CJK-Fallback font ID）
+    RaTeXFontLoader.registerCjkFallbackFont(cjkBytes)
 
-        val cacheField = fontCacheClass.getDeclaredField("cache")
-        cacheField.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        val cache = cacheField.get(fontCache) as ConcurrentHashMap<String, Typeface>
-
-        for ((fontId, _) in cache) {
-            if (fontId.startsWith("CJK-") || fontId.startsWith("Emoji-")) continue
-
-            val matched = katexFiles.firstOrNull { it.name.contains(fontId, ignoreCase = true) } ?: continue
-            val merged = Typeface.Builder(matched.absolutePath)
-                .setFallback("serif")
-                .build()
-            cache[fontId] = merged
+    // 3. 反射：给每个 KaTeX 字体附加 CJK fallback
+    if (Build.VERSION.SDK_INT >= 29) {
+        val tempFile = File(context.cacheDir, "ratex-cjk.otf").apply {
+            parentFile?.mkdirs()
+            writeBytes(cjkBytes)
         }
-    } catch (_: Exception) {
-        // 反射失败不影响已有渲染
+
+        try {
+            val fontCacheClass = Class.forName("io.ratex.FontCache")
+            val instanceField = fontCacheClass.getDeclaredField("INSTANCE")
+            instanceField.isAccessible = true
+            val fontCache = instanceField.get(null)
+
+            val cacheField = fontCacheClass.getDeclaredField("cache")
+            cacheField.isAccessible = true
+            @Suppress("UNCHECKED_CAST")
+            val cache = cacheField.get(fontCache) as ConcurrentHashMap<String, Typeface>
+
+            for ((fontId, originalTypeface) in cache) {
+                val builder = Typeface.Builder(tempFile.absolutePath)
+                builder::class.java
+                    .getMethod("setFallback", Typeface::class.java)
+                    .invoke(builder, originalTypeface)
+                cache[fontId] = builder::class.java
+                    .getMethod("build")
+                    .invoke(builder) as Typeface
+            }
+        } catch (_: Exception) {
+            // 反射失败不影响 registerCjkFallbackFont
+        }
     }
 }
