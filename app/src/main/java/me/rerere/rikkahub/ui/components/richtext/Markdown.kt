@@ -799,15 +799,17 @@ private fun Paragraph(
         if (textStyle.fontSize != TextUnit.Unspecified) textStyle.fontSize.toPx()
         else MaterialTheme.typography.bodyMedium.fontSize.toPx()
     }
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val maxWidthPx = with(density) { maxWidth.toPx() }
-
-        FlowRow(
-            modifier = modifier.then(
+    BoxWithConstraints(
+        Modifier.fillMaxWidth().then(
+            modifier.then(
                 if (node.nextSibling() != null) Modifier.padding(bottom = LocalTextStyle.current.fontSize.toDp())
                 else Modifier
             )
-        ) {
+        )
+    ) {
+        val maxWidthPx = with(density) { maxWidth.toPx() }
+
+        FlowRow {
             val annotatedString = remember(content, enableLatexRendering, latexColorArgb, maxWidthPx) {
                 buildAnnotatedString {
                     node.children.fastForEach { child ->
