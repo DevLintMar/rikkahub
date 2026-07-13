@@ -57,7 +57,7 @@ fun splitLatex(
     }
 
     // 收尾剩余内容
-    if (segmentStart < latex.length()) {
+    if (segmentStart < latex.length) {
         val remaining = latex.substring(segmentStart).trim()
         if (remaining.isNotEmpty()) {
             result.add(remaining)
