@@ -64,14 +64,14 @@ fun splitLatex(
         }
     }
 
-    // 段首运算符包装：第二段起可能以 + = \times 等开头，
-    // RaTeX 无法独立解析（缺少左操作数），用空分组 {} 前缀使其合法。
+    // 运算符前缀包装：第二段起段首可能是 + = \times 等，
+    // RaTeX 无法独立解析（缺左操作数）。用 \null 前缀提供零宽左操作数。
     for (i in 1 until result.size) {
         val seg = result[i].trimStart()
         if (seg.isNotEmpty()) {
             val c = seg[0]
             if (c in SPLIT_CHARS || (c == '\\' && extractCommand(seg) in SPLIT_COMMANDS)) {
-                result[i] = "{} $result[i]"
+                result[i] = "\\null $result[i]"
             }
         }
     }
