@@ -64,18 +64,6 @@ fun splitLatex(
         }
     }
 
-    // 运算符前缀包装：第二段起段首可能是 + = \times 等，
-    // RaTeX 无法独立解析（缺左操作数）。用 \null 前缀提供零宽左操作数。
-    for (i in 1 until result.size) {
-        val seg = result[i].trimStart()
-        if (seg.isNotEmpty()) {
-            val c = seg[0]
-            if (c in SPLIT_CHARS || (c == '\\' && extractCommand(seg) in SPLIT_COMMANDS)) {
-                result[i] = "\\null $result[i]"
-            }
-        }
-    }
-
     return result.ifEmpty { listOf(latex) }
 }
 
@@ -127,16 +115,6 @@ private fun findCommandEnd(latex: String, start: Int): Int {
     if (!latex[i].isLetter()) return i + 1
     while (i < latex.length && latex[i].isLetter()) i++
     return i
-}
-
-/**
- * 从以 '\\' 开头的字符串中提取 LaTeX 命令（含反斜杠）。
- * 例如 "\\times a" → "\\times"，"\\{" → "\\{"。
- */
-private fun extractCommand(seg: String): String {
-    if (!seg.startsWith("\\")) return ""
-    val end = findCommandEnd(seg, 0)
-    return seg.substring(0, end)
 }
 
 /**
