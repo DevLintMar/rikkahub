@@ -22,6 +22,7 @@ fun splitLatex(
 
     val boundaries = splitPositions + latex.length
     val result = mutableListOf<String>()
+    val starts = mutableListOf<Int>()
     var segmentStart = 0
     var lastGoodEnd = -1
 
@@ -37,30 +38,46 @@ fun splitLatex(
             lastGoodEnd = boundary
         } else {
             if (lastGoodEnd > segmentStart) {
-                // 落盘上一个可以完整容纳的段
                 result.add(latex.substring(segmentStart, lastGoodEnd).trim())
+                starts.add(segmentStart)
                 segmentStart = lastGoodEnd
                 lastGoodEnd = -1
 
-                // 重新测试从新起点到当前边界能否容纳
                 val newCandidate = latex.substring(segmentStart, boundary).trim()
                 if (newCandidate.isNotEmpty() && measureWidth(newCandidate, fontSizePx) <= maxWidthPx) {
                     lastGoodEnd = boundary
                 }
             } else {
-                // 单段本身就超宽，原样落盘（不截断）
                 result.add(candidate)
+                starts.add(segmentStart)
                 segmentStart = boundary
                 lastGoodEnd = -1
             }
         }
     }
 
-    // 收尾剩余内容
     if (segmentStart < latex.length) {
         val remaining = latex.substring(segmentStart).trim()
         if (remaining.isNotEmpty()) {
             result.add(remaining)
+            starts.add(segmentStart)
+        }
+    }
+
+    // 样式传播：收集全文中的样式命令位置，按出现顺序累积到后续分段
+    val styleRanges = findStyleRanges(latex)
+    if (styleRanges.isNotEmpty()) {
+        for (i in 1 until result.size) {
+            val active = styleRanges.filter { (pos, _) -> pos < starts.getOrElse(i) { Int.MAX_VALUE } }
+                .map { it.second }
+            if (active.isNotEmpty()) {
+                result[i] = active.joinToString(" ") + " " + result[i]
+            }
+        }
+    } else {
+        // 全文无任何样式命令 → 默认 \displaystyle
+        for (i in result.indices) {
+            result[i] = "\\displaystyle " + result[i]
         }
     }
 
@@ -123,6 +140,64 @@ private fun findCommandEnd(latex: String, start: Int): Int {
  */
 private fun measureWidth(latex: String, fontSizePx: Float): Float {
     return assumeLatexSize(latex, fontSizePx)?.widthPx ?: Float.MAX_VALUE
+}
+
+/**
+ * 样式命令——会影响后续渲染范围，需要传播到所有后续分段。
+ */
+private val STYLE_COMMANDS = setOf(
+    "\\displaystyle", "\\textstyle", "\\scriptstyle", "\\scriptscriptstyle",
+)
+
+/**
+ * 扫描 [latex] 中所有 [STYLE_COMMANDS] 和 \color{...} 的位置与完整文本。
+ * 返回列表按出现位置排序。
+ */
+private fun findStyleRanges(latex: String): List<Pair<Int, String>> {
+    val ranges = mutableListOf<Pair<Int, String>>()
+    var i = 0
+    while (i < latex.length) {
+        if (latex[i].isWhitespace()) { i++; continue }
+        if (latex[i] == '\\') {
+            val cmdEnd = findCommandEnd(latex, i)
+            val cmd = latex.substring(i, cmdEnd)
+            if (cmd in STYLE_COMMANDS) {
+                ranges.add(i to cmd)
+                i = cmdEnd
+                continue
+            }
+            if (cmd == "\\color") {
+                val braceStart = latex.indexOf('{', cmdEnd)
+                if (braceStart >= 0) {
+                    val braceEnd = findMatchingBrace(latex, braceStart)
+                    if (braceEnd > braceStart) {
+                        ranges.add(i to latex.substring(i, braceEnd + 1))
+                        i = braceEnd + 1
+                        continue
+                    }
+                }
+            }
+        }
+        i++
+    }
+    return ranges
+}
+
+/**
+ * 在 [latex] 中从 [braceStart]（{ 的位置）开始找到匹配的 }。
+ * 处理嵌套花括号。
+ */
+private fun findMatchingBrace(latex: String, braceStart: Int): Int {
+    var depth = 0
+    var i = braceStart
+    while (i < latex.length) {
+        when (latex[i]) {
+            '{' -> depth++
+            '}' -> { depth--; if (depth == 0) return i }
+        }
+        i++
+    }
+    return braceStart
 }
 
 /**
