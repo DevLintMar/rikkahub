@@ -72,6 +72,8 @@ fun splitLatex(
                 .map { it.second }
             if (active.isNotEmpty()) {
                 result[i] = active.joinToString(" ") + " " + result[i]
+            } else if (findStyleRanges(result[i]).isEmpty()) {
+                result[i] = "\\displaystyle " + result[i]
             }
         }
     }
