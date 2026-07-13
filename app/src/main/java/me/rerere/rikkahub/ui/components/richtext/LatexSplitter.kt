@@ -64,29 +64,20 @@ fun splitLatex(
             }
         }
 
-        // 样式传播：收集全文中的样式命令位置，按出现顺序累积到后续分段
+        // 样式传播：每行都加 \displaystyle，活跃样式追加其后
         val styleRanges = findStyleRanges(latex)
         for (i in result.indices) {
             val segStart = starts.getOrElse(i) { 0 }
             val active = styleRanges.filter { (pos, _) -> pos < segStart }
                 .map { it.second }
-            if (active.isNotEmpty()) {
-                result[i] = active.joinToString(" ") + " " + result[i]
-            } else if (findStyleRanges(result[i]).isEmpty()) {
-                result[i] = "\\displaystyle " + result[i]
-            }
+            result[i] = (listOf("\\displaystyle") + active).joinToString(" ") + " " + result[i]
         }
     }
 
     return result.ifEmpty {
-        // 未分割（无运算符 或 公式宽度 ≤ maxWidthPx）→ 整条返回，仍应用样式传播
         val styleRanges = findStyleRanges(latex)
-        val segment = if (styleRanges.isNotEmpty()) {
-            latex
-        } else {
-            "\\displaystyle " + latex
-        }
-        listOf(segment)
+        val active = styleRanges.map { it.second }
+        listOf((listOf("\\displaystyle") + active).joinToString(" ") + " " + latex)
     }
 }
 
