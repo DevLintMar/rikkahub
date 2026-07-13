@@ -795,6 +795,9 @@ private fun Paragraph(
     val textStyle = LocalTextStyle.current
     val density = LocalDensity.current
     val latexColorArgb = LocalContentColor.current.toArgb()
+    val fontSizePx = with(density) {
+        textStyle.fontSize.let { if (it.isSpecified) it.toPx() else MaterialTheme.typography.bodyMedium.fontSize.toPx() }
+    }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val maxWidthPx = with(density) { maxWidth.toPx() }
 
@@ -819,6 +822,7 @@ private fun Paragraph(
                             enableLatexRendering = enableLatexRendering,
                             latexColorArgb = latexColorArgb,
                             maxWidthPx = maxWidthPx,
+                            fontSizePx = fontSizePx,
                         )
                     }
                 }
@@ -1006,6 +1010,7 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
     latexColorArgb: Int = 0,
     onClickCitation: (String) -> Unit = {},
     maxWidthPx: Float = Float.MAX_VALUE,
+    fontSizePx: Float = Float.MAX_VALUE,
 ) {
     when {
         node.type == MarkdownTokenTypes.BLOCK_QUOTE -> {}
@@ -1172,19 +1177,18 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
             val formula = rawFormula.trimStart('$').trimEnd('$').trim()
             if (enableLatexRendering) {
                 // 在顶层运算符处分段，段间插 ZWSP 允许换行
-                val fontSizePx = with(density) { style.fontSize.toPx() }
                 val segments = splitLatex(
                     latex = formula,
                     maxWidthPx = maxWidthPx,
                     fontSizePx = fontSizePx,
-                ).takeIf { it.isNotEmpty() } ?: listOf(formula)
+                )
 
                 segments.forEachIndexed { index, segment ->
                     if (index > 0) append("​")
                     val key = "${formula}_$index"
                     appendInlineContent(key, "[Latex]")
                     val metrics = with(density) {
-                        assumeLatexSize(latex = segment, fontSizePx = style.fontSize.toPx())
+                        assumeLatexSize(latex = segment, fontSizePx = fontSizePx)
                     }
                     val placeholderWidth = metrics?.let { with(density) { it.widthPx.toSp() } } ?: 0.sp
                     val placeholderHeight = metrics?.let { with(density) { (it.heightPx + it.depthPx).toSp() } } ?: 0.sp
