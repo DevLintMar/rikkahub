@@ -61,6 +61,29 @@ android {
                 }
             }
         }
+
+        create("debug") {
+            val localProperties = Properties()
+            val localPropertiesFile = rootProject.file("local.properties")
+
+            if (localPropertiesFile.exists()) {
+                localProperties.load(FileInputStream(localPropertiesFile))
+
+                val storeFilePath = localProperties.getProperty("debug.storeFile")
+                val storePasswordValue = localProperties.getProperty("debug.storePassword")
+                val keyAliasValue = localProperties.getProperty("debug.keyAlias")
+                val keyPasswordValue = localProperties.getProperty("debug.keyPassword")
+
+                if (storeFilePath != null && storePasswordValue != null &&
+                    keyAliasValue != null && keyPasswordValue != null
+                ) {
+                    storeFile = file(storeFilePath)
+                    storePassword = storePasswordValue
+                    keyAlias = keyAliasValue
+                    keyPassword = keyPasswordValue
+                }
+            }
+        }
     }
 
     buildTypes {
@@ -76,13 +99,10 @@ android {
             buildConfigField("String", "VERSION_CODE", "\"${android.defaultConfig.versionCode}\"")
         }
         debug {
+            if (signingConfigs.getByName("debug").storeFile != null) {
+                signingConfig = signingConfigs.getByName("debug")
+            }
             applicationIdSuffix = ".debug"
-            isMinifyEnabled = true
-            isShrinkResources = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
             buildConfigField("String", "VERSION_NAME", "\"${android.defaultConfig.versionName}\"")
             buildConfigField("String", "VERSION_CODE", "\"${android.defaultConfig.versionCode}\"")
         }

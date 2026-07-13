@@ -69,12 +69,20 @@ jobs:
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
 
-      - name: Generate signing key
+      - name: Cache signing key
+        uses: actions/cache@v4
+        with:
+          path: app/release.keystore
+          key: nightly-release-keystore-v1
+
+      - name: Generate signing key (if not cached)
         run: |
-          keytool -genkey -v -keystore app/release.keystore \
-            -alias release -keyalg RSA -keysize 2048 -validity 3650 \
-            -storepass android -keypass android \
-            -dname "CN=Nightly, OU=CI, O=Nightly, L=City, ST=State, C=US"
+          if [ ! -f app/release.keystore ]; then
+            keytool -genkey -v -keystore app/release.keystore \
+              -alias release -keyalg RSA -keysize 2048 -validity 3650 \
+              -storepass android -keypass android \
+              -dname "CN=Nightly, OU=CI, O=Nightly, L=City, ST=State, C=US"
+          fi
 
       - name: Prepare build files
         run: |
