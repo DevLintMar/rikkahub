@@ -62,7 +62,7 @@ android {
             }
         }
 
-        create("debug") {
+        create("nightlyDebug") {
             val localProperties = Properties()
             val localPropertiesFile = rootProject.file("local.properties")
 
@@ -99,8 +99,8 @@ android {
             buildConfigField("String", "VERSION_CODE", "\"${android.defaultConfig.versionCode}\"")
         }
         debug {
-            if (signingConfigs.getByName("debug").storeFile != null) {
-                signingConfig = signingConfigs.getByName("debug")
+            if (signingConfigs.getByName("nightlyDebug").storeFile != null) {
+                signingConfig = signingConfigs.getByName("nightlyDebug")
             }
             applicationIdSuffix = ".debug"
             buildConfigField("String", "VERSION_NAME", "\"${android.defaultConfig.versionName}\"")
