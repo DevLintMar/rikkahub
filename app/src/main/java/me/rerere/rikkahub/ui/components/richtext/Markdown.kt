@@ -1172,10 +1172,11 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
             val formula = rawFormula.trimStart('$').trimEnd('$').trim()
             if (enableLatexRendering) {
                 // 在顶层运算符处分段，段间插 ZWSP 允许换行
+                val fontSizePx = with(density) { style.fontSize.toPx() }
                 val segments = splitLatex(
                     latex = formula,
                     maxWidthPx = maxWidthPx,
-                    fontSizePx = style.fontSize.toPx(),
+                    fontSizePx = fontSizePx,
                 ).takeIf { it.isNotEmpty() } ?: listOf(formula)
 
                 segments.forEachIndexed { index, segment ->
