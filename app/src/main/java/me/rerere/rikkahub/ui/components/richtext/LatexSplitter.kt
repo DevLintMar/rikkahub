@@ -18,64 +18,74 @@ fun splitLatex(
     fontSizePx: Float,
 ): List<String> {
     val splitPositions = findTopLevelSplitPositions(latex)
-    if (splitPositions.isEmpty()) return listOf(latex)
-
-    val boundaries = splitPositions + latex.length
     val result = mutableListOf<String>()
-    val starts = mutableListOf<Int>()
-    var segmentStart = 0
-    var lastGoodEnd = -1
 
-    for (boundary in boundaries) {
-        if (boundary <= segmentStart) continue
+    if (splitPositions.isNotEmpty()) {
+        val boundaries = splitPositions + latex.length
+        val starts = mutableListOf<Int>()
+        var segmentStart = 0
+        var lastGoodEnd = -1
 
-        val candidate = latex.substring(segmentStart, boundary).trim()
-        if (candidate.isEmpty()) continue
+        for (boundary in boundaries) {
+            if (boundary <= segmentStart) continue
 
-        val width = measureWidth(candidate, fontSizePx)
+            val candidate = latex.substring(segmentStart, boundary).trim()
+            if (candidate.isEmpty()) continue
 
-        if (width <= maxWidthPx) {
-            lastGoodEnd = boundary
-        } else {
-            if (lastGoodEnd > segmentStart) {
-                result.add(latex.substring(segmentStart, lastGoodEnd).trim())
-                starts.add(segmentStart)
-                segmentStart = lastGoodEnd
-                lastGoodEnd = -1
+            val width = measureWidth(candidate, fontSizePx)
 
-                val newCandidate = latex.substring(segmentStart, boundary).trim()
-                if (newCandidate.isNotEmpty() && measureWidth(newCandidate, fontSizePx) <= maxWidthPx) {
-                    lastGoodEnd = boundary
-                }
+            if (width <= maxWidthPx) {
+                lastGoodEnd = boundary
             } else {
-                result.add(candidate)
+                if (lastGoodEnd > segmentStart) {
+                    result.add(latex.substring(segmentStart, lastGoodEnd).trim())
+                    starts.add(segmentStart)
+                    segmentStart = lastGoodEnd
+                    lastGoodEnd = -1
+
+                    val newCandidate = latex.substring(segmentStart, boundary).trim()
+                    if (newCandidate.isNotEmpty() && measureWidth(newCandidate, fontSizePx) <= maxWidthPx) {
+                        lastGoodEnd = boundary
+                    }
+                } else {
+                    result.add(candidate)
+                    starts.add(segmentStart)
+                    segmentStart = boundary
+                    lastGoodEnd = -1
+                }
+            }
+        }
+
+        if (segmentStart < latex.length) {
+            val remaining = latex.substring(segmentStart).trim()
+            if (remaining.isNotEmpty()) {
+                result.add(remaining)
                 starts.add(segmentStart)
-                segmentStart = boundary
-                lastGoodEnd = -1
+            }
+        }
+
+        // 样式传播：收集全文中的样式命令位置，按出现顺序累积到后续分段
+        val styleRanges = findStyleRanges(latex)
+        for (i in result.indices) {
+            val segStart = starts.getOrElse(i) { 0 }
+            val active = styleRanges.filter { (pos, _) -> pos < segStart }
+                .map { it.second }
+            if (active.isNotEmpty()) {
+                result[i] = active.joinToString(" ") + " " + result[i]
             }
         }
     }
 
-    if (segmentStart < latex.length) {
-        val remaining = latex.substring(segmentStart).trim()
-        if (remaining.isNotEmpty()) {
-            result.add(remaining)
-            starts.add(segmentStart)
+    return result.ifEmpty {
+        // 未分割（无运算符 或 公式宽度 ≤ maxWidthPx）→ 整条返回，仍应用样式传播
+        val styleRanges = findStyleRanges(latex)
+        val segment = if (styleRanges.isNotEmpty()) {
+            latex
+        } else {
+            "\\displaystyle " + latex
         }
+        listOf(segment)
     }
-
-    // 样式传播：收集全文中的样式命令位置，按出现顺序累积到后续分段
-    val styleRanges = findStyleRanges(latex)
-    for (i in result.indices) {
-        val segStart = starts.getOrElse(i) { 0 }
-        val active = styleRanges.filter { (pos, _) -> pos < segStart }
-            .map { it.second }
-        if (active.isNotEmpty()) {
-            result[i] = active.joinToString(" ") + " " + result[i]
-        }
-    }
-
-    return result.ifEmpty { listOf(latex) }
 }
 
 /**
