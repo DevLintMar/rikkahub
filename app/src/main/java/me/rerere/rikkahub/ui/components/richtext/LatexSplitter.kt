@@ -66,17 +66,15 @@ fun splitLatex(
 
     // 样式传播：收集全文中的样式命令位置，按出现顺序累积到后续分段
     val styleRanges = findStyleRanges(latex)
-    if (styleRanges.isNotEmpty()) {
-        for (i in 1 until result.size) {
-            val active = styleRanges.filter { (pos, _) -> pos < starts.getOrElse(i) { Int.MAX_VALUE } }
-                .map { it.second }
-            if (active.isNotEmpty()) {
-                result[i] = active.joinToString(" ") + " " + result[i]
-            }
-        }
-    } else {
-        // 全文无任何样式命令 → 默认 \displaystyle
-        for (i in result.indices) {
+    for (i in result.indices) {
+        val segStart = starts.getOrElse(i) { 0 }
+        // 此分段之前出现的所有样式命令
+        val active = styleRanges.filter { (pos, _) -> pos < segStart }
+            .map { it.second }
+        if (active.isNotEmpty()) {
+            result[i] = active.joinToString(" ") + " " + result[i]
+        } else if (findStyleRanges(result[i]).isEmpty()) {
+            // 此分段自身也没有任何样式命令 → 默认 \displaystyle
             result[i] = "\\displaystyle " + result[i]
         }
     }
