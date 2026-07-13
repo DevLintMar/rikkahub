@@ -68,14 +68,10 @@ fun splitLatex(
     val styleRanges = findStyleRanges(latex)
     for (i in result.indices) {
         val segStart = starts.getOrElse(i) { 0 }
-        // 此分段之前出现的所有样式命令
         val active = styleRanges.filter { (pos, _) -> pos < segStart }
             .map { it.second }
         if (active.isNotEmpty()) {
             result[i] = active.joinToString(" ") + " " + result[i]
-        } else if (findStyleRanges(result[i]).isEmpty()) {
-            // 此分段自身也没有任何样式命令 → 默认 \displaystyle
-            result[i] = "\\displaystyle " + result[i]
         }
     }
 
