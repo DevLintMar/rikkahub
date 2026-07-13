@@ -796,7 +796,8 @@ private fun Paragraph(
     val density = LocalDensity.current
     val latexColorArgb = LocalContentColor.current.toArgb()
     val fontSizePx = with(density) {
-        textStyle.fontSize.let { if (it.isSpecified) it.toPx() else MaterialTheme.typography.bodyMedium.fontSize.toPx() }
+        if (textStyle.fontSize != TextUnit.Unspecified) textStyle.fontSize.toPx()
+        else MaterialTheme.typography.bodyMedium.fontSize.toPx()
     }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val maxWidthPx = with(density) { maxWidth.toPx() }
