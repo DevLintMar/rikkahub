@@ -133,7 +133,7 @@ android {
             if (signingConfigs.getByName("pre").storeFile != null) {
                 signingConfig = signingConfigs.getByName("pre")
             }
-            applicationIdSuffix = ".pre"
+            applicationId = "xyz.lynsei.rikkahub"
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
