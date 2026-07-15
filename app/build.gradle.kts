@@ -84,6 +84,29 @@ android {
                 }
             }
         }
+
+        create("pre") {
+            val localProperties = Properties()
+            val localPropertiesFile = rootProject.file("local.properties")
+
+            if (localPropertiesFile.exists()) {
+                localProperties.load(FileInputStream(localPropertiesFile))
+
+                val storeFilePath = localProperties.getProperty("pre.storeFile")
+                val storePasswordValue = localProperties.getProperty("pre.storePassword")
+                val keyAliasValue = localProperties.getProperty("pre.keyAlias")
+                val keyPasswordValue = localProperties.getProperty("pre.keyPassword")
+
+                if (storeFilePath != null && storePasswordValue != null &&
+                    keyAliasValue != null && keyPasswordValue != null
+                ) {
+                    storeFile = file(storeFilePath)
+                    storePassword = storePasswordValue
+                    keyAlias = keyAliasValue
+                    keyPassword = keyPasswordValue
+                }
+            }
+        }
     }
 
     buildTypes {
@@ -103,6 +126,20 @@ android {
                 signingConfig = signingConfigs.getByName("nightlyDebug")
             }
             applicationIdSuffix = ".debug"
+            buildConfigField("String", "VERSION_NAME", "\"${android.defaultConfig.versionName}\"")
+            buildConfigField("String", "VERSION_CODE", "\"${android.defaultConfig.versionCode}\"")
+        }
+        create("pre") {
+            if (signingConfigs.getByName("pre").storeFile != null) {
+                signingConfig = signingConfigs.getByName("pre")
+            }
+            applicationIdSuffix = ".pre"
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             buildConfigField("String", "VERSION_NAME", "\"${android.defaultConfig.versionName}\"")
             buildConfigField("String", "VERSION_CODE", "\"${android.defaultConfig.versionCode}\"")
         }

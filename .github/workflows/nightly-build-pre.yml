@@ -1,0 +1,127 @@
+name: Nightly Pre Build
+
+on:
+  schedule:
+    - cron: '0 19 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-pre-build
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for recent commits
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -n "$(git log --since='24 hours ago' --oneline)" ]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+            echo "No commits in the last 24 hours, skipping build"
+          fi
+
+  build:
+    needs: check
+    if: needs.check.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web-ui/pnpm-lock.yaml
+
+      - name: Install web-ui dependencies
+        working-directory: web-ui
+        run: pnpm install --frozen-lockfile
+
+      - name: Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+
+      - name: Cache pre signing key
+        uses: actions/cache@v4
+        with:
+          path: app/pre.keystore
+          key: nightly-pre-keystore-v1
+
+      - name: Generate pre signing key (if not cached)
+        run: |
+          if [ ! -f app/pre.keystore ]; then
+            keytool -genkey -v -keystore app/pre.keystore \
+              -alias pre -keyalg RSA -keysize 2048 -validity 3650 \
+              -storepass android -keypass android \
+              -dname "CN=NightlyPre, OU=CI, O=Nightly, L=City, ST=State, C=US"
+          fi
+
+      - name: Prepare build files
+        run: |
+          cat > local.properties << 'PROPERTIES'
+          android.useAndroidX=true
+          android.enableJetifier=false
+          pre.storeFile=pre.keystore
+          pre.storePassword=android
+          pre.keyAlias=pre
+          pre.keyPassword=android
+          PROPERTIES
+          echo '{"project_info":{"project_number":"0","project_id":"nightly-pre"},"client":[{"client_info":{"mobilesdk_app_id":"1:0:android:0000000000000000","android_client_info":{"package_name":"me.rerere.rikkahub.pre"}},"oauth_client":[],"api_key":[{"current_key":""}]}]}' > app/google-services.json
+
+      - name: Gradle Build
+        run: |
+          chmod +x gradlew
+          ./gradlew assemblePre
+
+      - name: Upload Pre APK
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: pre-apk
+          path: app/build/outputs/apk/pre/*.apk
+
+      - name: Publish nightly pre prerelease
+        uses: softprops/action-gh-release@v2
+        if: success()
+        with:
+          tag_name: nightly-pre
+          name: Nightly Pre Build
+          prerelease: true
+          body: |
+            Automatic daily pre-build (commit `${{ github.sha }}`)
+
+            > Pre-release build with CI-generated signing key (`.pre` package name).
+            > Compilation settings identical to release (minified, shrunk, proguarded).
+          files: app/build/outputs/apk/pre/*.apk
