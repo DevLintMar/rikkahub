@@ -26,6 +26,11 @@ android {
         testInstrumentationRunnerArguments["androidx.benchmark.suppressErrors"] = "EMULATOR"
     }
 
+    buildTypes {
+        create("pre") {
+            initWith(getByName("release"))
+        }
+    }
     targetProjectPath = ":app"
 
 }

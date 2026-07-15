@@ -29,6 +29,11 @@ android {
             path = file("src/main/cpp/CMakeLists.txt")
             version = "3.22.1"
         }
+    buildTypes {
+        create("pre") {
+            initWith(getByName("release"))
+        }
+    }
     }
 
 }

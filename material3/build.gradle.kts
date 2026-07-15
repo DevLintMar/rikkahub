@@ -25,6 +25,11 @@ android {
             kotlin.srcDir("material-color-utilities/kotlin")
         }
     }
+    buildTypes {
+        create("pre") {
+            initWith(getByName("release"))
+        }
+    }
 }
 
 dependencies {

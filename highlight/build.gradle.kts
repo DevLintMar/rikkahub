@@ -23,6 +23,9 @@ android {
                 "proguard-rules.pro"
             )
         }
+        create("pre") {
+            initWith(getByName("release"))
+        }
     }
     buildFeatures {
         compose = true
