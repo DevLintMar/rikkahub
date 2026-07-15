@@ -1,9 +1,13 @@
-name: Nightly Build
+name: Nightly Pre Build
 
 on:
   schedule:
-    - cron: '0 18 * * *'
+    - cron: '0 19 * * *'
   workflow_dispatch:
+
+concurrency:
+  group: nightly-pre-build
+  cancel-in-progress: true
 
 jobs:
   check:
@@ -23,7 +27,7 @@ jobs:
             echo "should_build=true" >> "$GITHUB_OUTPUT"
           else
             echo "should_build=false" >> "$GITHUB_OUTPUT"
-            echo "过去 24 小时无新提交，跳过构建"
+            echo "No commits in the last 24 hours, skipping build"
           fi
 
   build:
@@ -69,19 +73,19 @@ jobs:
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
 
-      - name: Cache signing key
+      - name: Cache pre signing key
         uses: actions/cache@v4
         with:
-          path: app/release.keystore
-          key: nightly-release-keystore-v1
+          path: app/pre.keystore
+          key: nightly-pre-keystore-v1
 
-      - name: Generate signing key (if not cached)
+      - name: Generate pre signing key (if not cached)
         run: |
-          if [ ! -f app/release.keystore ]; then
-            keytool -genkey -v -keystore app/release.keystore \
-              -alias release -keyalg RSA -keysize 2048 -validity 3650 \
+          if [ ! -f app/pre.keystore ]; then
+            keytool -genkey -v -keystore app/pre.keystore \
+              -alias pre -keyalg RSA -keysize 2048 -validity 3650 \
               -storepass android -keypass android \
-              -dname "CN=Nightly, OU=CI, O=Nightly, L=City, ST=State, C=US"
+              -dname "CN=NightlyPre, OU=CI, O=Nightly, L=City, ST=State, C=US"
           fi
 
       - name: Prepare build files
@@ -89,27 +93,35 @@ jobs:
           cat > local.properties << 'PROPERTIES'
           android.useAndroidX=true
           android.enableJetifier=false
-          storeFile=release.keystore
-          storePassword=android
-          keyAlias=release
-          keyPassword=android
+          pre.storeFile=pre.keystore
+          pre.storePassword=android
+          pre.keyAlias=pre
+          pre.keyPassword=android
           PROPERTIES
-          echo '{"project_info":{"project_number":"0","project_id":"nightly"},"client":[{"client_info":{"mobilesdk_app_id":"1:0:android:0000000000000000","android_client_info":{"package_name":"me.rerere.rikkahub"}},"oauth_client":[],"api_key":[{"current_key":""}]}]}' > app/google-services.json
+          echo '{"project_info":{"project_number":"0","project_id":"nightly-pre"},"client":[{"client_info":{"mobilesdk_app_id":"1:0:android:0000000000000000","android_client_info":{"package_name":"me.rerere.rikkahub.pre"}},"oauth_client":[],"api_key":[{"current_key":""}]}]}' > app/google-services.json
 
       - name: Gradle Build
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease
+          ./gradlew assemblePre
 
-      - name: Publish nightly prerelease
+      - name: Upload Pre APK
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: pre-apk
+          path: app/build/outputs/apk/pre/*.apk
+
+      - name: Publish nightly pre prerelease
         uses: softprops/action-gh-release@v2
         if: success()
         with:
-          tag_name: nightly
-          name: Nightly Build
+          tag_name: nightly-pre
+          name: Nightly Pre Build
           prerelease: true
           body: |
-            自动每日构建（commit `${{ github.sha }}`）
+            Automatic daily pre-build (commit `${{ github.sha }}`)
 
-            > 正式版构建，使用 CI 生成的签名密钥（与原始签名不同）。
-          files: app/build/outputs/apk/release/*.apk
+            > Pre-release build with CI-generated signing key (`.pre` package name).
+            > Compilation settings identical to release (minified, shrunk, proguarded).
+          files: app/build/outputs/apk/pre/*.apk

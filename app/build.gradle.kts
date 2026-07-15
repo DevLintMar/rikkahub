@@ -28,19 +28,13 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
+            abiFilters += listOf("arm64-v8a")
         }
     }
 
     splits {
         abi {
-            // AppBundle tasks usually contain "bundle" in their name
-            //noinspection WrongGradleMethod
-            val isBuildingBundle = gradle.startParameter.taskNames.any { it.lowercase().contains("bundle") }
-            isEnable = !isBuildingBundle
-            reset()
-            include("arm64-v8a", "x86_64")
-            isUniversalApk = true
+            isEnable = false
         }
     }
 
@@ -67,6 +61,52 @@ android {
                 }
             }
         }
+
+        create("nightlyDebug") {
+            val localProperties = Properties()
+            val localPropertiesFile = rootProject.file("local.properties")
+
+            if (localPropertiesFile.exists()) {
+                localProperties.load(FileInputStream(localPropertiesFile))
+
+                val storeFilePath = localProperties.getProperty("debug.storeFile")
+                val storePasswordValue = localProperties.getProperty("debug.storePassword")
+                val keyAliasValue = localProperties.getProperty("debug.keyAlias")
+                val keyPasswordValue = localProperties.getProperty("debug.keyPassword")
+
+                if (storeFilePath != null && storePasswordValue != null &&
+                    keyAliasValue != null && keyPasswordValue != null
+                ) {
+                    storeFile = file(storeFilePath)
+                    storePassword = storePasswordValue
+                    keyAlias = keyAliasValue
+                    keyPassword = keyPasswordValue
+                }
+            }
+        }
+
+        create("pre") {
+            val localProperties = Properties()
+            val localPropertiesFile = rootProject.file("local.properties")
+
+            if (localPropertiesFile.exists()) {
+                localProperties.load(FileInputStream(localPropertiesFile))
+
+                val storeFilePath = localProperties.getProperty("pre.storeFile")
+                val storePasswordValue = localProperties.getProperty("pre.storePassword")
+                val keyAliasValue = localProperties.getProperty("pre.keyAlias")
+                val keyPasswordValue = localProperties.getProperty("pre.keyPassword")
+
+                if (storeFilePath != null && storePasswordValue != null &&
+                    keyAliasValue != null && keyPasswordValue != null
+                ) {
+                    storeFile = file(storeFilePath)
+                    storePassword = storePasswordValue
+                    keyAlias = keyAliasValue
+                    keyPassword = keyPasswordValue
+                }
+            }
+        }
     }
 
     buildTypes {
@@ -82,7 +122,24 @@ android {
             buildConfigField("String", "VERSION_CODE", "\"${android.defaultConfig.versionCode}\"")
         }
         debug {
+            if (signingConfigs.getByName("nightlyDebug").storeFile != null) {
+                signingConfig = signingConfigs.getByName("nightlyDebug")
+            }
             applicationIdSuffix = ".debug"
+            buildConfigField("String", "VERSION_NAME", "\"${android.defaultConfig.versionName}\"")
+            buildConfigField("String", "VERSION_CODE", "\"${android.defaultConfig.versionCode}\"")
+        }
+        create("pre") {
+            if (signingConfigs.getByName("pre").storeFile != null) {
+                signingConfig = signingConfigs.getByName("pre")
+            }
+            applicationIdSuffix = ".pre"
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             buildConfigField("String", "VERSION_NAME", "\"${android.defaultConfig.versionName}\"")
             buildConfigField("String", "VERSION_CODE", "\"${android.defaultConfig.versionCode}\"")
         }
@@ -262,11 +319,9 @@ dependencies {
     // image viewer
     implementation(libs.image.viewer)
 
-    // JLatexMath
-    // https://github.com/rikkahub/jlatexmath-android
-    implementation(libs.jlatexmath)
-    implementation(libs.jlatexmath.font.greek)
-    implementation(libs.jlatexmath.font.cyrillic)
+    // RaTeX (LaTeX rendering)
+    implementation(libs.ratex)
+
 
     // mcp
     implementation(libs.modelcontextprotocol.kotlin.sdk)
