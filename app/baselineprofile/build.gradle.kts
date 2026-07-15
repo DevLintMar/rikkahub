@@ -28,7 +28,7 @@ android {
 
     buildTypes {
         create("pre") {
-            initWith(getByName("release"))
+            isMinifyEnabled = false
         }
     }
     targetProjectPath = ":app"
