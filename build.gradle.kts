@@ -15,14 +15,15 @@ plugins {
 // to "release" — minified, shrunk, and proguarded.
 subprojects {
     plugins.whenPluginAdded {
-        val isAndroidLibrary = this@whenPluginAdded is com.android.build.gradle.LibraryPlugin
-        val isAndroidTest = this@whenPluginAdded is com.android.build.gradle.TestPlugin
-        if (isAndroidLibrary || isAndroidTest) {
-            extensions.configure<com.android.build.gradle.BaseExtension> {
-                buildTypes {
-                    create("pre") {
-                        initWith(getByName("release"))
-                    }
+        when {
+            this@whenPluginAdded is com.android.build.gradle.LibraryPlugin -> {
+                extensions.configure<com.android.build.gradle.LibraryExtension> {
+                    buildTypes { create("pre") { initWith(getByName("release")) } }
+                }
+            }
+            this@whenPluginAdded is com.android.build.gradle.TestPlugin -> {
+                extensions.configure<com.android.build.gradle.TestExtension> {
+                    buildTypes { create("pre") { initWith(getByName("release")) } }
                 }
             }
         }
