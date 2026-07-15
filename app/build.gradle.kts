@@ -19,7 +19,7 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "me.rerere.rikkahub"
+        applicationId = "xyz.lynsei.rikkahub"
         minSdk = 26
         targetSdk = 37
         versionCode = 169
@@ -133,7 +133,7 @@ android {
             if (signingConfigs.getByName("pre").storeFile != null) {
                 signingConfig = signingConfigs.getByName("pre")
             }
-            applicationId = "xyz.lynsei.rikkahub"
+            applicationIdSuffix = ".pre"
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

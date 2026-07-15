@@ -94,7 +94,7 @@ jobs:
           keyAlias=release
           keyPassword=android
           PROPERTIES
-          echo '{"project_info":{"project_number":"0","project_id":"nightly"},"client":[{"client_info":{"mobilesdk_app_id":"1:0:android:0000000000000000","android_client_info":{"package_name":"me.rerere.rikkahub"}},"oauth_client":[],"api_key":[{"current_key":""}]}]}' > app/google-services.json
+          echo '{"project_info":{"project_number":"0","project_id":"nightly"},"client":[{"client_info":{"mobilesdk_app_id":"1:0:android:0000000000000000","android_client_info":{"package_name":"xyz.lynsei.rikkahub"}},"oauth_client":[],"api_key":[{"current_key":""}]}]}' > app/google-services.json
 
       - name: Gradle Build
         run: |

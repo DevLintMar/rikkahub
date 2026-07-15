@@ -98,7 +98,7 @@ jobs:
           pre.keyAlias=pre
           pre.keyPassword=android
           PROPERTIES
-          echo '{"project_info":{"project_number":"0","project_id":"lynsei-pre"},"client":[{"client_info":{"mobilesdk_app_id":"1:0:android:0000000000000000","android_client_info":{"package_name":"xyz.lynsei.rikkahub"}},"oauth_client":[],"api_key":[{"current_key":""}]}]}' > app/google-services.json
+          echo '{"project_info":{"project_number":"0","project_id":"lynsei-pre"},"client":[{"client_info":{"mobilesdk_app_id":"1:0:android:0000000000000000","android_client_info":{"package_name":"xyz.lynsei.rikkahub.pre"}},"oauth_client":[],"api_key":[{"current_key":""}]}]}' > app/google-services.json
 
       - name: Gradle Build
         run: |
