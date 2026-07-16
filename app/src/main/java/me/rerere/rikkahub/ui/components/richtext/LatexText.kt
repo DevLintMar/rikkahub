@@ -6,7 +6,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.takeOrElse
@@ -57,9 +56,8 @@ fun assumeLatexSize(
 /**
  * 用 RaTeX 引擎渲染 LaTeX 公式的 Composable。
  *
- * 如果 RaTeX 返回的尺寸超出 Compose 允许范围（NaN、Infinity、
- * 或 > 16777215px），用 [Modifier.layout] 钳位到安全值以防止
- * IllegalStateException，同时仍保持正常的 RaTeX 渲染。
+ * 签名兼容旧版 [LatexText]，新增 [displayMode] 参数供块级/行内选择。
+ * 渲染失败时退化到纯文本显示原始 LaTeX。
  */
 @Composable
 fun LatexText(
@@ -82,18 +80,11 @@ fun LatexText(
     if (displayList != null) {
         RaTeX(
             displayList = displayList,
-            modifier = modifier
-                .layout { measurable, constraints ->
-                    val placeable = measurable.measure(constraints)
-                    val w = placeable.width.coerceIn(0, MAX_COMPOSE_SIZE_PX.toInt())
-                    val h = placeable.height.coerceIn(0, MAX_COMPOSE_SIZE_PX.toInt())
-                    layout(w, h) {
-                        placeable.placeRelative(0, 0)
-                    }
-                },
+            modifier = modifier,
             fontSize = resolvedFontSize,
         )
     } else {
+        // 降级：显示原始 LaTeX 文本
         Text(
             text = latex,
             style = style.merge(color = resolvedColor, fontSize = resolvedFontSize),
