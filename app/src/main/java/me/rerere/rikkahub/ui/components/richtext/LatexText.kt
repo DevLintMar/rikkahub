@@ -3,7 +3,6 @@ package me.rerere.rikkahub.ui.components.richtext
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -13,7 +12,6 @@ import androidx.compose.ui.unit.takeOrElse
 import io.ratex.DisplayList
 import io.ratex.RaTeXEngine
 import io.ratex.compose.RaTeX
-import io.ratex.compose.rememberRaTeXDisplayList
 import io.ratex.measure
 
 /**
@@ -84,12 +82,9 @@ fun LatexText(
     val dl = if (displayList != null) {
         displayList
     } else {
-        val parseResult by rememberRaTeXDisplayList(
-            latex = latex,
-            displayMode = displayMode,
-            color = resolvedColor,
-        )
-        parseResult?.getOrNull()
+        remember(latex, displayMode, resolvedColor) {
+            runCatching { RaTeXEngine.parseBlocking(latex, displayMode = displayMode, color = resolvedColor) }.getOrNull()
+        }
     }
 
     if (dl != null) {

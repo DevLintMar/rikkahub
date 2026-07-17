@@ -26,9 +26,8 @@ fun MathInline(
     fontSize: TextUnit = TextUnit.Unspecified,
     displayList: DisplayList? = null,
 ) {
-    val proceededLatex = latex
     LatexText(
-        latex = proceededLatex,
+        latex = latex,
         color = LocalContentColor.current,
         fontSize = fontSize.takeOrElse { LocalTextStyle.current.fontSize },
         displayMode = false,
@@ -46,12 +45,11 @@ fun MathBlock(
     modifier: Modifier = Modifier,
     fontSize: TextUnit = TextUnit.Unspecified
 ) {
-    val proceededLatex = latex
     Box(
         modifier = modifier.padding(8.dp)
     ) {
         LatexText(
-            latex = proceededLatex,
+            latex = latex,
             color = LocalContentColor.current,
             fontSize = fontSize.takeOrElse { LocalTextStyle.current.fontSize },
             displayMode = true,
