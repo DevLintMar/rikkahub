@@ -104,6 +104,7 @@ import me.rerere.rikkahub.ui.theme.JetbrainsMono
 import me.rerere.rikkahub.utils.toDp
 import io.ratex.DisplayList
 import io.ratex.RaTeXEngine
+import io.ratex.measure
 import org.intellij.markdown.IElementType
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
