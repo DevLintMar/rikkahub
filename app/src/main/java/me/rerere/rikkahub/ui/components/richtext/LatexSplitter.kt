@@ -109,7 +109,7 @@ private fun findTopLevelSplitPositions(latex: String): List<Int> {
                 i = cmdEnd
                 continue
             }
-            depth == 0 && c in SPLIT_CHARS -> positions.add(i + 1)
+            depth == 0 && c in SPLIT_CHARS -> positions.add(i)
         }
 
         i++
