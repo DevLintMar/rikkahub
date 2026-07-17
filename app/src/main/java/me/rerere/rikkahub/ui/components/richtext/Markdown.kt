@@ -10,7 +10,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -41,11 +40,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,6 +61,7 @@ import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.Placeholder
@@ -799,48 +801,53 @@ private fun Paragraph(
         if (textStyle.fontSize != TextUnit.Unspecified) textStyle.fontSize.toPx()
         else MaterialTheme.typography.bodyMedium.fontSize.toPx()
     }
-    BoxWithConstraints(
-        Modifier.fillMaxWidth().then(
-            modifier.then(
+    // 用 onSizeChanged 拿可用宽度，避免 BoxWithConstraints（SubcomposeLayout），
+    // 后者不支持 intrinsic 测量，在 NavDisplay 的 LookaheadScope 下会让父级
+    // ListItem/Column 查询 minIntrinsicHeight 时抛 "Asking for intrinsic
+    // measurements of SubcomposeLayout layouts is not supported" 崩溃。
+    var maxWidthPx by remember { mutableFloatStateOf(0f) }
+    val effectiveMaxWidthPx = if (maxWidthPx > 0f) maxWidthPx else Float.MAX_VALUE
+
+    FlowRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .onSizeChanged { maxWidthPx = with(density) { it.width.toPx() } }
+            .then(modifier)
+            .then(
                 if (node.nextSibling() != null) Modifier.padding(bottom = LocalTextStyle.current.fontSize.toDp())
                 else Modifier
             )
-        )
     ) {
-        val maxWidthPx = with(density) { maxWidth.toPx() }
-
-        FlowRow {
-            val annotatedString = remember(content, enableLatexRendering, latexColorArgb, maxWidthPx) {
-                buildAnnotatedString {
-                    node.children.fastForEach { child ->
-                        appendMarkdownNodeContent(
-                            node = child,
-                            content = content,
-                            inlineContents = inlineContents,
-                            colorScheme = colorScheme,
-                            onClickCitation = onClickCitation,
-                            style = textStyle,
-                            density = density,
-                            trim = trim,
-                            enableLatexRendering = enableLatexRendering,
-                            latexColorArgb = latexColorArgb,
-                            maxWidthPx = maxWidthPx,
-                            fontSizePx = fontSizePx,
-                        )
-                    }
+        val annotatedString = remember(content, enableLatexRendering, latexColorArgb, maxWidthPx) {
+            buildAnnotatedString {
+                node.children.fastForEach { child ->
+                    appendMarkdownNodeContent(
+                        node = child,
+                        content = content,
+                        inlineContents = inlineContents,
+                        colorScheme = colorScheme,
+                        onClickCitation = onClickCitation,
+                        style = textStyle,
+                        density = density,
+                        trim = trim,
+                        enableLatexRendering = enableLatexRendering,
+                        latexColorArgb = latexColorArgb,
+                        maxWidthPx = effectiveMaxWidthPx,
+                        fontSizePx = fontSizePx,
+                    )
                 }
             }
-            Text(
-                text = annotatedString,
-                modifier = Modifier,
-                inlineContent = inlineContents,
-                softWrap = true,
-                overflow = TextOverflow.Visible,
-                style = LocalTextStyle.current.copy(
-                    lineHeight = if (hasInlineMath && enableLatexRendering) TextUnit.Unspecified else LocalTextStyle.current.lineHeight
-                )
-            )
         }
+        Text(
+            text = annotatedString,
+            modifier = Modifier,
+            inlineContent = inlineContents,
+            softWrap = true,
+            overflow = TextOverflow.Visible,
+            style = LocalTextStyle.current.copy(
+                lineHeight = if (hasInlineMath && enableLatexRendering) TextUnit.Unspecified else LocalTextStyle.current.lineHeight
+            )
+        )
     }
 }
 
