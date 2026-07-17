@@ -102,6 +102,8 @@ import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.ui.modifier.onClick
 import me.rerere.rikkahub.ui.theme.JetbrainsMono
 import me.rerere.rikkahub.utils.toDp
+import io.ratex.DisplayList
+import io.ratex.RaTeXEngine
 import org.intellij.markdown.IElementType
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
@@ -794,6 +796,10 @@ private fun Paragraph(
     val textStyle = LocalTextStyle.current
     val density = LocalDensity.current
     val latexColorArgb = LocalContentColor.current.toArgb()
+    val formulaDisplayLists = remember(latexColorArgb) {
+        mutableMapOf<String, DisplayList?>()
+    }
+    val resolvedColor = LocalContentColor.current
     val fontSizePx = with(density) {
         if (textStyle.fontSize != TextUnit.Unspecified) textStyle.fontSize.toPx()
         else MaterialTheme.typography.bodyMedium.fontSize.toPx()
@@ -831,6 +837,8 @@ private fun Paragraph(
                         latexColorArgb = latexColorArgb,
                         maxWidthPx = effectiveMaxWidthPx,
                         fontSizePx = fontSizePx,
+                        formulaDisplayLists = formulaDisplayLists,
+                        resolvedColor = resolvedColor,
                     )
                 }
             }
@@ -1016,6 +1024,8 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
     onClickCitation: (String) -> Unit = {},
     maxWidthPx: Float = Float.MAX_VALUE,
     fontSizePx: Float = Float.MAX_VALUE,
+    formulaDisplayLists: MutableMap<String, DisplayList?>? = null,
+    resolvedColor: Color = Color.Unspecified,
 ) {
     when {
         node.type == MarkdownTokenTypes.BLOCK_QUOTE -> {}
@@ -1057,6 +1067,8 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                         onClickCitation = onClickCitation,
                         maxWidthPx = maxWidthPx,
                         fontSizePx = fontSizePx,
+                        formulaDisplayLists = formulaDisplayLists,
+                        resolvedColor = resolvedColor,
                     )
                 }
             }
@@ -1077,6 +1089,8 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                         onClickCitation = onClickCitation,
                         maxWidthPx = maxWidthPx,
                         fontSizePx = fontSizePx,
+                        formulaDisplayLists = formulaDisplayLists,
+                        resolvedColor = resolvedColor,
                     )
                 }
             }
@@ -1097,6 +1111,8 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                         onClickCitation = onClickCitation,
                         maxWidthPx = maxWidthPx,
                         fontSizePx = fontSizePx,
+                        formulaDisplayLists = formulaDisplayLists,
+                        resolvedColor = resolvedColor,
                     )
                 }
             }
@@ -1198,24 +1214,52 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                     if (index > 0) append("​")
                     val key = "${formula}_$index"
                     appendInlineContent(key, "[Latex]")
-                    val metrics = with(density) {
-                        assumeLatexSize(latex = segment, fontSizePx = fontSizePx)
+
+                    // 优先使用预解析的 DisplayList（解析一次，测量 Placeholder + 渲染复用）
+                    val parsedDisplayList = if (formulaDisplayLists != null && resolvedColor != Color.Unspecified) {
+                        formulaDisplayLists.getOrPut(key) {
+                            runCatching {
+                                RaTeXEngine.parseBlocking(segment, displayMode = false, color = resolvedColor)
+                            }.getOrNull()
+                        }
+                    } else {
+                        // 无缓存路径（兜底）：仍用 assumeLatexSize 测尺寸
+                        null
                     }
-                    val placeholderWidth = metrics?.let { with(density) { it.widthPx.toSp() } } ?: 0.sp
-                    val placeholderHeight = metrics?.let { with(density) { (it.heightPx + it.depthPx).toSp() } } ?: 0.sp
-                    inlineContents.putIfAbsent(
-                        key,
-                        InlineTextContent(
-                            placeholder = Placeholder(
-                                width = placeholderWidth,
-                                height = placeholderHeight,
-                                placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
-                            ),
-                            children = {
-                                MathInline(latex = segment, modifier = Modifier)
-                            }
+
+                    if (parsedDisplayList != null) {
+                        val m = parsedDisplayList.measure(fontSizePx)
+                        val placeholderWidth = with(density) { m.widthPx.toSp() }
+                        val placeholderHeight = with(density) { (m.heightPx + m.depthPx).toSp() }
+                        inlineContents.putIfAbsent(
+                            key,
+                            InlineTextContent(
+                                placeholder = Placeholder(
+                                    width = placeholderWidth,
+                                    height = placeholderHeight,
+                                    placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
+                                ),
+                                children = {
+                                    MathInline(latex = segment, modifier = Modifier, displayList = parsedDisplayList)
+                                }
+                            )
                         )
-                    )
+                    } else {
+                        // parse 失败：Placeholder 0 尺寸；MathInline 会自行重试/降级渲染
+                        inlineContents.putIfAbsent(
+                            key,
+                            InlineTextContent(
+                                placeholder = Placeholder(
+                                    width = 0.sp,
+                                    height = 0.sp,
+                                    placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
+                                ),
+                                children = {
+                                    MathInline(latex = segment, modifier = Modifier)
+                                }
+                            )
+                        )
+                    }
                 }
             } else {
                 // 禁用 LaTeX 渲染时，以等宽字体显示原始公式
@@ -1245,6 +1289,8 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                     onClickCitation = onClickCitation,
                     maxWidthPx = maxWidthPx,
                     fontSizePx = fontSizePx,
+                    formulaDisplayLists = formulaDisplayLists,
+                    resolvedColor = resolvedColor,
                 )
             }
         }
