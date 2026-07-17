@@ -793,6 +793,9 @@ private fun Paragraph(
         mutableStateMapOf<String, InlineTextContent>()
     }
     val enableLatexRendering = LocalSettings.current.displaySetting.enableLatexRendering
+    val hasInlineMath = remember(node) {
+        node.findChildOfTypeRecursive(GFMElementTypes.INLINE_MATH) != null
+    }
 
     val textStyle = LocalTextStyle.current
     val density = LocalDensity.current
@@ -850,7 +853,9 @@ private fun Paragraph(
             inlineContent = inlineContents,
             softWrap = true,
             overflow = TextOverflow.Visible,
-            style = LocalTextStyle.current,
+            style = LocalTextStyle.current.copy(
+                lineHeight = if (hasInlineMath && enableLatexRendering) TextUnit.Unspecified else LocalTextStyle.current.lineHeight
+            ),
         )
     }
 }
