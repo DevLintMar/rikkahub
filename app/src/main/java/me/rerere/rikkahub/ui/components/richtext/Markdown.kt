@@ -789,9 +789,6 @@ private fun Paragraph(
     val inlineContents = remember {
         mutableStateMapOf<String, InlineTextContent>()
     }
-    val hasInlineMath = remember(node) {
-        node.findChildOfTypeRecursive(GFMElementTypes.INLINE_MATH) != null
-    }
     val enableLatexRendering = LocalSettings.current.displaySetting.enableLatexRendering
 
     val textStyle = LocalTextStyle.current
@@ -811,7 +808,7 @@ private fun Paragraph(
     FlowRow(
         modifier = Modifier
             .fillMaxWidth()
-            .onSizeChanged { maxWidthPx = with(density) { it.width.toPx() } }
+            .onSizeChanged { maxWidthPx = it.width.toFloat() }
             .then(modifier)
             .then(
                 if (node.nextSibling() != null) Modifier.padding(bottom = LocalTextStyle.current.fontSize.toDp())
@@ -844,9 +841,7 @@ private fun Paragraph(
             inlineContent = inlineContents,
             softWrap = true,
             overflow = TextOverflow.Visible,
-            style = LocalTextStyle.current.copy(
-                lineHeight = if (hasInlineMath && enableLatexRendering) TextUnit.Unspecified else LocalTextStyle.current.lineHeight
-            )
+            style = LocalTextStyle.current,
         )
     }
 }
