@@ -63,8 +63,8 @@ fun assumeLatexSize(
  *
  * [displayList] 为可选预解析结果；投喂时直接使用无需解析，
  * 用于 [InlineTextContent] 场景下与 Placeholder 测量共享同一 DisplayList。
- * 未投喂时通过 [rememberRaTeXDisplayList] 异步解析（[Dispatchers.Default]）
- * 避免主线程阻塞。解析完成前降级到纯文本显示原始 LaTeX。
+ * 未投喂时通过 [remember] 同步解析并缓存（主线程，短公式 <5ms）。
+ * 首个公式缓存缺失后再次出现零开销。
  */
 @Composable
 fun LatexText(
