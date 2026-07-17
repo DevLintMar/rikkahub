@@ -1237,8 +1237,7 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                         val m = parsedDisplayList.measure(fontSizePx)
                         val placeholderWidth = with(density) { m.widthPx.toSp() }
                         val placeholderHeight = with(density) { (m.heightPx + m.depthPx).toSp() }
-                        inlineContents.putIfAbsent(
-                            key,
+                        inlineContents[key] =
                             InlineTextContent(
                                 placeholder = Placeholder(
                                     width = placeholderWidth,
@@ -1249,11 +1248,9 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                                     MathInline(latex = segment, modifier = Modifier, displayList = parsedDisplayList)
                                 }
                             )
-                        )
                     } else {
                         // parse 失败：Placeholder 0 尺寸；MathInline 会自行重试/降级渲染
-                        inlineContents.putIfAbsent(
-                            key,
+                        inlineContents[key] =
                             InlineTextContent(
                                 placeholder = Placeholder(
                                     width = 0.sp,
@@ -1264,7 +1261,6 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                                     MathInline(latex = segment, modifier = Modifier)
                                 }
                             )
-                        )
                     }
                 }
             } else {
