@@ -41,7 +41,10 @@ import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
@@ -166,8 +169,11 @@ class RouteActivity : ComponentActivity() {
         enableEdgeToEdge()
         disableNavigationBarContrast()
         super.onCreate(savedInstanceState)
-        if (settingsStore.settingsFlow.value.keepAliveEnabled) {
-            KeepAliveService.start(this)
+        // 等待 DataStore 异步加载完成后检查保活设置
+        lifecycleScope.launch {
+            if (settingsStore.settingsFlow.first { !it.init }.keepAliveEnabled) {
+                KeepAliveService.start(this@RouteActivity)
+            }
         }
         if (CrashHandler.hasCrashed(this)) {
             startActivity(Intent(this, SafeModeActivity::class.java))
