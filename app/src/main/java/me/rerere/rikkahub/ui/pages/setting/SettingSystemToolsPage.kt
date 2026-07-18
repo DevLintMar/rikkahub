@@ -1,6 +1,5 @@
 package me.rerere.rikkahub.ui.pages.setting
 
-import android.Manifest
 import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
@@ -25,19 +24,17 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.google.accompanist.permissions.ExperimentalPermissionsApi
-import com.google.accompanist.permissions.isGranted
-import com.google.accompanist.permissions.rememberPermissionState
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Pulse01
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.service.KeepAliveService
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.CardGroup
+import me.rerere.rikkahub.ui.components.ui.permission.PermissionNotification
+import me.rerere.rikkahub.ui.components.ui.permission.rememberPermissionState
 import me.rerere.rikkahub.ui.theme.CustomColors
 import org.koin.androidx.compose.koinViewModel
 
-@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun SettingSystemToolsPage(vm: SettingVM = koinViewModel()) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -53,7 +50,7 @@ fun SettingSystemToolsPage(vm: SettingVM = koinViewModel()) {
 
     val notificationPermissionState = rememberPermissionState(
         permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            setOf(Manifest.permission.POST_NOTIFICATIONS)
+            setOf(PermissionNotification)
         } else emptySet()
     )
 
