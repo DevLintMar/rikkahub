@@ -922,17 +922,17 @@
   <string name="setting_page_web_server_stop">Stop</string>
 
   <!-- System Tools / Keep Alive -->
-  <string name="setting_system_tools">System Tools</string>
-  <string name="setting_system_tools_desc">Configure keep-alive and system assistants</string>
-  <string name="setting_system_tools_keep_alive_section">Keep Alive</string>
-  <string name="setting_system_tools_keep_alive">Background Keep Alive</string>
-  <string name="setting_system_tools_keep_alive_desc">Keep a persistent foreground notification to reduce the chance of the app being killed by the system, ensuring background features run reliably</string>
-  <string name="setting_system_tools_permission_required">Notification permission not granted</string>
-  <string name="setting_system_tools_notification_permission_desc">Keep Alive needs notification permission to display the persistent notification</string>
-  <string name="keep_alive_channel_name">Keep Alive</string>
-  <string name="keep_alive_channel_desc">Background keep alive service notification</string>
+  <string name="setting_system_tools">系统工具</string>
+  <string name="setting_system_tools_desc">配置后台保活与系统辅助功能</string>
+  <string name="setting_system_tools_keep_alive_section">后台保活</string>
+  <string name="setting_system_tools_keep_alive">后台保活</string>
+  <string name="setting_system_tools_keep_alive_desc">开启后前台常驻通知，降低被系统杀死概率，保障后台功能稳定运行</string>
+  <string name="setting_system_tools_permission_required">通知权限未授予</string>
+  <string name="setting_system_tools_notification_permission_desc">开启保活需要通知权限以显示常驻通知</string>
+  <string name="keep_alive_channel_name">保活服务</string>
+  <string name="keep_alive_channel_desc">后台保活服务通知</string>
   <string name="keep_alive_notification_title">RikkaHub</string>
-  <string name="keep_alive_notification_content">Maintaining connection</string>
+  <string name="keep_alive_notification_content">保持连接中</string>
   <string name="setting_provider_page_abilities">Abilities</string>
   <string name="setting_provider_page_add">Add</string>
   <string name="setting_provider_page_add_model">Add Model</string>
