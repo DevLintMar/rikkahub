@@ -920,6 +920,19 @@
   <string name="setting_page_web_server_port_desc">Web server listen port (1024-65535)</string>
   <string name="setting_page_web_server_start">Start</string>
   <string name="setting_page_web_server_stop">Stop</string>
+
+  <!-- System Tools / Keep Alive -->
+  <string name="setting_system_tools">System Tools</string>
+  <string name="setting_system_tools_desc">Configure keep-alive and system assistants</string>
+  <string name="setting_system_tools_keep_alive_section">Keep Alive</string>
+  <string name="setting_system_tools_keep_alive">Background Keep Alive</string>
+  <string name="setting_system_tools_keep_alive_desc">Keep a persistent foreground notification to reduce the chance of the app being killed by the system, ensuring background features run reliably</string>
+  <string name="setting_system_tools_permission_required">Notification permission not granted</string>
+  <string name="setting_system_tools_notification_permission_desc">Keep Alive needs notification permission to display the persistent notification</string>
+  <string name="keep_alive_channel_name">Keep Alive</string>
+  <string name="keep_alive_channel_desc">Background keep alive service notification</string>
+  <string name="keep_alive_notification_title">RikkaHub</string>
+  <string name="keep_alive_notification_content">Maintaining connection</string>
   <string name="setting_provider_page_abilities">Abilities</string>
   <string name="setting_provider_page_add">Add</string>
   <string name="setting_provider_page_add_model">Add Model</string>

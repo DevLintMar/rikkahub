@@ -163,6 +163,24 @@
         android:value="androidx.startup"
         tools:node="remove" />
     </provider>
+
+    <!-- KeepAlive Service -->
+    <service
+      android:name=".service.KeepAliveService"
+      android:enabled="true"
+      android:exported="false"
+      android:foregroundServiceType="dataSync"
+      android:stopWithTask="false" />
+
+    <!-- KeepAlive Restart Receiver -->
+    <receiver
+      android:name=".service.KeepAliveRestartReceiver"
+      android:exported="false">
+      <intent-filter>
+        <action android:name="me.rerere.rikkahub.RESTART_KEEP_ALIVE" />
+      </intent-filter>
+    </receiver>
+
   </application>
 
 </manifest>
