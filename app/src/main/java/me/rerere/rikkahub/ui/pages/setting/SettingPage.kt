@@ -306,6 +306,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
+                                /*
                                 var showQQGroupSheet by remember { mutableStateOf(false) }
                                 IconButton(
                                     onClick = { showQQGroupSheet = true }
@@ -332,6 +333,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                                         tint = MaterialTheme.colorScheme.secondary
                                     )
                                 }
+                                */
                             }
                         },
                         headlineContent = { Text(stringResource(R.string.setting_page_about)) },
