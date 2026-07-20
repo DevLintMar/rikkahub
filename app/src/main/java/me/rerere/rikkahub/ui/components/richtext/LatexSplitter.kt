@@ -109,6 +109,15 @@ private fun findTopLevelSplitPositions(latex: String): List<Int> {
                 i = cmdEnd
                 continue
             }
+            c == '^' || c == '_' -> {
+                // 上标/下标：跳过 ^/_ 及其后的单字符上标/下标内容，
+                // 避免将电荷符号（^+、^-）误判为顶层分割点。
+                // 若 ^ 后接 {，由大括号深度追踪自然保护组内内容（^{2+} 等）。
+                if (i + 1 < latex.length && latex[i + 1] != '{') {
+                    i += 2
+                    continue
+                }
+            }
             depth == 0 && c in SPLIT_CHARS -> positions.add(i)
         }
 
