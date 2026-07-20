@@ -32,4 +32,12 @@ sealed class LocalToolOption {
     @Serializable
     @SerialName("calendar")
     data object Calendar : LocalToolOption()
+
+    @Serializable
+    @SerialName("sub_agent")
+    data object SubAgent : LocalToolOption()
+
+    @Serializable
+    @SerialName("workflow")
+    data object Workflow : LocalToolOption()
 }

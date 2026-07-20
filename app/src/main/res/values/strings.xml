@@ -1283,6 +1283,14 @@
   <string name="tool_ui_screen_time_total">Total screen time</string>
   <string name="assistant_page_local_tools_calendar_title">Calendar</string>
   <string name="assistant_page_local_tools_calendar_desc">Let the AI query and create calendar events</string>
+
+  <!-- Sub-Agent tool -->
+  <string name="assistant_page_local_tools_sub_agent_title">Sub-Agent</string>
+  <string name="assistant_page_local_tools_sub_agent_desc">Let the AI launch a sub-agent to independently complete tasks in sync or background mode</string>
+
+  <!-- Workflow tool -->
+  <string name="assistant_page_local_tools_workflow_title">Workflow</string>
+  <string name="assistant_page_local_tools_workflow_desc">Let the AI orchestrate multi-step workflows with multiple sub-agents</string>
   <string name="chat_message_tool_calendar_query">Query calendar events</string>
   <string name="chat_message_tool_calendar_create">Create event: %1$s</string>
   <string name="chat_page_move_to_folder">Move to Folder</string>

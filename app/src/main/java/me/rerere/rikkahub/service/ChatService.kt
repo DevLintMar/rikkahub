@@ -48,6 +48,8 @@ import me.rerere.rikkahub.data.ai.GenerationHandler
 import me.rerere.rikkahub.data.ai.mcp.McpManager
 import me.rerere.rikkahub.data.ai.tools.createConversationTools
 import me.rerere.rikkahub.data.ai.tools.local.LocalTools
+import me.rerere.rikkahub.data.ai.tools.local.buildSubAgentTool
+import me.rerere.rikkahub.data.ai.tools.local.buildWorkflowTool
 import me.rerere.rikkahub.data.ai.tools.createSearchTools
 import me.rerere.rikkahub.data.ai.tools.createSkillTools
 import me.rerere.rikkahub.data.ai.tools.createWorkspaceTools
@@ -159,6 +161,17 @@ class ChatService(
     // 错误状态
     private val _errors = MutableStateFlow<List<ChatError>>(emptyList())
     val errors: StateFlow<List<ChatError>> = _errors.asStateFlow()
+
+    init {
+        // 监听子代理/工作流后台执行完成事件
+        appScope.launch {
+            appEventBus.events.collect { event ->
+                if (event is AppEvent.SubAgentCompleted) {
+                    handleSubAgentRecall(event)
+                }
+            }
+        }
+    }
 
     fun addError(
         error: Throwable,
@@ -462,6 +475,55 @@ class ChatService(
         session.setJob(job)
     }
 
+    // ---- 处理子代理/工作流后台完成 recall ----
+
+    private fun handleSubAgentRecall(event: AppEvent.SubAgentCompleted) {
+        launchWithConversationReference(event.conversationId) {
+            try {
+                val session = getOrCreateSession(event.conversationId)
+                // 防止重复生成：如果当前已有生成任务，跳过
+                if (session.getJob()?.isActive == true) {
+                    Log.i(TAG, "handleSubAgentRecall: generation already active for ${event.conversationId}, skipping")
+                    return@launchWithConversationReference
+                }
+
+                val conversation = getConversationFlow(event.conversationId).value
+                val resultMsg = UIMessage(
+                    role = MessageRole.SYSTEM,
+                    parts = listOf(
+                        UIMessagePart.Text(
+                            buildString {
+                                appendLine("[Sub-Agent '${event.agentId}' completed]")
+                                appendLine("Task: ${event.task}")
+                                append("Result: ${event.result}")
+                            }
+                        )
+                    )
+                )
+                val newNode = resultMsg.toMessageNode()
+                val updatedConversation = conversation.copy(
+                    messageNodes = conversation.messageNodes + newNode,
+                    updateAt = Instant.now()
+                )
+                updateConversation(event.conversationId, updatedConversation)
+
+                val settings = settingsStore.settingsFlow.first()
+                val assistant = settings.getAssistantById(conversation.assistantId)
+                    ?: settings.getCurrentAssistant()
+                if (assistant.streamOutput) {
+                    // 创建并追踪新生成任务的 job
+                    val recallJob = appScope.launch {
+                        handleMessageComplete(event.conversationId)
+                    }
+                    session.setJob(recallJob)
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Log.e(TAG, "handleSubAgentRecall failed", e)
+            }
+        }
+    }
+
     // ---- 处理消息补全 ----
 
     private suspend fun handleMessageComplete(
@@ -533,7 +595,22 @@ class ChatService(
                     if (assistant.enableWebSearch) {
                         addAll(createSearchTools(settings))
                     }
-                    addAll(localTools.getTools(assistant.localTools))
+                    // Local tools, with sub-agent/workflow tools wired to current conversation
+                    addAll(localTools.getTools(assistant.localTools).map { tool ->
+                        when (tool.name) {
+                            "sub_agent" -> {
+                                val runtime = localTools.subAgentRuntime
+                                val convId = conversationId
+                                buildSubAgentTool(runtime) { convId }
+                            }
+                            "run_workflow" -> {
+                                val engine = localTools.workflowEngine
+                                val convId = conversationId
+                                buildWorkflowTool(engine) { convId }
+                            }
+                            else -> tool
+                        }
+                    })
                     if (assistant.enableRecentChatsReference) {
                         addAll(createConversationTools(conversationRepo, assistant.id))
                     }

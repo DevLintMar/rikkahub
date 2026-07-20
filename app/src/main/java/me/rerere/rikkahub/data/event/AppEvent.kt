@@ -30,4 +30,13 @@ sealed class AppEvent {
         val senderName: String,
         val contentPreview: String?,
     ) : AppEvent()
+
+    /** 子代理/工作流后台执行完成事件。 */
+    data class SubAgentCompleted(
+        val conversationId: Uuid,
+        val agentId: String,
+        val task: String,
+        val result: String,
+        val success: Boolean,
+    ) : AppEvent()
 }
