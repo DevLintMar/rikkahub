@@ -605,7 +605,7 @@ class ChatService(
                             "sub_agent" -> {
                                 val runtime = localTools.subAgentRuntime
                                 val convId = conversationId
-                                buildSubAgentTool(runtime, subAgentTools) { convId }
+                                buildSubAgentTool(runtime, emptyList()) { convId }
                             }
                             "run_workflow" -> {
                                 val engine = localTools.workflowEngine
