@@ -9,11 +9,13 @@ import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.ai.ui.handleMessageChunk
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findProvider
+import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
 import kotlin.uuid.Uuid
@@ -89,13 +91,13 @@ class SubAgentRuntime(
             params = TextGenerationParams(model = model, tools = emptyList())
         )
 
-        val text = result.parts.joinToString("") { part ->
+        val responseMessages = emptyList<UIMessage>().handleMessageChunk(result, model)
+        val text = responseMessages.lastOrNull()?.parts?.joinToString("") { part ->
             when (part) {
                 is UIMessagePart.Text -> part.content
-                is UIMessagePart.Reasoning -> ""
                 else -> ""
             }
-        }
+        } ?: ""
 
         SubAgentResult(success = true, text = text)
     } catch (e: CancellationException) {
