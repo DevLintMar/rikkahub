@@ -262,31 +262,6 @@ internal fun AssistantBasicContent(
             FormItem(
                 modifier = Modifier.padding(8.dp),
                 label = {
-                    Text("Sub-Agent Model")
-                },
-                description = {
-                    Text("Default model for sub-agents (uses chat model if not set)")
-                },
-                content = {
-                    ModelSelector(
-                        modelId = assistant.subAgentModelId,
-                        providers = providers,
-                        type = ModelType.CHAT,
-                        allowClear = true,
-                        onSelect = {
-                            onUpdate(
-                                assistant.copy(
-                                    subAgentModelId = it.id
-                                )
-                            )
-                        },
-                    )
-                }
-            )
-            HorizontalDivider()
-            FormItem(
-                modifier = Modifier.padding(8.dp),
-                label = {
                     Text(stringResource(R.string.assistant_page_temperature))
                 },
                 description = {

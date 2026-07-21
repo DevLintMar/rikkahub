@@ -15,7 +15,6 @@ import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findProvider
-import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
 import kotlin.uuid.Uuid
@@ -134,11 +133,10 @@ class SubAgentRuntime(
 
     /**
      * 解析模型 ID。
-     * 优先级：customModelId > assistant.subAgentModelId > assistant.chatModelId > settings.chatModelId
+     * 优先级：customModelId > settings.subAgentModelId > settings.chatModelId
      */
     private fun resolveModelId(customModelId: Uuid?, settings: Settings): Uuid? {
         if (customModelId != null) return customModelId
-        val assistant = settings.getCurrentAssistant()
-        return assistant.subAgentModelId ?: assistant.chatModelId
+        return settings.subAgentModelId
     }
 }

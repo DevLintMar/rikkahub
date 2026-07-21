@@ -167,6 +167,16 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                 onSelect = { vm.updateSettings(settings.copy(compressModelId = it.id)) },
             )
         }
+        item {
+            ModelSettingItem(
+                title = "Sub-Agent Model",
+                description = "Default model for sub-agents (uses chat model if not set)",
+                modelId = settings.subAgentModelId,
+                providers = settings.providers,
+                onSelect = { vm.updateSettings(settings.copy(subAgentModelId = it.id)) },
+                onClear = { vm.updateSettings(settings.copy(subAgentModelId = null)) },
+            )
+        }
     }
 }
 
