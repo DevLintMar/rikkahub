@@ -53,7 +53,7 @@ class SubAgentRuntime(
     private val eventBus: AppEventBus,
 ) {
     companion object {
-        private const val DEFAULT_SYSTEM_PROMPT = """
+        private val DEFAULT_SYSTEM_PROMPT = """
             You are a helpful sub-agent. Complete the following task concisely and accurately.
             Do not ask follow-up questions or request clarification.
             Provide your best answer based on your knowledge and the instructions given.
