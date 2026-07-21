@@ -101,7 +101,7 @@ class SubAgentRuntime(
         )
         Log.i(TAG, "executeSync: calling provider=${providerSetting.id} model=${model.modelId} msgs=${messages.size} tools=${tools.size}")
 
-        val result = provider.generateText(
+        val resultFlow = provider.streamText(
             providerSetting = providerSetting,
             messages = messages,
             params = TextGenerationParams(
@@ -112,9 +112,10 @@ class SubAgentRuntime(
             )
         )
 
-        Log.i(TAG, "executeSync: success, messages=${messages.size} (sys:${messages[0].parts.size}, user:${messages[1].parts.size})")
-
-        val responseMessages = emptyList<UIMessage>().handleMessageChunk(result, model)
+        var responseMessages = emptyList<UIMessage>()
+        resultFlow.collect { chunk ->
+            responseMessages = responseMessages.handleMessageChunk(chunk, model)
+        }
         val text = responseMessages.lastOrNull()?.parts?.joinToString("") { part ->
             when (part) {
                 is UIMessagePart.Text -> part.text
