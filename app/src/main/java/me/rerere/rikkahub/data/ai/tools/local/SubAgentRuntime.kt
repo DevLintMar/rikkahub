@@ -53,14 +53,12 @@ class SubAgentRuntime(
     private val eventBus: AppEventBus,
 ) {
     companion object {
-        private val DEFAULT_SYSTEM_PROMPT = """[System]
-You are a helpful sub-agent. Complete the following task concisely and accurately.
-Do not ask follow-up questions or request clarification.
-Provide your best answer based on your knowledge and the instructions given.
-Keep your response focused on the task.
-
-Available tools are listed below — use them when appropriate.
-[/System]
+        private val DEFAULT_SYSTEM_PROMPT = """
+            You are a helpful sub-agent. Complete the following task concisely and accurately.
+            Do not ask follow-up questions or request clarification.
+            Provide your best answer based on your knowledge and the instructions given.
+            Keep your response focused on the task.
+        """.trimIndent()
     }
 
     /**
@@ -82,18 +80,33 @@ Available tools are listed below — use them when appropriate.
             ?: error("Provider not found for model: ${model.id}")
         val provider = providerManager.getProviderByType(providerSetting)
 
-        val systemPrompt = customSystemPrompt ?: DEFAULT_SYSTEM_PROMPT
-        // 部分提供商 API 在 tools 存在时不支持 SYSTEM 角色消息，
-        // 将 system prompt 嵌入 user message 开头
-        val combinedTask = "$systemPrompt\n\n$task"
+        // 参照主 agent 的 system prompt 构建方式：
+        //   基础 system prompt + 各工具追加的说明
+        val systemPrompt = buildString {
+            val base = customSystemPrompt ?: DEFAULT_SYSTEM_PROMPT
+            append(base)
+            tools.forEach { tool ->
+                val extra = tool.systemPrompt(model, emptyList())
+                if (extra.isNotBlank()) {
+                    appendLine()
+                    append(extra)
+                }
+            }
+        }
         val messages = listOf(
-            UIMessage(role = MessageRole.USER, parts = listOf(UIMessagePart.Text(combinedTask)))
+            UIMessage.system(prompt = systemPrompt),
+            UIMessage.user(prompt = task),
         )
 
         val result = provider.generateText(
             providerSetting = providerSetting,
             messages = messages,
-            params = TextGenerationParams(model = model, tools = tools)
+            params = TextGenerationParams(
+                model = model,
+                tools = tools,
+                customHeaders = model.customHeaders,
+                customBody = model.customBodies,
+            )
         )
 
         val responseMessages = emptyList<UIMessage>().handleMessageChunk(result, model)
