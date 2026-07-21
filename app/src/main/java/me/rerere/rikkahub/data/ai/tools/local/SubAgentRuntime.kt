@@ -1,6 +1,5 @@
 package me.rerere.rikkahub.data.ai.tools.local
 
-import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
@@ -54,13 +53,14 @@ class SubAgentRuntime(
     private val eventBus: AppEventBus,
 ) {
     companion object {
-        private const val TAG = "SubAgentRuntime"
-        private val DEFAULT_SYSTEM_PROMPT = """
-            You are a helpful sub-agent. Complete the following task concisely and accurately.
-            Do not ask follow-up questions or request clarification.
-            Provide your best answer based on your knowledge and the instructions given.
-            Keep your response focused on the task.
-        """.trimIndent()
+        private val DEFAULT_SYSTEM_PROMPT = """[System]
+You are a helpful sub-agent. Complete the following task concisely and accurately.
+Do not ask follow-up questions or request clarification.
+Provide your best answer based on your knowledge and the instructions given.
+Keep your response focused on the task.
+
+Available tools are listed below — use them when appropriate.
+[/System]
     }
 
     /**
@@ -83,26 +83,18 @@ class SubAgentRuntime(
         val provider = providerManager.getProviderByType(providerSetting)
 
         val systemPrompt = customSystemPrompt ?: DEFAULT_SYSTEM_PROMPT
+        // 部分提供商 API 在 tools 存在时不支持 SYSTEM 角色消息，
+        // 将 system prompt 嵌入 user message 开头
+        val combinedTask = "$systemPrompt\n\n$task"
         val messages = listOf(
-            UIMessage(role = MessageRole.SYSTEM, parts = listOf(UIMessagePart.Text(systemPrompt))),
-            UIMessage(role = MessageRole.USER, parts = listOf(UIMessagePart.Text(task)))
+            UIMessage(role = MessageRole.USER, parts = listOf(UIMessagePart.Text(combinedTask)))
         )
 
-        val result = runCatching {
-            provider.generateText(
-                providerSetting = providerSetting,
-                messages = messages,
-                params = TextGenerationParams(model = model, tools = tools)
-            )
-        }.recoverCatching { e ->
-            // 部分提供商不支持工具传递，兜底重试不带工具
-            Log.w(TAG, "executeSync with tools failed, retrying without tools: ${e.message}")
-            provider.generateText(
-                providerSetting = providerSetting,
-                messages = messages,
-                params = TextGenerationParams(model = model, tools = emptyList())
-            )
-        }.getOrThrow()
+        val result = provider.generateText(
+            providerSetting = providerSetting,
+            messages = messages,
+            params = TextGenerationParams(model = model, tools = tools)
+        )
 
         val responseMessages = emptyList<UIMessage>().handleMessageChunk(result, model)
         val text = responseMessages.lastOrNull()?.parts?.joinToString("") { part ->
