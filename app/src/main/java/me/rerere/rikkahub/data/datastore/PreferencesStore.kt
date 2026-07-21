@@ -381,7 +381,11 @@ class SettingsStore(
             preferences[OCR_PROMPT] = settings.ocrPrompt
             preferences[COMPRESS_MODEL] = settings.compressModelId.toString()
             preferences[COMPRESS_PROMPT] = settings.compressPrompt
-            preferences[SUB_AGENT_MODEL] = settings.subAgentModelId?.toString()
+            if (settings.subAgentModelId != null) {
+                preferences[SUB_AGENT_MODEL] = settings.subAgentModelId.toString()
+            } else {
+                preferences.remove(SUB_AGENT_MODEL)
+            }
 
             preferences[PROVIDERS] = JsonInstant.encodeToString(settings.providers)
 
