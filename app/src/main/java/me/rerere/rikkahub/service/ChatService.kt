@@ -591,9 +591,13 @@ class ChatService(
                     add(workspaceReminderTransformer)
                 },
                 outputTransformers = outputTransformers,
+                // 子代理可继承的工具（搜索 + 时间信息 + Skill + MCP）
                 tools = buildList {
+                    val subAgentTools = mutableListOf<Tool>()
                     if (assistant.enableWebSearch) {
-                        addAll(createSearchTools(settings))
+                        val searchTools = createSearchTools(settings)
+                        addAll(searchTools)
+                        subAgentTools.addAll(searchTools)
                     }
                     // Local tools, with sub-agent/workflow tools wired to current conversation
                     addAll(localTools.getTools(assistant.localTools).map { tool ->
@@ -601,7 +605,7 @@ class ChatService(
                             "sub_agent" -> {
                                 val runtime = localTools.subAgentRuntime
                                 val convId = conversationId
-                                buildSubAgentTool(runtime) { convId }
+                                buildSubAgentTool(runtime, subAgentTools) { convId }
                             }
                             "run_workflow" -> {
                                 val engine = localTools.workflowEngine
@@ -611,18 +615,20 @@ class ChatService(
                             else -> tool
                         }
                     })
+                    // 时间信息工具对子代理始终可用
+                    subAgentTools.add(localTools.timeTool)
                     if (assistant.enableRecentChatsReference) {
                         addAll(createConversationTools(conversationRepo, assistant.id))
                     }
                     addAll(createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), conversation.workspaceCwd))
                     if (assistant.enabledSkills.isNotEmpty()) {
-                        addAll(
-                            createSkillTools(
-                                enabledSkills = assistant.enabledSkills,
-                                allSkills = skillManager.listSkills(),
-                                skillManager = skillManager,
-                            )
+                        val skillTools = createSkillTools(
+                            enabledSkills = assistant.enabledSkills,
+                            allSkills = skillManager.listSkills(),
+                            skillManager = skillManager,
                         )
+                        addAll(skillTools)
+                        subAgentTools.addAll(skillTools)
                     }
                     mcpManager.getAllAvailableTools().also { allTools ->
                         val invalidNames = allTools
@@ -642,17 +648,17 @@ class ChatService(
                             return
                         }
                     }.forEach { (serverId, serverName, tool) ->
-                        add(
-                            Tool(
-                                name = "mcp__${serverName}__${tool.name}",
-                                description = tool.description ?: "",
-                                parameters = { tool.inputSchema },
-                                needsApproval = { tool.needsApproval },
-                                execute = {
-                                    mcpManager.callTool(serverId, tool.name, it.jsonObject)
-                                },
-                            )
+                        val mcpTool = Tool(
+                            name = "mcp__${serverName}__${tool.name}",
+                            description = tool.description ?: "",
+                            parameters = { tool.inputSchema },
+                            needsApproval = { tool.needsApproval },
+                            execute = {
+                                mcpManager.callTool(serverId, tool.name, it.jsonObject)
+                            },
                         )
+                        add(mcpTool)
+                        subAgentTools.add(mcpTool)
                     }
                 },
             ).onCompletion {

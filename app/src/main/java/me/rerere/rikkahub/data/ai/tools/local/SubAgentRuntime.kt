@@ -5,6 +5,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import me.rerere.ai.core.MessageRole
+import me.rerere.ai.core.Tool
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.ui.UIMessage
@@ -68,6 +69,7 @@ class SubAgentRuntime(
         task: String,
         customSystemPrompt: String? = null,
         modelId: Uuid? = null,
+        tools: List<Tool> = emptyList(),
     ): SubAgentResult = try {
         val settings = settingsStore.settingsFlow.first()
         val resolvedModelId = resolveModelId(modelId, settings)
@@ -87,7 +89,7 @@ class SubAgentRuntime(
         val result = provider.generateText(
             providerSetting = providerSetting,
             messages = messages,
-            params = TextGenerationParams(model = model, tools = emptyList())
+            params = TextGenerationParams(model = model, tools = tools)
         )
 
         val responseMessages = emptyList<UIMessage>().handleMessageChunk(result, model)
@@ -114,10 +116,11 @@ class SubAgentRuntime(
         conversationId: Uuid,
         customSystemPrompt: String? = null,
         modelId: Uuid? = null,
+        tools: List<Tool> = emptyList(),
     ): AsyncSubAgentHandle {
         val agentId = "sub_${Uuid.random().toString().take(8)}"
         val job = appScope.launch {
-            val result = executeSync(task, customSystemPrompt, modelId)
+            val result = executeSync(task, customSystemPrompt, modelId, tools)
             eventBus.emit(
                 AppEvent.SubAgentCompleted(
                     conversationId = conversationId,

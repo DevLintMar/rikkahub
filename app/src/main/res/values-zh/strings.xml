@@ -1271,6 +1271,18 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="permission_calendar_write_desc">代表您创建日历事件</string>
   <string name="assistant_page_local_tools_calendar_title">日历</string>
   <string name="assistant_page_local_tools_calendar_desc">让AI查询和创建日历事件</string>
+
+  <!-- Sub-Agent 工具 -->
+  <string name="assistant_page_local_tools_sub_agent_title">子代理</string>
+  <string name="assistant_page_local_tools_sub_agent_desc">让AI启动一个独立的子代理来完成任务，支持同步和后台模式</string>
+
+  <!-- Workflow 工具 -->
+  <string name="assistant_page_local_tools_workflow_title">工作流</string>
+  <string name="assistant_page_local_tools_workflow_desc">让AI编排多步骤工作流，协调多个子代理完成任务</string>
+
+  <!-- 子代理模型设置 -->
+  <string name="setting_model_page_sub_agent_model">子代理模型</string>
+  <string name="setting_model_page_sub_agent_model_desc">子代理使用的默认模型，未设置时使用对话模型</string>
   <string name="chat_message_tool_calendar_query">查询日历事件</string>
   <string name="chat_message_tool_calendar_create">创建事件: %1$s</string>
   <string name="chat_page_move_to_folder">移动到文件夹</string>

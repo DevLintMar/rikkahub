@@ -1291,6 +1291,9 @@
   <!-- Workflow tool -->
   <string name="assistant_page_local_tools_workflow_title">Workflow</string>
   <string name="assistant_page_local_tools_workflow_desc">Let the AI orchestrate multi-step workflows with multiple sub-agents</string>
+
+  <string name="setting_model_page_sub_agent_model">Sub-Agent Model</string>
+  <string name="setting_model_page_sub_agent_model_desc">Default model for sub-agents (uses chat model if not set)</string>
   <string name="chat_message_tool_calendar_query">Query calendar events</string>
   <string name="chat_message_tool_calendar_create">Create event: %1$s</string>
   <string name="chat_page_move_to_folder">Move to Folder</string>

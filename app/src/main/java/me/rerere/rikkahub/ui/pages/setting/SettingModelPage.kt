@@ -169,8 +169,8 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
         }
         item {
             ModelSettingItem(
-                title = "Sub-Agent Model",
-                description = "Default model for sub-agents (uses chat model if not set)",
+                title = stringResource(R.string.setting_model_page_sub_agent_model),
+                description = stringResource(R.string.setting_model_page_sub_agent_model_desc),
                 modelId = settings.subAgentModelId,
                 providers = settings.providers,
                 onSelect = { vm.updateSettings(settings.copy(subAgentModelId = it.id)) },

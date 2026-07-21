@@ -15,6 +15,7 @@ import kotlin.uuid.Uuid
 /**
  * 构建子代理工具。
  *
+ * [availableTools] 是子代理可继承的工具列表（如搜索、时间信息、MCP、Skill）。
  * 同步模式不需要 conversationId；
  * 后台模式需要 conversationId（通过 [getConversationId] 提供，
  * 此函数在 ChatService 组合工具列表时被替换为捕获 conversationId 的闭包）。
@@ -23,12 +24,14 @@ import kotlin.uuid.Uuid
  */
 internal fun buildSubAgentTool(
     runtime: SubAgentRuntime,
+    availableTools: List<Tool> = emptyList(),
     getConversationId: () -> Uuid = { error("sub_agent: conversationId not available") },
 ): Tool = Tool(
     name = "sub_agent",
     description = """
         Launch an independent sub-agent to complete a task on your behalf.
         The sub-agent runs independently with its own AI model instance.
+        It has access to web search, time info, skills, and MCP tools.
 
         - Synchronous mode (default): blocks and waits for the sub-agent to complete,
           then returns the result. Use this when you need the result before continuing.
@@ -83,6 +86,7 @@ internal fun buildSubAgentTool(
                 conversationId = conversationId,
                 customSystemPrompt = customSystemPrompt,
                 modelId = customModelId,
+                tools = availableTools,
             )
             val payload = buildJsonObject {
                 put("status", JsonPrimitive("started"))
@@ -96,6 +100,7 @@ internal fun buildSubAgentTool(
                 task = task,
                 customSystemPrompt = customSystemPrompt,
                 modelId = customModelId,
+                tools = availableTools,
             )
             val payload = buildJsonObject {
                 put("status", JsonPrimitive(if (result.success) "completed" else "failed"))
