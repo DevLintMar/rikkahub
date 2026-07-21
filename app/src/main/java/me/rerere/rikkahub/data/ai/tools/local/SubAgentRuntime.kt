@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.data.ai.tools.local
 
+import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
@@ -53,6 +54,7 @@ class SubAgentRuntime(
     private val eventBus: AppEventBus,
 ) {
     companion object {
+        private const val TAG = "SubAgentRuntime"
         private val DEFAULT_SYSTEM_PROMPT = """
             You are a helpful sub-agent. Complete the following task concisely and accurately.
             Do not ask follow-up questions or request clarification.
@@ -97,6 +99,7 @@ class SubAgentRuntime(
             UIMessage.system(prompt = systemPrompt),
             UIMessage.user(prompt = task),
         )
+        Log.i(TAG, "executeSync: calling provider=${providerSetting.id} model=${model.modelId} msgs=${messages.size} tools=${tools.size}")
 
         val result = provider.generateText(
             providerSetting = providerSetting,
@@ -108,6 +111,8 @@ class SubAgentRuntime(
                 customBody = model.customBodies,
             )
         )
+
+        Log.i(TAG, "executeSync: success, messages=${messages.size} (sys:${messages[0].parts.size}, user:${messages[1].parts.size})")
 
         val responseMessages = emptyList<UIMessage>().handleMessageChunk(result, model)
         val text = responseMessages.lastOrNull()?.parts?.joinToString("") { part ->
