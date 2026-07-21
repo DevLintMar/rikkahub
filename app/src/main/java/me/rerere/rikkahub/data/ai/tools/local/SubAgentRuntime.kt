@@ -94,7 +94,7 @@ class SubAgentRuntime(
         val responseMessages = emptyList<UIMessage>().handleMessageChunk(result, model)
         val text = responseMessages.lastOrNull()?.parts?.joinToString("") { part ->
             when (part) {
-                is UIMessagePart.Text -> part.content
+                is UIMessagePart.Text -> part.text
                 else -> ""
             }
         } ?: ""
