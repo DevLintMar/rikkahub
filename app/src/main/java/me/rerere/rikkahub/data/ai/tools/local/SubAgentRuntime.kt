@@ -53,7 +53,6 @@ class SubAgentRuntime(
     private val eventBus: AppEventBus,
 ) {
     companion object {
-        private const val MAX_TOOL_STEPS = 10
         private val DEFAULT_SYSTEM_PROMPT = """
             You are a helpful sub-agent. Complete the following task concisely and accurately.
             Do not ask follow-up questions or request clarification.
@@ -94,7 +93,7 @@ class SubAgentRuntime(
         // 子代理工具循环：初始请求 + 处理工具调用
         var currentMessages = messages.toMutableList()
         var textResponse = ""
-        for (step in 0 until MAX_TOOL_STEPS) {
+        while (true) {
             val result = provider.generateText(
                 providerSetting = providerSetting,
                 messages = currentMessages,
