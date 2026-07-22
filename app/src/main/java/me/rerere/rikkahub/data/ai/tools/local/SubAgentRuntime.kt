@@ -1,17 +1,14 @@
 package me.rerere.rikkahub.data.ai.tools.local
 
-import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.Tool
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
-import me.rerere.ai.ui.handleMessageChunk
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
@@ -54,7 +51,6 @@ class SubAgentRuntime(
     private val eventBus: AppEventBus,
 ) {
     companion object {
-        private const val TAG = "SubAgentRuntime"
         private val DEFAULT_SYSTEM_PROMPT = """
             You are a helpful sub-agent. Complete the following task concisely and accurately.
             Do not ask follow-up questions or request clarification.
@@ -90,7 +86,6 @@ class SubAgentRuntime(
         val messages = listOf(
             UIMessage.user(prompt = combinedMessage),
         )
-        Log.i(TAG, "executeSync: calling provider=${providerSetting.id} model=${model.modelId} msgs=${messages.size} tools=${tools.size}")
 
         val result = provider.generateText(
             providerSetting = providerSetting,
@@ -101,8 +96,7 @@ class SubAgentRuntime(
             )
         )
 
-        val responseMessages = emptyList<UIMessage>().handleMessageChunk(result, model)
-        val text = responseMessages.lastOrNull()?.parts?.joinToString("") { part ->
+        val text = result.choices.firstOrNull()?.message?.parts?.joinToString("") { part ->
             when (part) {
                 is UIMessagePart.Text -> part.text
                 else -> ""
@@ -113,7 +107,6 @@ class SubAgentRuntime(
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        Log.e(TAG, "executeSync failed: ${e.message}", e)
         SubAgentResult(success = false, text = "", error = e.message ?: "Unknown error")
     }
 
