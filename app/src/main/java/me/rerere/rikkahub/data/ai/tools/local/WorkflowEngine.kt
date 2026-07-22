@@ -107,6 +107,7 @@ class WorkflowEngine(
             // Background mode: start async
             val handle = runtime.executeAsync(
                 task = step.task,
+                agentName = step.task.take(30),
                 conversationId = conversationId,
                 modelId = modelId,
             )

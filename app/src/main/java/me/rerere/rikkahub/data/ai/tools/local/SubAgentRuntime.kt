@@ -149,6 +149,7 @@ class SubAgentRuntime(
      */
     fun executeAsync(
         task: String,
+        agentName: String,
         conversationId: Uuid,
         customSystemPrompt: String? = null,
         modelId: Uuid? = null,
@@ -161,6 +162,7 @@ class SubAgentRuntime(
                 AppEvent.SubAgentCompleted(
                     conversationId = conversationId,
                     agentId = agentId,
+                    name = agentName,
                     task = task,
                     result = if (result.success) result.text else "Error: ${result.error ?: "Unknown"}",
                     success = result.success,

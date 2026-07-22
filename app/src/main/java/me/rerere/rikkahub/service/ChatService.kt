@@ -497,7 +497,7 @@ class ChatService(
                             found = true
                             part.copy(
                                 output = listOf(
-                                    UIMessagePart.Text(event.result)
+                                    UIMessagePart.Text("Agent \"${event.name}\" finished\n${event.result}")
                                 )
                             )
                         } else part

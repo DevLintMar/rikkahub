@@ -35,6 +35,7 @@ sealed class AppEvent {
     data class SubAgentCompleted(
         val conversationId: Uuid,
         val agentId: String,
+        val name: String,
         val task: String,
         val result: String,
         val success: Boolean,

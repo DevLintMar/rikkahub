@@ -30,15 +30,16 @@ internal fun buildSubAgentTool(
     name = "sub_agent",
     description = """
         Launch an independent sub-agent to complete a task on your behalf.
+        Give it a short, descriptive name via the 'name' parameter so you
+        can identify the result when it completes (e.g. 'Research RAG').
         The sub-agent runs independently with its own AI model instance.
         It has access to web search, time info, skills, and MCP tools.
 
         - Synchronous mode (default): blocks and waits for the sub-agent to complete,
           then returns the result. Use this when you need the result before continuing.
         - Background mode (run_in_background=true): starts the sub-agent in the background
-          and returns immediately. The sub-agent's result will be delivered to the
-          conversation when it completes. Use this for independent tasks that can run
-          in parallel with your current work.
+          and returns immediately. When it finishes, you'll see "Agent 'name' finished"
+          and can review the results.
 
         Provide a clear, self-contained task description with all necessary context.
         The sub-agent does NOT have access to the current conversation history.
@@ -50,6 +51,10 @@ internal fun buildSubAgentTool(
                 put("task", buildJsonObject {
                     put("type", "string")
                     put("description", "The complete, self-contained task for the sub-agent. Include all necessary context.")
+                })
+                put("name", buildJsonObject {
+                    put("type", "string")
+                    put("description", "A short, descriptive name for this agent task (e.g. 'Search AI news', 'Analyze code'). The agent will be referred to by this name when reporting results.")
                 })
                 put("run_in_background", buildJsonObject {
                     put("type", "boolean")
@@ -78,11 +83,13 @@ internal fun buildSubAgentTool(
             runCatching { Uuid.parse(it) }.getOrNull()
         }
         val customSystemPrompt = obj["system_prompt"]?.jsonPrimitive?.contentOrNull
+        val agentName = obj["name"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: task.take(30)
 
         if (runInBackground) {
             val conversationId = getConversationId()
             val handle = runtime.executeAsync(
                 task = task,
+                agentName = agentName,
                 conversationId = conversationId,
                 customSystemPrompt = customSystemPrompt,
                 modelId = customModelId,
