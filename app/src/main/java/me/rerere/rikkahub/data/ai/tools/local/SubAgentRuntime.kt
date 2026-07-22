@@ -3,7 +3,6 @@ package me.rerere.rikkahub.data.ai.tools.local
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
@@ -93,7 +92,7 @@ class SubAgentRuntime(
         )
 
         // 子代理工具循环：流式累积 + 处理工具调用
-        var currentMessages = messages.toMutableList()
+        var currentMessages: List<UIMessage> = messages
         var textResponse = ""
         while (true) {
             val resultFlow = provider.streamText(
@@ -120,23 +119,19 @@ class SubAgentRuntime(
             for (toolPart in toolParts) {
                 val toolDef = tools.find { it.name == toolPart.toolName }
                 if (toolDef == null) {
-                    currentMessages.add(
-                        UIMessage.user(prompt = "Tool '${toolPart.toolName}' not found.")
-                    )
+                    currentMessages = currentMessages + UIMessage.user(prompt = "Tool '${toolPart.toolName}' not found.")
                     continue
                 }
                 val output = toolDef.execute(runCatching {
                     Json.parseToJsonElement(toolPart.input)
                 }.getOrDefault(buildJsonObject { }))
-                currentMessages.add(
-                    UIMessage.user(
-                        prompt = output.joinToString("\n") { part ->
-                            when (part) {
-                                is UIMessagePart.Text -> part.text
-                                else -> "[${part::class.simpleName}]"
-                            }
+                currentMessages = currentMessages + UIMessage.user(
+                    prompt = output.joinToString("\n") { part ->
+                        when (part) {
+                            is UIMessagePart.Text -> part.text
+                            else -> "[${part::class.simpleName}]"
                         }
-                    )
+                    }
                 )
             }
         }
