@@ -4,6 +4,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
 import me.rerere.ai.core.Tool
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.TextGenerationParams
@@ -51,6 +53,7 @@ class SubAgentRuntime(
     private val eventBus: AppEventBus,
 ) {
     companion object {
+        private const val MAX_TOOL_STEPS = 10
         private val DEFAULT_SYSTEM_PROMPT = """
             You are a helpful sub-agent. Complete the following task concisely and accurately.
             Do not ask follow-up questions or request clarification.
@@ -87,23 +90,58 @@ class SubAgentRuntime(
             UIMessage.user(prompt = combinedMessage),
         )
 
-        val result = provider.generateText(
-            providerSetting = providerSetting,
-            messages = messages,
-            params = TextGenerationParams(
-                model = model,
-                tools = tools,
+        // 子代理工具循环：初始请求 + 处理工具调用
+        var currentMessages = messages.toMutableList()
+        var textResponse = ""
+        for (step in 0 until MAX_TOOL_STEPS) {
+            val result = provider.generateText(
+                providerSetting = providerSetting,
+                messages = currentMessages,
+                params = TextGenerationParams(
+                    model = model,
+                    tools = if (step == 0) tools else emptyList(),
+                )
             )
-        )
 
-        val text = result.choices.firstOrNull()?.message?.parts?.joinToString("") { part ->
-            when (part) {
-                is UIMessagePart.Text -> part.text
-                else -> ""
+            val responseMsg = result.choices.firstOrNull()?.message
+            val toolParts = responseMsg?.parts?.filterIsInstance<UIMessagePart.Tool>() ?: emptyList()
+            val textParts = responseMsg?.parts?.filterIsInstance<UIMessagePart.Text>() ?: emptyList()
+
+            // 收集文本回复
+            textResponse = textParts.joinToString("") { it.text }
+
+            // 没有工具调用 → 完成
+            if (toolParts.isEmpty()) break
+
+            // 执行工具并追加结果到对话
+            currentMessages.add(responseMsg)
+            for (toolPart in toolParts) {
+                val toolDef = tools.find { it.name == toolPart.toolName }
+                if (toolDef == null) {
+                    currentMessages.add(
+                        UIMessage.user(
+                            prompt = "Tool '${toolPart.toolName}' not found."
+                        )
+                    )
+                    continue
+                }
+                val output = toolDef.execute(runCatching {
+                    Json.parseToJsonElement(toolPart.input)
+                }.getOrDefault(buildJsonObject { }))
+                currentMessages.add(
+                    UIMessage.user(
+                        prompt = output.joinToString("\n") { part ->
+                            when (part) {
+                                is UIMessagePart.Text -> part.text
+                                else -> "[${part::class.simpleName}]"
+                            }
+                        }
+                    )
+                )
             }
-        } ?: ""
+        }
 
-        SubAgentResult(success = true, text = text)
+        SubAgentResult(success = true, text = textResponse)
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
