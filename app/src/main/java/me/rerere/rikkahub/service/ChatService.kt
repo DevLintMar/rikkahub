@@ -481,37 +481,41 @@ class ChatService(
         launchWithConversationReference(event.conversationId) {
             try {
                 val session = getOrCreateSession(event.conversationId)
-                // 防止重复生成：如果当前已有生成任务，跳过
                 if (session.getJob()?.isActive == true) {
-                    Log.i(TAG, "handleSubAgentRecall: generation already active for ${event.conversationId}, skipping")
+                    Log.i(TAG, "handleSubAgentRecall: generation already active, skipping")
                     return@launchWithConversationReference
                 }
 
                 val conversation = getConversationFlow(event.conversationId).value
-                val resultMsg = UIMessage(
-                    role = MessageRole.SYSTEM,
-                    parts = listOf(
-                        UIMessagePart.Text(
-                            buildString {
-                                appendLine("[Sub-Agent '${event.agentId}' completed]")
-                                appendLine("Task: ${event.task}")
-                                append("Result: ${event.result}")
-                            }
-                        )
-                    )
-                )
-                val newNode = resultMsg.toMessageNode()
+                val taskString = "\"task\":\"${event.task.take(50)}"
+                var found = false
+                val updatedNodes = conversation.messageNodes.map { node ->
+                    if (found) return@map node
+                    val updatedParts = node.currentMessage.parts.map { part ->
+                        if (part is UIMessagePart.Tool && part.toolName == "sub_agent" && !part.isExecuted) {
+                            if (!part.input.contains(taskString)) return@map part
+                            found = true
+                            part.copy(
+                                output = listOf(
+                                    UIMessagePart.Text(
+                                        "[Sub-Agent '${event.agentId}' completed]\nTask: ${event.task}\nResult: ${event.result}"
+                                    )
+                                )
+                            )
+                        } else part
+                    }
+                    if (updatedParts === node.currentMessage.parts) node
+                    else node.copy(messages = node.messages.mapIndexed { i, m ->
+                        if (i == node.selectIndex) m.copy(parts = updatedParts) else m
+                    })
+                }
                 val updatedConversation = conversation.copy(
-                    messageNodes = conversation.messageNodes + newNode,
+                    messageNodes = updatedNodes,
                     updateAt = Instant.now()
                 )
                 updateConversation(event.conversationId, updatedConversation)
 
-                val settings = settingsStore.settingsFlow.first()
-                val assistant = settings.getAssistantById(conversation.assistantId)
-                    ?: settings.getCurrentAssistant()
-                if (assistant.streamOutput) {
-                    // 创建并追踪新生成任务的 job
+                if (found) {
                     val recallJob = appScope.launch {
                         handleMessageComplete(event.conversationId)
                     }
