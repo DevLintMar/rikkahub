@@ -497,9 +497,7 @@ class ChatService(
                             found = true
                             part.copy(
                                 output = listOf(
-                                    UIMessagePart.Text(
-                                        "[Sub-Agent '${event.agentId}' completed]\nTask: ${event.task}\nResult: ${event.result}"
-                                    )
+                                    UIMessagePart.Text(event.result)
                                 )
                             )
                         } else part
