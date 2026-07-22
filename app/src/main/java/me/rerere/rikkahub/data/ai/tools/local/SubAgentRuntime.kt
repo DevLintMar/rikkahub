@@ -3,6 +3,7 @@ package me.rerere.rikkahub.data.ai.tools.local
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
@@ -11,6 +12,7 @@ import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.ai.ui.handleMessageChunk
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
@@ -90,11 +92,11 @@ class SubAgentRuntime(
             UIMessage.user(prompt = combinedMessage),
         )
 
-        // 子代理工具循环：初始请求 + 处理工具调用
+        // 子代理工具循环：流式累积 + 处理工具调用
         var currentMessages = messages.toMutableList()
         var textResponse = ""
         while (true) {
-            val result = provider.generateText(
+            val resultFlow = provider.streamText(
                 providerSetting = providerSetting,
                 messages = currentMessages,
                 params = TextGenerationParams(
@@ -102,26 +104,24 @@ class SubAgentRuntime(
                     tools = tools,
                 )
             )
+            resultFlow.collect { chunk ->
+                currentMessages = currentMessages.handleMessageChunk(chunk, model)
+            }
 
-            val responseMsg = result.choices.firstOrNull()?.message
-            val toolParts = responseMsg?.parts?.filterIsInstance<UIMessagePart.Tool>() ?: emptyList()
-            val textParts = responseMsg?.parts?.filterIsInstance<UIMessagePart.Text>() ?: emptyList()
+            val lastMsg = currentMessages.lastOrNull() ?: break
+            val toolParts = lastMsg.parts.filterIsInstance<UIMessagePart.Tool>()
+            val textParts = lastMsg.parts.filterIsInstance<UIMessagePart.Text>()
 
-            // 收集文本回复
             textResponse = textParts.joinToString("") { it.text }
 
-            // 没有工具调用 → 完成
             if (toolParts.isEmpty()) break
 
             // 执行工具并追加结果到对话
-            currentMessages.add(responseMsg)
             for (toolPart in toolParts) {
                 val toolDef = tools.find { it.name == toolPart.toolName }
                 if (toolDef == null) {
                     currentMessages.add(
-                        UIMessage.user(
-                            prompt = "Tool '${toolPart.toolName}' not found."
-                        )
+                        UIMessage.user(prompt = "Tool '${toolPart.toolName}' not found.")
                     )
                     continue
                 }
