@@ -98,8 +98,6 @@ class SubAgentRuntime(
             params = TextGenerationParams(
                 model = model,
                 tools = tools,
-                customHeaders = model.customHeaders,
-                customBody = model.customBodies,
             )
         )
 
@@ -115,6 +113,7 @@ class SubAgentRuntime(
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
+        Log.e(TAG, "executeSync failed: ${e.message}", e)
         SubAgentResult(success = false, text = "", error = e.message ?: "Unknown error")
     }
 
