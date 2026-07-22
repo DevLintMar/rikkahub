@@ -84,24 +84,15 @@ class SubAgentRuntime(
 
         // 参照主 agent 的 system prompt 构建方式：
         //   基础 system prompt + 各工具追加的说明
-        val systemPrompt = buildString {
-            val base = customSystemPrompt ?: DEFAULT_SYSTEM_PROMPT
-            append(base)
-            tools.forEach { tool ->
-                val extra = tool.systemPrompt(model, emptyList())
-                if (extra.isNotBlank()) {
-                    appendLine()
-                    append(extra)
-                }
-            }
-        }
+        val systemPrompt = customSystemPrompt ?: DEFAULT_SYSTEM_PROMPT
+        // 嵌入 system prompt 到 user message 中（对标标题生成/翻译的调用方式）
+        val combinedMessage = "$systemPrompt\n\n$task"
         val messages = listOf(
-            UIMessage.system(prompt = systemPrompt),
-            UIMessage.user(prompt = task),
+            UIMessage.user(prompt = combinedMessage),
         )
         Log.i(TAG, "executeSync: calling provider=${providerSetting.id} model=${model.modelId} msgs=${messages.size} tools=${tools.size}")
 
-        val resultFlow = provider.streamText(
+        val result = provider.generateText(
             providerSetting = providerSetting,
             messages = messages,
             params = TextGenerationParams(
@@ -112,10 +103,7 @@ class SubAgentRuntime(
             )
         )
 
-        var responseMessages = emptyList<UIMessage>()
-        resultFlow.collect { chunk ->
-            responseMessages = responseMessages.handleMessageChunk(chunk, model)
-        }
+        val responseMessages = emptyList<UIMessage>().handleMessageChunk(result, model)
         val text = responseMessages.lastOrNull()?.parts?.joinToString("") { part ->
             when (part) {
                 is UIMessagePart.Text -> part.text
