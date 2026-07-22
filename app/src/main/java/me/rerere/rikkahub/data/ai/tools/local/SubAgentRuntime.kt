@@ -57,7 +57,8 @@ class SubAgentRuntime(
         private val DEFAULT_SYSTEM_PROMPT = """
             You are a helpful sub-agent. Complete the following task concisely and accurately.
             Do not ask follow-up questions or request clarification.
-            Provide your best answer based on your knowledge and the instructions given.
+            You can use the available tools to gather information when needed.
+            After using tools, synthesize the results and provide your final answer.
             Keep your response focused on the task.
         """.trimIndent()
     }
@@ -99,7 +100,7 @@ class SubAgentRuntime(
                 messages = currentMessages,
                 params = TextGenerationParams(
                     model = model,
-                    tools = if (step == 0) tools else emptyList(),
+                    tools = tools,
                 )
             )
 
