@@ -14,9 +14,9 @@ import me.rerere.ai.ui.UIMessagePart
 internal fun buildTaskListTool(runtime: SubAgentRuntime): Tool = Tool(
     name = "task_list",
     description = """
-        List all active sub-agent tasks and their current status.
-        Each task shows task-id, description, and status (in_progress / completed / failed).
-        Use this when you need to check on background tasks you started.
+        List all sub-agent tasks and their current status.
+        Shows task_id, description, and status (in_progress / completed / failed) for each task.
+        Use this to check on background agents you launched.
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
