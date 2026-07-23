@@ -115,7 +115,7 @@ class WorkflowEngine(
                 index = index,
                 step = step,
                 success = true,
-                text = "[Background task started: agent_id=${handle.agentId}, task: ${step.task.take(50)}...]",
+                text = "[Background task started: task_id=${handle.taskId}, task: ${step.task.take(50)}...]",
             )
         } else {
             // Synchronous mode: block and wait
