@@ -106,10 +106,10 @@ class WorkflowEngine(
         return if (step.run_in_background) {
             // Background mode: start async
             val handle = runtime.executeAsync(
-                task = step.task,
-                agentName = step.task.take(30),
+                prompt = step.task,
+                description = step.task.take(30),
                 conversationId = conversationId,
-                modelId = modelId,
+                modelOverride = modelId,
             )
             StepResult(
                 index = index,
@@ -120,8 +120,8 @@ class WorkflowEngine(
         } else {
             // Synchronous mode: block and wait
             val result = runtime.executeSync(
-                task = step.task,
-                modelId = modelId,
+                prompt = step.task,
+                modelOverride = modelId,
             )
             StepResult(
                 index = index,

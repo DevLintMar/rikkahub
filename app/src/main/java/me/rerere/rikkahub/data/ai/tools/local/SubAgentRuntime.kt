@@ -21,32 +21,17 @@ import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
 import kotlin.uuid.Uuid
 
-/**
- * 子代理执行请求的结果。
- */
 data class SubAgentResult(
     val success: Boolean,
     val text: String,
     val error: String? = null,
 )
 
-/**
- * 异步子代理的 handle，用于追踪执行状态。
- */
 data class AsyncSubAgentHandle(
-    val agentId: String,
+    val taskId: String,
     val job: Job,
 )
 
-/**
- * 子代理执行运行时。
- * 由 SubAgentTool 和 WorkflowEngine 共享使用。
- *
- * @param providerManager 提供者管理器
- * @param settingsStore 设置存储
- * @param appScope 应用级协程作用域
- * @param eventBus 事件总线
- */
 class SubAgentRuntime(
     private val providerManager: ProviderManager,
     private val settingsStore: SettingsStore,
@@ -56,25 +41,19 @@ class SubAgentRuntime(
     companion object {
         private val DEFAULT_SYSTEM_PROMPT = """
             You are a helpful sub-agent. Complete the following task concisely and accurately.
-            Do not ask follow-up questions or request clarification.
             You can use the available tools to gather information when needed.
             After using tools, synthesize the results and provide your final answer.
             Keep your response focused on the task.
         """.trimIndent()
     }
 
-    /**
-     * 同步执行子代理。
-     * 阻塞当前协程直到子代理完成。
-     */
     suspend fun executeSync(
-        task: String,
-        customSystemPrompt: String? = null,
-        modelId: Uuid? = null,
+        prompt: String,
+        modelOverride: Uuid? = null,
         tools: List<Tool> = emptyList(),
     ): SubAgentResult = try {
         val settings = settingsStore.settingsFlow.first()
-        val resolvedModelId = resolveModelId(modelId, settings)
+        val resolvedModelId = resolveModelId(modelOverride, settings)
         val model = settings.findModelById(resolvedModelId) ?: settings.findModelById(settings.chatModelId)
             ?: error("No model available for sub-agent")
 
@@ -82,16 +61,12 @@ class SubAgentRuntime(
             ?: error("Provider not found for model: ${model.id}")
         val provider = providerManager.getProviderByType(providerSetting)
 
-        // 参照主 agent 的 system prompt 构建方式：
-        //   基础 system prompt + 各工具追加的说明
-        val systemPrompt = customSystemPrompt ?: DEFAULT_SYSTEM_PROMPT
-        // 嵌入 system prompt 到 user message 中（对标标题生成/翻译的调用方式）
-        val combinedMessage = "$systemPrompt\n\n$task"
+        val systemPrompt = DEFAULT_SYSTEM_PROMPT
+        val combinedMessage = "$systemPrompt\n\n$prompt"
         val messages = listOf(
             UIMessage.user(prompt = combinedMessage),
         )
 
-        // 子代理工具循环：流式累积 + 处理工具调用
         var currentMessages: List<UIMessage> = messages
         var textResponse = ""
         while (true) {
@@ -115,7 +90,6 @@ class SubAgentRuntime(
 
             if (toolParts.isEmpty()) break
 
-            // 执行工具并追加结果到对话
             for (toolPart in toolParts) {
                 val toolDef = tools.find { it.name == toolPart.toolName }
                 if (toolDef == null) {
@@ -143,41 +117,36 @@ class SubAgentRuntime(
         SubAgentResult(success = false, text = "", error = e.message ?: "Unknown error")
     }
 
-    /**
-     * 异步执行子代理。
-     * 立即返回 handle，后台执行完成后通过 AppEventBus 发送通知。
-     */
     fun executeAsync(
-        task: String,
-        agentName: String,
+        prompt: String,
+        description: String,
         conversationId: Uuid,
-        customSystemPrompt: String? = null,
-        modelId: Uuid? = null,
+        modelOverride: Uuid? = null,
         tools: List<Tool> = emptyList(),
     ): AsyncSubAgentHandle {
-        val agentId = "sub_${Uuid.random().toString().take(8)}"
+        val taskId = "sub_${Uuid.random().toString().take(8)}"
         val job = appScope.launch {
-            val result = executeSync(task, customSystemPrompt, modelId, tools)
+            val result = executeSync(prompt = prompt, modelOverride = modelOverride, tools = tools)
             eventBus.emit(
                 AppEvent.SubAgentCompleted(
                     conversationId = conversationId,
-                    agentId = agentId,
-                    name = agentName,
-                    task = task,
+                    taskId = taskId,
+                    description = description,
+                    prompt = prompt,
                     result = if (result.success) result.text else "Error: ${result.error ?: "Unknown"}",
                     success = result.success,
                 )
             )
         }
-        return AsyncSubAgentHandle(agentId = agentId, job = job)
+        return AsyncSubAgentHandle(taskId = taskId, job = job)
     }
 
     /**
      * 解析模型 ID。
-     * 优先级：customModelId > settings.subAgentModelId > settings.chatModelId
+     * 优先级：modelOverride > settings.subAgentModelId > settings.chatModelId
      */
-    private fun resolveModelId(customModelId: Uuid?, settings: Settings): Uuid? {
-        if (customModelId != null) return customModelId
+    private fun resolveModelId(modelOverride: Uuid?, settings: Settings): Uuid? {
+        if (modelOverride != null) return modelOverride
         return settings.subAgentModelId
     }
 }

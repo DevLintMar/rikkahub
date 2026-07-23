@@ -16,11 +16,8 @@ import kotlin.uuid.Uuid
  * 构建子代理工具。
  *
  * [availableTools] 是子代理可继承的工具列表（如搜索、时间信息、MCP、Skill）。
- * 同步模式不需要 conversationId；
- * 后台模式需要 conversationId（通过 [getConversationId] 提供，
- * 此函数在 ChatService 组合工具列表时被替换为捕获 conversationId 的闭包）。
  *
- * 参数：task（必填）、run_in_background（可选）、model_id（可选）、system_prompt（可选）
+ * 参数：prompt（必填）、description（必填）、run_in_background（可选）、model（可选）
  */
 internal fun buildSubAgentTool(
     runtime: SubAgentRuntime,
@@ -29,89 +26,81 @@ internal fun buildSubAgentTool(
 ): Tool = Tool(
     name = "sub_agent",
     description = """
-        Launch an independent sub-agent to complete a task on your behalf.
-        Give it a short, descriptive name via the 'name' parameter so you
-        can identify the result when it completes (e.g. 'Research RAG').
-        The sub-agent runs independently with its own AI model instance.
+        Launch a new agent to handle complex, multi-step tasks.
+        The agent runs independently with its own AI model instance.
         It has access to web search, time info, skills, and MCP tools.
 
-        - Synchronous mode (default): blocks and waits for the sub-agent to complete,
+        - Synchronous mode (default): blocks and waits for the agent to complete,
           then returns the result. Use this when you need the result before continuing.
-        - Background mode (run_in_background=true): starts the sub-agent in the background
-          and returns immediately. When it finishes, you'll see "Agent 'name' finished"
-          and can review the results.
+        - Background mode (run_in_background=true): runs the agent in the background;
+          you will be notified when it completes. Use this for independent tasks.
 
-        Provide a clear, self-contained task description with all necessary context.
-        The sub-agent does NOT have access to the current conversation history.
-        Always requires user approval before execution.
+        When the agent finishes, relay what matters rather than dumping raw output.
+        Do not fabricate or predict a pending agent's results.
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
             properties = buildJsonObject {
-                put("task", buildJsonObject {
+                put("prompt", buildJsonObject {
                     put("type", "string")
-                    put("description", "The complete, self-contained task for the sub-agent. Include all necessary context.")
+                    put("description", "The complete, self-contained prompt for the agent. Include all necessary context.")
                 })
-                put("name", buildJsonObject {
+                put("description", buildJsonObject {
                     put("type", "string")
-                    put("description", "A short, descriptive name for this agent task (e.g. 'Search AI news', 'Analyze code'). The agent will be referred to by this name when reporting results.")
+                    put("description", "A short (3-5 word) description of the task")
                 })
                 put("run_in_background", buildJsonObject {
                     put("type", "boolean")
                     put("description", "If true, run in background and notify when done. If false (default), block and return result.")
                 })
-                put("model_id", buildJsonObject {
+                put("model", buildJsonObject {
                     put("type", "string")
-                    put("description", "Optional model UUID to use for the sub-agent. Uses the current model if not specified.")
-                })
-                put("system_prompt", buildJsonObject {
-                    put("type", "string")
-                    put("description", "Optional custom system prompt for the sub-agent.")
+                    put("description", "Optional model UUID override for this agent. Uses the current model if not specified.")
+                    // TODO: support model name enum like ["sonnet", "opus", "haiku"]
                 })
             },
-            required = listOf("task")
+            required = listOf("prompt", "description")
         )
     },
     needsApproval = { true },
     execute = { args ->
         val obj = args.jsonObject
-        val task = obj["task"]?.jsonPrimitive?.contentOrNull
-            ?: error("sub_agent: 'task' parameter is required")
+        val prompt = obj["prompt"]?.jsonPrimitive?.contentOrNull
+            ?: error("sub_agent: 'prompt' parameter is required")
+        val description = obj["description"]?.jsonPrimitive?.contentOrNull
+            ?: error("sub_agent: 'description' parameter is required")
 
         val runInBackground = obj["run_in_background"]?.jsonPrimitive?.booleanOrNull ?: false
-        val customModelId = obj["model_id"]?.jsonPrimitive?.contentOrNull?.let {
+        // TODO: support model enum values
+        val modelOverride = obj["model"]?.jsonPrimitive?.contentOrNull?.let {
             runCatching { Uuid.parse(it) }.getOrNull()
         }
-        val customSystemPrompt = obj["system_prompt"]?.jsonPrimitive?.contentOrNull
-        val agentName = obj["name"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: task.take(30)
 
         if (runInBackground) {
             val conversationId = getConversationId()
             val handle = runtime.executeAsync(
-                task = task,
-                agentName = agentName,
+                prompt = prompt,
+                description = description,
                 conversationId = conversationId,
-                customSystemPrompt = customSystemPrompt,
-                modelId = customModelId,
+                modelOverride = modelOverride,
                 tools = availableTools,
             )
             val payload = buildJsonObject {
                 put("status", JsonPrimitive("started"))
-                put("agent_id", JsonPrimitive(handle.agentId))
-                put("task", JsonPrimitive(task))
+                put("task_id", JsonPrimitive(handle.taskId))
+                put("description", JsonPrimitive(description))
                 put("mode", JsonPrimitive("background"))
             }
             listOf(UIMessagePart.Text(payload.toString()))
         } else {
             val result = runtime.executeSync(
-                task = task,
-                customSystemPrompt = customSystemPrompt,
-                modelId = customModelId,
+                prompt = prompt,
+                modelOverride = modelOverride,
                 tools = availableTools,
             )
             val payload = buildJsonObject {
                 put("status", JsonPrimitive(if (result.success) "completed" else "failed"))
-                put("task", JsonPrimitive(task))
+                put("description", JsonPrimitive(description))
                 put("mode", JsonPrimitive("synchronous"))
                 if (result.success) {
                     put("result", JsonPrimitive(result.text))
