@@ -487,15 +487,14 @@ class ChatService(
                 }
 
                 val conversation = getConversationFlow(event.conversationId).value
-                val promptMatch = "\"prompt\":\"${event.prompt.take(50)}"
+                val taskIdMarker = "\"task_id\":\"${event.taskId}\""
                 var found = false
                 val updatedNodes = conversation.messageNodes.map { node ->
                     if (found) return@map node
                     val updatedParts = node.currentMessage.parts.map { part ->
                         if (part is UIMessagePart.Tool && part.toolName == "sub_agent") {
                             val outputText = part.output.filterIsInstance<UIMessagePart.Text>().joinToString("") { it.text }
-                            if (!outputText.contains("\"status\":\"started\"")) return@map part
-                            if (!part.input.contains(promptMatch)) return@map part
+                            if (!outputText.contains(taskIdMarker)) return@map part
                             found = true
                             part.copy(
                                 output = listOf(
