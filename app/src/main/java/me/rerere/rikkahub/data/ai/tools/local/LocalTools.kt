@@ -40,6 +40,8 @@ class LocalTools(
     val workflowEngine by lazy { WorkflowEngine(subAgentRuntime) }
 
     val subAgentTool by lazy { buildSubAgentTool(subAgentRuntime) }
+    val taskListTool by lazy { buildTaskListTool(subAgentRuntime) }
+    val taskGetTool by lazy { buildTaskGetTool(subAgentRuntime) }
     val workflowTool by lazy { buildWorkflowTool(workflowEngine) }
 
     fun getTools(options: List<LocalToolOption>): List<Tool> {
@@ -68,6 +70,8 @@ class LocalTools(
         }
         if (options.contains(LocalToolOption.SubAgent)) {
             tools.add(subAgentTool)
+            tools.add(taskListTool)
+            tools.add(taskGetTool)
         }
         if (options.contains(LocalToolOption.Workflow)) {
             tools.add(workflowTool)

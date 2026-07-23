@@ -19,6 +19,7 @@ import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.uuid.Uuid
 
 data class SubAgentResult(
@@ -30,6 +31,17 @@ data class SubAgentResult(
 data class AsyncSubAgentHandle(
     val taskId: String,
     val job: Job,
+)
+
+enum class TaskStatus { IN_PROGRESS, COMPLETED, FAILED }
+
+data class TaskInfo(
+    val taskId: String,
+    val description: String,
+    val prompt: String,
+    val status: TaskStatus,
+    val result: String? = null,
+    val error: String? = null,
 )
 
 class SubAgentRuntime(
@@ -46,6 +58,9 @@ class SubAgentRuntime(
             Keep your response focused on the task.
         """.trimIndent()
     }
+
+    /** 所有异步任务的追踪状态 */
+    private val tasks = ConcurrentHashMap<String, TaskInfo>()
 
     suspend fun executeSync(
         prompt: String,
@@ -125,8 +140,19 @@ class SubAgentRuntime(
         tools: List<Tool> = emptyList(),
     ): AsyncSubAgentHandle {
         val taskId = "sub_${Uuid.random().toString().take(8)}"
+        tasks[taskId] = TaskInfo(
+            taskId = taskId,
+            description = description,
+            prompt = prompt,
+            status = TaskStatus.IN_PROGRESS,
+        )
         val job = appScope.launch {
             val result = executeSync(prompt = prompt, modelOverride = modelOverride, tools = tools)
+            tasks[taskId] = tasks[taskId]?.copy(
+                status = if (result.success) TaskStatus.COMPLETED else TaskStatus.FAILED,
+                result = if (result.success) result.text else null,
+                error = if (!result.success) result.error else null,
+            )
             eventBus.emit(
                 AppEvent.SubAgentCompleted(
                     conversationId = conversationId,
@@ -149,4 +175,10 @@ class SubAgentRuntime(
         if (modelOverride != null) return modelOverride
         return settings.subAgentModelId
     }
+
+    /** 供 TaskList/TaskGet 工具读取的任务列表快照 */
+    fun getTaskInfos(): List<TaskInfo> = tasks.values.toList()
+
+    /** 供 TaskGet 工具读取的单个任务详情 */
+    fun getTaskInfo(taskId: String): TaskInfo? = tasks[taskId]
 }
