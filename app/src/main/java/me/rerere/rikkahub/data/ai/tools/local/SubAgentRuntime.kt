@@ -148,7 +148,7 @@ class SubAgentRuntime(
         )
         val job = appScope.launch {
             val result = executeSync(prompt = prompt, modelOverride = modelOverride, tools = tools)
-            tasks[taskId] = tasks[taskId]?.copy(
+            tasks[taskId] = tasks.getValue(taskId).copy(
                 status = if (result.success) TaskStatus.COMPLETED else TaskStatus.FAILED,
                 result = if (result.success) result.text else null,
                 error = if (!result.success) result.error else null,
