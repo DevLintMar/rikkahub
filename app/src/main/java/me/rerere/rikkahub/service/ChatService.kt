@@ -695,8 +695,15 @@ class ChatService(
             }.collect { chunk ->
                 when (chunk) {
                     is GenerationChunk.Messages -> {
+                        // 过滤掉注入的子代理通知（用户不可见，仅提供给 AI 上下文）
+                        val filteredMessages = chunk.messages.filter { msg ->
+                            msg.role != MessageRole.SYSTEM ||
+                                msg.parts.none { part ->
+                                    part is UIMessagePart.Text && part.text.contains("<task-notification>")
+                                }
+                        }
                         val updatedConversation = getConversationFlow(conversationId).value
-                            .updateCurrentMessages(chunk.messages)
+                            .updateCurrentMessages(filteredMessages)
                         updateConversation(conversationId, updatedConversation)
 
                         // 通知等边缘副作用由 ChatNotificationManager 消费；
