@@ -12,13 +12,6 @@ import me.rerere.ai.core.Tool
 import me.rerere.ai.ui.UIMessagePart
 import kotlin.uuid.Uuid
 
-/**
- * 构建子代理工具。
- *
- * [availableTools] 是子代理可继承的工具列表（如搜索、时间信息、MCP、Skill）。
- *
- * 参数：prompt（必填）、description（必填）、run_in_background（可选）、model（可选）
- */
 internal fun buildSubAgentTool(
     runtime: SubAgentRuntime,
     availableTools: List<Tool> = emptyList(),
@@ -39,6 +32,8 @@ internal fun buildSubAgentTool(
         don't also run it yourself — wait for the result.
 
         - The agent's final report is not shown to the user — relay what matters.
+        - Use SendMessage with the agent's ID or name to continue a previously
+          spawned agent with its context intact; a new Agent call starts fresh.
         - Use task_list / task_get to check on background tasks.
         - Subagents run in the background by default; you'll be notified when one
           completes. Pass run_in_background: false for a synchronous run when you
@@ -49,25 +44,25 @@ internal fun buildSubAgentTool(
     parameters = {
         InputSchema.Obj(
             properties = buildJsonObject {
-                put("prompt", buildJsonObject {
-                    put("type", "string")
-                    put("description", "The task for the agent to perform")
-                })
                 put("description", buildJsonObject {
                     put("type", "string")
                     put("description", "A short (3-5 word) description of the task")
                 })
-                put("run_in_background", buildJsonObject {
-                    put("type", "boolean")
-                    put("description", "If false, run synchronously and wait for result. If true (default), run in background and notify when done.")
+                put("prompt", buildJsonObject {
+                    put("type", "string")
+                    put("description", "The task for the agent to perform")
                 })
                 put("model", buildJsonObject {
                     put("type", "string")
                     put("description", "Optional model UUID override for this agent. Uses the current model if not specified.")
                     // TODO: support model name enum like ["sonnet", "opus", "haiku"]
                 })
+                put("run_in_background", buildJsonObject {
+                    put("type", "boolean")
+                    put("description", "Agents run in the background by default; you will be notified when one completes. Set to false to run this agent synchronously when you need its result before continuing.")
+                })
             },
-            required = listOf("prompt", "description")
+            required = listOf("description", "prompt")
         )
     },
     needsApproval = { true },
