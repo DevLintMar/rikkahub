@@ -509,6 +509,19 @@ class ChatService(
                         xml = notificationXml,
                     )
 
+                // 追加用户可见的完成提示
+                val visibleMsg = UIMessage(
+                    role = MessageRole.ASSISTANT,
+                    parts = listOf(
+                        UIMessagePart.Text("\n\nAgent \"${event.description}\" finished\n")
+                    )
+                )
+                val updatedConversation = conversation.copy(
+                    messageNodes = conversation.messageNodes + visibleMsg.toMessageNode(),
+                    updateAt = Instant.now()
+                )
+                updateConversation(event.conversationId, updatedConversation)
+
                 // Trigger AI to respond, seeing the notification in context
                 val recallJob = appScope.launch {
                     handleMessageComplete(event.conversationId)
