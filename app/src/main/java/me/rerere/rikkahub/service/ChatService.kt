@@ -493,7 +493,7 @@ class ChatService(
                     if (found) return@map node
                     val updatedParts = node.currentMessage.parts.map { part ->
                         if (part is UIMessagePart.Tool && part.toolName == "sub_agent") {
-                            val outputText = part.output.joinToString("")
+                            val outputText = part.output.filterIsInstance<UIMessagePart.Text>().joinToString("") { it.text }
                             if (!outputText.contains("\"status\":\"started\"")) return@map part
                             if (!part.input.contains(promptMatch)) return@map part
                             found = true

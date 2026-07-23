@@ -32,8 +32,6 @@ internal fun buildSubAgentTool(
         don't also run it yourself — wait for the result.
 
         - The agent's final report is not shown to the user — relay what matters.
-        - Use SendMessage with the agent's ID or name to continue a previously
-          spawned agent with its context intact; a new Agent call starts fresh.
         - Use task_list / task_get to check on background tasks.
         - Subagents run in the background by default; you'll be notified when one
           completes. Pass run_in_background: false for a synchronous run when you

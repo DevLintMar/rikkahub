@@ -15,8 +15,13 @@ internal fun buildTaskListTool(runtime: SubAgentRuntime): Tool = Tool(
     name = "task_list",
     description = """
         List all sub-agent tasks and their current status.
-        Shows task_id, description, and status (in_progress / completed / failed) for each task.
-        Use this to check on background agents you launched.
+        Each task shows task_id, description, and status (in_progress / completed / failed).
+        Use this to check on background sub-agents you launched.
+
+        Returns a summary of each task:
+        - task_id: Task identifier (use with task_get)
+        - description: Brief description of the task
+        - status: 'in_progress', 'completed', or 'failed'
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
@@ -46,15 +51,22 @@ internal fun buildTaskListTool(runtime: SubAgentRuntime): Tool = Tool(
 internal fun buildTaskGetTool(runtime: SubAgentRuntime): Tool = Tool(
     name = "task_get",
     description = """
-        Get detailed results for a specific sub-agent task by task_id.
-        Returns full result text, status, and any error information.
+        Get details and full results for a specific sub-agent task by task_id.
+        Use this when task_list shows a task has completed and you need its full output.
+
+        Returns full task details:
+        - task_id: Task identifier
+        - description: Brief description of the task
+        - status: 'in_progress', 'completed', or 'failed'
+        - result: Full output text (if completed)
+        - error: Error message (if failed)
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
             properties = buildJsonObject {
                 put("task_id", buildJsonObject {
                     put("type", "string")
-                    put("description", "The task ID to query")
+                    put("description", "The ID of the sub-agent task to retrieve")
                 })
             },
             required = listOf("task_id")
