@@ -487,39 +487,29 @@ class ChatService(
                 }
 
                 val conversation = getConversationFlow(event.conversationId).value
-                val taskIdMarker = "\"task_id\":\"${event.taskId}\""
-                var found = false
-                val updatedNodes = conversation.messageNodes.map { node ->
-                    if (found) return@map node
-                    val updatedParts = node.currentMessage.parts.map { part ->
-                        if (part is UIMessagePart.Tool && part.toolName == "sub_agent") {
-                            val outputText = part.output.filterIsInstance<UIMessagePart.Text>().joinToString("") { it.text }
-                            if (!outputText.contains(taskIdMarker)) return@map part
-                            found = true
-                            part.copy(
-                                output = listOf(
-                                    UIMessagePart.Text("Agent \"${event.description}\" finished\n${event.result}")
-                                )
-                            )
-                        } else part
-                    }
-                    if (updatedParts === node.currentMessage.parts) node
-                    else node.copy(messages = node.messages.mapIndexed { i, m ->
-                        if (i == node.selectIndex) m.copy(parts = updatedParts) else m
-                    })
+                val notification = buildString {
+                    appendLine("<task-notification>")
+                    appendLine("  <task-id>${event.taskId}</task-id>")
+                    appendLine("  <status>${if (event.success) "completed" else "failed"}</status>")
+                    appendLine("  <summary>Agent \"${event.description}\" finished</summary>")
+                    appendLine("  <result>${event.result}</result>")
+                    append("</task-notification>")
                 }
+                val notificationMsg = UIMessage(
+                    role = MessageRole.SYSTEM,
+                    parts = listOf(UIMessagePart.Text(notification))
+                )
                 val updatedConversation = conversation.copy(
-                    messageNodes = updatedNodes,
+                    messageNodes = conversation.messageNodes + notificationMsg.toMessageNode(),
                     updateAt = Instant.now()
                 )
                 updateConversation(event.conversationId, updatedConversation)
 
-                if (found) {
-                    val recallJob = appScope.launch {
-                        handleMessageComplete(event.conversationId)
-                    }
-                    session.setJob(recallJob)
+                // Trigger AI to respond, seeing the notification in context
+                val recallJob = appScope.launch {
+                    handleMessageComplete(event.conversationId)
                 }
+                session.setJob(recallJob)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 Log.e(TAG, "handleSubAgentRecall failed", e)
