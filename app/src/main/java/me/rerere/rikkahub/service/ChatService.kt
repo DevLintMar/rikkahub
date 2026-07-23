@@ -162,6 +162,13 @@ class ChatService(
     private val _errors = MutableStateFlow<List<ChatError>>(emptyList())
     val errors: StateFlow<List<ChatError>> = _errors.asStateFlow()
 
+    // 子代理完成通知（用户不可见，仅注入 AI 上下文）
+    private data class SubAgentNotification(
+        val insertedAt: Int,
+        val xml: String,
+    )
+    private val pendingNotifications = ConcurrentHashMap<Uuid, MutableList<SubAgentNotification>>()
+
     init {
         // 监听子代理/工作流后台执行完成事件
         appScope.launch {
@@ -487,7 +494,7 @@ class ChatService(
                 }
 
                 val conversation = getConversationFlow(event.conversationId).value
-                val notification = buildString {
+                val notificationXml = buildString {
                     appendLine("<task-notification>")
                     appendLine("  <task-id>${event.taskId}</task-id>")
                     appendLine("  <status>${if (event.success) "completed" else "failed"}</status>")
@@ -495,15 +502,12 @@ class ChatService(
                     appendLine("  <result>${event.result}</result>")
                     append("</task-notification>")
                 }
-                val notificationMsg = UIMessage(
-                    role = MessageRole.SYSTEM,
-                    parts = listOf(UIMessagePart.Text(notification))
-                )
-                val updatedConversation = conversation.copy(
-                    messageNodes = conversation.messageNodes + notificationMsg.toMessageNode(),
-                    updateAt = Instant.now()
-                )
-                updateConversation(event.conversationId, updatedConversation)
+                // 存入通知列表，不写入对话节点（用户不可见）
+                pendingNotifications.getOrPut(event.conversationId) { mutableListOf() } +=
+                    SubAgentNotification(
+                        insertedAt = conversation.currentMessages.size,
+                        xml = notificationXml,
+                    )
 
                 // Trigger AI to respond, seeing the notification in context
                 val recallJob = appScope.launch {
@@ -561,11 +565,26 @@ class ChatService(
                 settings = settings,
                 model = model,
                 processingStatus = session.processingStatus,
-                messages = conversation.currentMessages.let {
-                    if (messageRange != null) {
-                        it.subList(messageRange.start, messageRange.endInclusive + 1)
+                messages = conversation.currentMessages.let { raw ->
+                    val base = if (messageRange != null) {
+                        raw.subList(messageRange.start, messageRange.endInclusive + 1)
                     } else {
-                        it
+                        raw
+                    }
+                    // 注入用户不可见的子代理完成通知，固定在触发 recall 时的位置
+                    val notes = pendingNotifications[conversationId].orEmpty()
+                    if (notes.isEmpty()) {
+                        base
+                    } else {
+                        val offset = messageRange?.start ?: 0
+                        val withNotes = base.toMutableList()
+                        notes.sortedByDescending { it.insertedAt }.forEach { note ->
+                            val pos = note.insertedAt - offset
+                            if (pos in 0..withNotes.size) {
+                                withNotes.add(pos, UIMessage.system(prompt = note.xml))
+                            }
+                        }
+                        withNotes
                     }
                 },
                 assistant = assistant,
