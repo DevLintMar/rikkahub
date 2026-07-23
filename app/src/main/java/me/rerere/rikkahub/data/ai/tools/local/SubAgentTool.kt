@@ -51,7 +51,7 @@ internal fun buildSubAgentTool(
             properties = buildJsonObject {
                 put("prompt", buildJsonObject {
                     put("type", "string")
-                    put("description", "The complete, self-contained prompt for the agent. Include all necessary context.")
+                    put("description", "The task for the agent to perform")
                 })
                 put("description", buildJsonObject {
                     put("type", "string")
