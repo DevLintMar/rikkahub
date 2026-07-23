@@ -27,36 +27,24 @@ internal fun buildSubAgentTool(
     name = "sub_agent",
     description = """
         Launch a new agent to handle complex, multi-step tasks.
-        Each agent runs independently with its own AI model instance.
-        Available tools: web search, time info, skills, and MCP tools.
-
-        When using this tool, provide a clear, self-contained prompt
-        with all necessary context. The agent does NOT have access to
-        the current conversation history.
-
-        A short (3-5 word) description is required via the 'description'
-        parameter so you can identify the result when it completes.
+        The agent runs independently with its own AI model instance.
+        It has access to web search, time info, skills, and MCP tools.
 
         ## When to use
-        Reach for this when the task is self-contained and can be
-        delegated, when you have independent work to run in parallel,
-        or when answering would mean processing large amounts of data.
-        Once delegated, don't also do the work yourself.
+        Reach for this when the task matches an available agent type, when you
+        have independent work to run in parallel, or when answering would mean
+        reading across several files — delegate it and you keep the conclusion,
+        not the file dumps. For a single-fact lookup where you already know the
+        file, symbol, or value, search directly. Once you've delegated a search,
+        don't also run it yourself — wait for the result.
 
-        ## Modes
-        - Background mode (default): starts the agent and returns
-          immediately. When it finishes, you'll see Agent "name" finished
-          and can review the results. Use this for independent tasks.
-        - Synchronous mode (run_in_background=false): blocks and waits
-          for the result. Use this when you need the result to continue.
-
-        ## Rules
-        - The agent's final report is not shown directly to the user —
-          relay what matters in your own words.
-        - Never fabricate or predict a pending agent's results.
-          If the user asks before results arrive, say it's still running.
+        - The agent's final report is not shown to the user — relay what matters.
         - Use task_list / task_get to check on background tasks.
-        - Always requires user approval before execution.
+        - Subagents run in the background by default; you'll be notified when one
+          completes. Pass run_in_background: false for a synchronous run when you
+          need the result before continuing. Never fabricate or predict a pending
+          agent's results — the notification is never something you write yourself;
+          if the user asks before it arrives, say it's still running.
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
