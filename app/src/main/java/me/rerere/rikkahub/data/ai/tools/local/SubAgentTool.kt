@@ -300,14 +300,20 @@ private fun createFilteredSkillTool(skillNames: List<String>): Tool = Tool(
 )
 
 /**
- * 向后兼容：不传 subagent_type 时构建全部工具的扁平列表。
+ * 向后兼容：不传 subagent_type 时构建子代理工具列表。
+ * 保持与原有行为一致：搜索 + 时间 + Skill + MCP，
+ * 不包含本地工具（js/clipboard/tts/askUser/calendar/screenTime/subAgent/workflow），
+ * 不包含对话工具、工作区工具。
  */
 private fun buildFullToolList(ctx: SubAgentToolContext): List<Tool> {
     val result = mutableListOf<Tool>()
-    result.addAll(ctx.baseTools)
+    // 仅搜索 + 时间（与原 subAgentTools 一致）
+    ctx.baseTools.filter { tool ->
+        tool.name == "search_web" || tool.name == "scrape_web" || tool.name == "time_info"
+    }.let { result.addAll(it) }
+    // MCP 工具
     result.addAll(ctx.mcpToolGroups.flatMap { it.tools })
+    // Skill 工具
     ctx.skillTool?.let { result.add(it) }
-    ctx.subAgentTool?.let { result.add(it) }
-    ctx.workflowTool?.let { result.add(it) }
     return result
 }
