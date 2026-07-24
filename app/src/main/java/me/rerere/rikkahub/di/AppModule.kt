@@ -6,6 +6,7 @@ import com.google.firebase.crashlytics.crashlytics
 import kotlinx.serialization.json.Json
 import me.rerere.highlight.Highlighter
 import me.rerere.rikkahub.AppScope
+import me.rerere.rikkahub.data.ai.agents.AgentManager
 import me.rerere.rikkahub.data.ai.tools.local.LocalTools
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.service.ChatNotificationManager
@@ -31,7 +32,11 @@ val appModule = module {
     }
 
     single {
-        LocalTools(get(), get(), get(), get(), get(), get())
+        AgentManager(get(), get())
+    }
+
+    single {
+        LocalTools(get(), get(), get(), get(), get(), get(), get())
     }
 
     single {

@@ -618,44 +618,28 @@ class ChatService(
                 outputTransformers = outputTransformers,
                 // 子代理可继承的工具（搜索 + 时间信息 + Skill + MCP）
                 tools = buildList {
-                    val subAgentTools = mutableListOf<Tool>()
+                    // ---- 构建分类工具上下文（用于子代理工具筛选） ----
+                    val baseTools = mutableListOf<Tool>()
+
                     if (assistant.enableWebSearch) {
                         val searchTools = createSearchTools(settings)
-                        addAll(searchTools)
-                        subAgentTools.addAll(searchTools)
+                        baseTools.addAll(searchTools)
                     }
-                    // Local tools, with sub-agent/workflow tools wired to current conversation
-                    addAll(localTools.getTools(assistant.localTools).map { tool ->
-                        when (tool.name) {
-                            "sub_agent" -> {
-                                val runtime = localTools.subAgentRuntime
-                                val convId = conversationId
-                                buildSubAgentTool(runtime, subAgentTools) { convId }
-                            }
-                            "run_workflow" -> {
-                                val engine = localTools.workflowEngine
-                                val convId = conversationId
-                                buildWorkflowTool(engine) { convId }
-                            }
-                            else -> tool
-                        }
-                    })
-                    // 时间信息工具对子代理始终可用
-                    subAgentTools.add(localTools.timeTool)
+
+                    // 本地工具（全部放入 baseTools，sub_agent/workflow 也包含在内）
+                    baseTools.addAll(localTools.getTools(assistant.localTools))
+
+                    // 时间工具
+                    baseTools.add(localTools.timeTool)
+
                     if (assistant.enableRecentChatsReference) {
-                        addAll(createConversationTools(conversationRepo, assistant.id))
+                        baseTools.addAll(createConversationTools(conversationRepo, assistant.id))
                     }
-                    addAll(createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), conversation.workspaceCwd))
-                    if (assistant.enabledSkills.isNotEmpty()) {
-                        val skillTools = createSkillTools(
-                            enabledSkills = assistant.enabledSkills,
-                            allSkills = skillManager.listSkills(),
-                            skillManager = skillManager,
-                        )
-                        addAll(skillTools)
-                        subAgentTools.addAll(skillTools)
-                    }
-                    mcpManager.getAllAvailableTools().also { allTools ->
+
+                    baseTools.addAll(createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), conversation.workspaceCwd))
+
+                    // MCP 工具按 server 分组
+                    val mcpToolGroupsRaw = mcpManager.getAllAvailableTools().also { allTools ->
                         val invalidNames = allTools
                             .map { it.second }
                             .distinct()
@@ -672,19 +656,74 @@ class ChatService(
                             )
                             return
                         }
-                    }.forEach { (serverId, serverName, tool) ->
-                        val mcpTool = Tool(
-                            name = "mcp__${serverName}__${tool.name}",
-                            description = tool.description ?: "",
-                            parameters = { tool.inputSchema },
-                            needsApproval = { tool.needsApproval },
-                            execute = {
-                                mcpManager.callTool(serverId, tool.name, it.jsonObject)
-                            },
-                        )
-                        add(mcpTool)
-                        subAgentTools.add(mcpTool)
+                    }.groupBy { it.second } // 按 serverName 分组
+                        .map { (serverName, triples) ->
+                            McpToolGroup(
+                                serverName = serverName,
+                                tools = triples.map { (serverId, _, tool) ->
+                                    Tool(
+                                        name = "mcp__${serverName}__${tool.name}",
+                                        description = tool.description ?: "",
+                                        parameters = { tool.inputSchema },
+                                        needsApproval = { tool.needsApproval },
+                                        execute = { mcpManager.callTool(serverId, tool.name, it.jsonObject) },
+                                    )
+                                },
+                            )
+                        }
+
+                    // Skill 工具（独立持有，不放入 baseTools）
+                    val skillTool: Tool? = if (assistant.enabledSkills.isNotEmpty()) {
+                        createSkillTools(
+                            enabledSkills = assistant.enabledSkills,
+                            allSkills = skillManager.listSkills(),
+                            skillManager = skillManager,
+                        ).singleOrNull()
+                    } else null
+
+                    // 构建 SubAgentToolContext
+                    val toolContext = SubAgentToolContext(
+                        baseTools = baseTools.toList(),
+                        mcpToolGroups = mcpToolGroupsRaw,
+                        skillTool = skillTool,
+                        subAgentTool = null, // 暂不递归传入（避免自身引用循环）
+                        workflowTool = null,
+                    )
+
+                    // 构建主 agent 的扁平工具列表
+                    // 搜索工具
+                    if (assistant.enableWebSearch) {
+                        addAll(createSearchTools(settings))
                     }
+                    // 本地工具（sub_agent + workflow 用新上下文包装）
+                    addAll(localTools.getTools(assistant.localTools).map { tool ->
+                        when (tool.name) {
+                            "sub_agent" -> {
+                                buildSubAgentTool(
+                                    runtime = localTools.subAgentRuntime,
+                                    availableTools = toolContext,
+                                    agentManager = localTools.agentManager,
+                                    skillManager = skillManager,
+                                    settingsStore = settingsStore,
+                                    getConversationId = { conversationId },
+                                )
+                            }
+                            "run_workflow" -> {
+                                buildWorkflowTool(localTools.workflowEngine) { conversationId }
+                            }
+                            else -> tool
+                        }
+                    })
+                    // 对话工具
+                    if (assistant.enableRecentChatsReference) {
+                        addAll(createConversationTools(conversationRepo, assistant.id))
+                    }
+                    // 工作区工具
+                    addAll(createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), conversation.workspaceCwd))
+                    // Skill 工具
+                    skillTool?.let { add(it) }
+                    // MCP 工具
+                    mcpToolGroupsRaw.flatMap { it.tools }.forEach { add(it) }
                 },
             ).onCompletion {
                 // 可能被取消了，或者意外结束，兜底更新

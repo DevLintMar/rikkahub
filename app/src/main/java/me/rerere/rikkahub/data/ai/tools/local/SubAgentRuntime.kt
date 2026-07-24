@@ -66,6 +66,7 @@ class SubAgentRuntime(
         prompt: String,
         modelOverride: Uuid? = null,
         tools: List<Tool> = emptyList(),
+        systemPrompt: String? = null,
     ): SubAgentResult = try {
         val settings = settingsStore.settingsFlow.first()
         val resolvedModelId = resolveModelId(modelOverride, settings)
@@ -76,8 +77,8 @@ class SubAgentRuntime(
             ?: error("Provider not found for model: ${model.id}")
         val provider = providerManager.getProviderByType(providerSetting)
 
-        val systemPrompt = DEFAULT_SYSTEM_PROMPT
-        val combinedMessage = "$systemPrompt\n\n$prompt"
+        val effectiveSystemPrompt = systemPrompt ?: DEFAULT_SYSTEM_PROMPT
+        val combinedMessage = "$effectiveSystemPrompt\n\n$prompt"
         val messages = listOf(
             UIMessage.user(prompt = combinedMessage),
         )
@@ -138,6 +139,7 @@ class SubAgentRuntime(
         conversationId: Uuid,
         modelOverride: Uuid? = null,
         tools: List<Tool> = emptyList(),
+        systemPrompt: String? = null,
     ): AsyncSubAgentHandle {
         val taskId = "sub_${Uuid.random().toString().take(8)}"
         tasks[taskId] = TaskInfo(
@@ -147,7 +149,7 @@ class SubAgentRuntime(
             status = TaskStatus.IN_PROGRESS,
         )
         val job = appScope.launch {
-            val result = executeSync(prompt = prompt, modelOverride = modelOverride, tools = tools)
+            val result = executeSync(prompt = prompt, modelOverride = modelOverride, tools = tools, systemPrompt = systemPrompt)
             tasks[taskId] = tasks.getValue(taskId).copy(
                 status = if (result.success) TaskStatus.COMPLETED else TaskStatus.FAILED,
                 result = if (result.success) result.text else null,

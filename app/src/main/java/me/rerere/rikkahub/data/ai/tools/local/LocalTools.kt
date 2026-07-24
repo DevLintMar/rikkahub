@@ -4,6 +4,7 @@ import android.content.Context
 import me.rerere.ai.core.Tool
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.rikkahub.AppScope
+import me.rerere.rikkahub.data.ai.agents.AgentManager
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.tts.provider.TTSManager
@@ -16,6 +17,7 @@ class LocalTools(
     private val settingsStore: SettingsStore,
     private val providerManager: ProviderManager,
     private val appScope: AppScope,
+    val agentManager: AgentManager,
 ) {
     val javascriptTool by lazy { buildJavascriptTool() }
 
