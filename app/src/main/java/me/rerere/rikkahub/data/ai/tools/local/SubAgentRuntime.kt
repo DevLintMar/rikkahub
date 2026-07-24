@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
+import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.core.Tool
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.TextGenerationParams
@@ -17,6 +18,7 @@ import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findProvider
+import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
 import java.util.concurrent.ConcurrentHashMap
@@ -77,13 +79,35 @@ class SubAgentRuntime(
             ?: error("Provider not found for model: ${model.id}")
         val provider = providerManager.getProviderByType(providerSetting)
 
+        // 参考主 agent 的 generateInternal 构建系统提示 + 注入 tool.systemPrompt
         val effectiveSystemPrompt = systemPrompt ?: DEFAULT_SYSTEM_PROMPT
+        val fullSystemPrompt = buildString {
+            append(effectiveSystemPrompt)
+            tools.forEach { tool ->
+                val toolPrompt = tool.systemPrompt(model, emptyList())
+                if (toolPrompt.isNotBlank()) {
+                    appendLine()
+                    append(toolPrompt)
+                }
+            }
+        }
         val messages = buildList {
-            if (effectiveSystemPrompt.isNotBlank()) {
-                add(UIMessage.system(prompt = effectiveSystemPrompt))
+            if (fullSystemPrompt.isNotBlank()) {
+                add(UIMessage.system(prompt = fullSystemPrompt))
             }
             add(UIMessage.user(prompt = prompt))
         }
+
+        // 参考主 agent 传入完整的 TextGenerationParams
+        val assistant = settings.getCurrentAssistant()
+        val params = TextGenerationParams(
+            model = model,
+            temperature = assistant.temperature,
+            topP = assistant.topP,
+            maxTokens = assistant.maxTokens,
+            tools = tools,
+            reasoningLevel = assistant.reasoningLevel,
+        )
 
         var currentMessages: List<UIMessage> = messages
         var textResponse = ""
@@ -91,10 +115,7 @@ class SubAgentRuntime(
             val resultFlow = provider.streamText(
                 providerSetting = providerSetting,
                 messages = currentMessages,
-                params = TextGenerationParams(
-                    model = model,
-                    tools = tools,
-                )
+                params = params,
             )
             resultFlow.collect { chunk ->
                 currentMessages = currentMessages.handleMessageChunk(chunk, model)
