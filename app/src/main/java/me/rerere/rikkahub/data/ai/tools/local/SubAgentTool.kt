@@ -91,39 +91,7 @@ internal fun buildSubAgentTool(
             required = listOf("description", "prompt"),
         )
     },
-    systemPrompt = { _, _ ->
-        if (agentManager != null) {
-            val agents = agentManager.listAgents()
-            buildString {
-                appendLine("Available agent types for the Agent tool:")
-                agents.forEach { agent ->
-                    append("- ${agent.name}: ${agent.description}")
-                    val parts = mutableListOf<String>()
-                    if (agent.tools != null) {
-                        parts.add(
-                            "Tools: ${
-                                if (agent.tools.size == 1 && agent.tools[0] == "*") {
-                                    "*"
-                                } else {
-                                    agent.tools.joinToString(", ")
-                                }
-                            }",
-                        )
-                    }
-                    if (agent.skills != null && agent.skills.isNotEmpty()) {
-                        parts.add("Skills: ${agent.skills.joinToString(", ")}")
-                    }
-                    if (agent.mcpServers != null && agent.mcpServers.isNotEmpty()) {
-                        parts.add("McpServers: ${agent.mcpServers.joinToString(", ")}")
-                    }
-                    if (parts.isNotEmpty()) {
-                        append(" (${parts.joinToString("; ")})")
-                    }
-                    appendLine()
-                }
-            }
-        } else ""
-    },
+    systemPrompt = { _, _ -> "" },
     needsApproval = { true },
     execute = { args ->
         val obj = args.jsonObject
