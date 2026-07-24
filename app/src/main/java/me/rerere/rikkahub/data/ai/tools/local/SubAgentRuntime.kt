@@ -78,10 +78,12 @@ class SubAgentRuntime(
         val provider = providerManager.getProviderByType(providerSetting)
 
         val effectiveSystemPrompt = systemPrompt ?: DEFAULT_SYSTEM_PROMPT
-        val combinedMessage = "$effectiveSystemPrompt\n\n$prompt"
-        val messages = listOf(
-            UIMessage.user(prompt = combinedMessage),
-        )
+        val messages = buildList {
+            if (effectiveSystemPrompt.isNotBlank()) {
+                add(UIMessage.system(prompt = effectiveSystemPrompt))
+            }
+            add(UIMessage.user(prompt = prompt))
+        }
 
         var currentMessages: List<UIMessage> = messages
         var textResponse = ""
