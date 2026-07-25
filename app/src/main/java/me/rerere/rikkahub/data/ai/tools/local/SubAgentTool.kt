@@ -200,7 +200,7 @@ internal fun buildSubAgentTool(
  */
 private val RESTRICTED_TOOLS = setOf(
     "ask_user",
-    "clipboard",
+    "clipboard_tool",
     "recent_chats",
     "conversation_search",
     "sub_agent",
