@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -13,7 +15,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -245,11 +246,14 @@ fun AgentDetailPage(agentName: String = "") {
             )
 
             // Save button
-            ExtendedFloatingActionButton(
+            val nameRequiredMsg = stringResource(R.string.sub_agents_detail_name_required)
+            val savedMsg = stringResource(R.string.sub_agents_detail_saved)
+            val saveFailedMsg = stringResource(R.string.sub_agents_detail_save_failed)
+            Button(
                 onClick = {
                     if (name.isBlank()) {
-                        toaster.show(stringResource(R.string.sub_agents_detail_name_required), type = ToastType.Warning)
-                        return@ExtendedFloatingActionButton
+                        toaster.show(nameRequiredMsg, type = ToastType.Warning)
+                        return@Button
                     }
                     isSaving = true
                     vm.save(
@@ -264,10 +268,10 @@ fun AgentDetailPage(agentName: String = "") {
                     ) { success, msg ->
                         isSaving = false
                         if (success) {
-                            toaster.show(stringResource(R.string.sub_agents_detail_saved), type = ToastType.Success)
+                            toaster.show(savedMsg, type = ToastType.Success)
                             navController.popBackStack()
                         } else {
-                            toaster.show(stringResource(R.string.sub_agents_detail_save_failed, msg), type = ToastType.Error)
+                            toaster.show(saveFailedMsg + ": $msg", type = ToastType.Error)
                         }
                     }
                 },
@@ -340,7 +344,10 @@ private fun SimpleMultiSelector(
 ) {
     androidx.compose.material3.ModalBottomSheet(
         onDismissRequest = onDismissRequest,
-        sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetState = androidx.compose.material3.rememberBottomSheetState(
+            initialValue = androidx.compose.material3.SheetValue.Hidden,
+            enabledValues = setOf(androidx.compose.material3.SheetValue.Hidden, androidx.compose.material3.SheetValue.Expanded),
+        ),
     ) {
         Column(
             modifier = Modifier

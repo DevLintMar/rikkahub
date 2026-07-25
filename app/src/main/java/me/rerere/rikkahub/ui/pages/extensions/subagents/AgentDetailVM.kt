@@ -7,9 +7,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
 import me.rerere.rikkahub.data.ai.agents.AgentDefinition
 import me.rerere.rikkahub.data.ai.agents.AgentManager
 import me.rerere.rikkahub.data.ai.agents.AgentSerializer
+import me.rerere.rikkahub.data.ai.mcp.McpServerConfig
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.files.SkillManager
 import java.io.File
