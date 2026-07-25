@@ -135,9 +135,18 @@ class SubAgentRuntime(
                     currentMessages = currentMessages + UIMessage.user(prompt = "Tool '${toolPart.toolName}' not found.")
                     continue
                 }
-                val output = toolDef.execute(runCatching {
-                    Json.parseToJsonElement(toolPart.input)
-                }.getOrDefault(buildJsonObject { }))
+                val output = runCatching {
+                    val args = runCatching {
+                        Json.parseToJsonElement(toolPart.input)
+                    }.getOrDefault(buildJsonObject { })
+                    toolDef.execute(args)
+                }.onFailure { error ->
+                    if (error is CancellationException) throw error
+                }.getOrElse { error ->
+                    listOf(UIMessagePart.Text(
+                        """{"error":"[${error.javaClass.name}] ${error.message ?: "Unknown error"}","stack":"${error.stackTraceToString().replace("\"", "\\\"")}"}"""
+                    ))
+                }
                 currentMessages = currentMessages + UIMessage.user(
                     prompt = output.joinToString("\n") { part ->
                         when (part) {
