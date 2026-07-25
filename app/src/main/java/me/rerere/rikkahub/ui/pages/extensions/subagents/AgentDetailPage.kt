@@ -163,28 +163,24 @@ fun AgentDetailPage(agentName: String = "") {
             )
 
             // Tools (nullable)
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                ListItem(
-                    headlineContent = { Text(stringResource(R.string.sub_agents_detail_tools)) },
-                    supportingContent = {
-                        Text(
-                            if (tools != null) "${tools!!.size} tool(s) selected"
-                            else stringResource(R.string.sub_agents_detail_inherit),
-                        )
-                    },
-                    modifier = Modifier.weight(1f),
-                )
-                Switch(
-                    checked = inheritTools,
-                    onCheckedChange = { inherit ->
-                        inheritTools = inherit
-                        if (inherit) tools = null else tools = emptyList()
-                    },
-                )
-            }
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.sub_agents_detail_tools)) },
+                supportingContent = {
+                    Text(
+                        if (tools != null) "${tools!!.size} tool(s) selected"
+                        else stringResource(R.string.sub_agents_detail_inherit),
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = inheritTools,
+                        onCheckedChange = { inherit ->
+                            inheritTools = inherit
+                            if (inherit) tools = null else tools = emptyList()
+                        },
+                    )
+                },
+            )
             if (!inheritTools) {
                 Button(
                     onClick = { showToolSelector = true },
@@ -208,22 +204,21 @@ fun AgentDetailPage(agentName: String = "") {
             }
 
             // MCP Servers
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                ListItem(
-                    headlineContent = { Text(stringResource(R.string.sub_agents_detail_mcp_servers)) },
-                    supportingContent = {
-                        Text(
-                            if (inheritMcp) stringResource(R.string.sub_agents_detail_inherit)
-                            else mcpServersSelected.joinToString(", ").ifEmpty { "None" }
-                        )
-                    },
-                    modifier = Modifier.weight(1f),
-                )
-                Switch(
-                    checked = inheritMcp,
-                    onCheckedChange = { inheritMcp = it },
-                )
-            }
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.sub_agents_detail_mcp_servers)) },
+                supportingContent = {
+                    Text(
+                        if (inheritMcp) stringResource(R.string.sub_agents_detail_inherit)
+                        else mcpServersSelected.joinToString(", ").ifEmpty { "None" }
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = inheritMcp,
+                        onCheckedChange = { inheritMcp = it },
+                    )
+                },
+            )
             if (!inheritMcp) {
                 Row(modifier = Modifier.fillMaxWidth()) {
                     Button(
@@ -241,22 +236,21 @@ fun AgentDetailPage(agentName: String = "") {
             }
 
             // Skills
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                ListItem(
-                    headlineContent = { Text(stringResource(R.string.sub_agents_detail_skills)) },
-                    supportingContent = {
-                        Text(
-                            if (inheritSkills) stringResource(R.string.sub_agents_detail_inherit)
-                            else skillsSelected.joinToString(", ").ifEmpty { "None" }
-                        )
-                    },
-                    modifier = Modifier.weight(1f),
-                )
-                Switch(
-                    checked = inheritSkills,
-                    onCheckedChange = { inheritSkills = it },
-                )
-            }
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.sub_agents_detail_skills)) },
+                supportingContent = {
+                    Text(
+                        if (inheritSkills) stringResource(R.string.sub_agents_detail_inherit)
+                        else skillsSelected.joinToString(", ").ifEmpty { "None" }
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = inheritSkills,
+                        onCheckedChange = { inheritSkills = it },
+                    )
+                },
+            )
             if (!inheritSkills) {
                 Row(modifier = Modifier.fillMaxWidth()) {
                     Button(

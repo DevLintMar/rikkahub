@@ -1233,7 +1233,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="sub_agents_detail_effort">思考深度</string>
   <string name="sub_agents_detail_effort_inherit">继承</string>
   <string name="sub_agents_detail_system_prompt">系统提示词（正文）</string>
-  <string name="sub_agents_detail_inherit">继承自父级</string>
+  <string name="sub_agents_detail_inherit">继承主模型</string>
   <string name="sub_agents_detail_name_required">名称不能为空</string>
   <string name="sub_agents_detail_saved">代理保存成功</string>
   <string name="sub_agents_detail_save_failed">保存失败：%1$s</string>
