@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.rikkahub.R
 import me.rerere.hugeicons.stroke.Book03
+import me.rerere.hugeicons.stroke.Bot
 import me.rerere.hugeicons.stroke.File02
 import me.rerere.hugeicons.stroke.Folder01
 import me.rerere.hugeicons.stroke.Puzzle
@@ -73,6 +74,12 @@ fun ExtensionsPage() {
                         leadingContent = { Icon(HugeIcons.Puzzle, null) },
                         headlineContent = { Text(stringResource(R.string.extensions_page_agent_skills)) },
                         supportingContent = { Text(stringResource(R.string.extensions_page_agent_skills_desc)) },
+                    )
+                    item(
+                        onClick = { navController.navigate(Screen.SubAgents) },
+                        leadingContent = { Icon(HugeIcons.Bot, null) },
+                        headlineContent = { Text(stringResource(R.string.extensions_page_sub_agents)) },
+                        supportingContent = { Text(stringResource(R.string.extensions_page_sub_agents_desc)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.Workspaces) },

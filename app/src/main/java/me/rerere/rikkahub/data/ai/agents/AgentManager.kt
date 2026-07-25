@@ -49,6 +49,12 @@ class AgentManager(
         cache = null
     }
 
+    fun getAgentsDir(): File {
+        val dir = File(context.filesDir, "agents")
+        if (!dir.exists()) dir.mkdirs()
+        return dir
+    }
+
     private fun loadAllAgents(): List<AgentDefinition> {
         val agents = mutableMapOf<String, AgentDefinition>()
 
@@ -56,7 +62,7 @@ class AgentManager(
         agents[GENERAL_PURPOSE.name] = GENERAL_PURPOSE
 
         // 1. 扫描 {filesDir}/agents/*.md
-        val agentsDir = File(context.filesDir, "agents")
+        val agentsDir = getAgentsDir()
         if (agentsDir.exists()) {
             agentsDir.listFiles()
                 ?.filter { it.isFile && it.name.endsWith(".md") }
