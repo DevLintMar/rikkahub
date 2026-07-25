@@ -628,11 +628,8 @@ class ChatService(
                         baseTools.addAll(searchTools)
                     }
 
-                    // 本地工具（全部放入 baseTools，sub_agent/workflow 也包含在内）
+                    // 本地工具
                     baseTools.addAll(localTools.getTools(assistant.localTools))
-
-                    // 时间工具
-                    baseTools.add(localTools.timeTool)
 
                     if (assistant.enableRecentChatsReference) {
                         baseTools.addAll(createConversationTools(conversationRepo, assistant.id))
