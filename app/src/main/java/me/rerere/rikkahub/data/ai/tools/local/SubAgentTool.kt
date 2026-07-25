@@ -314,5 +314,3 @@ private fun createFilteredSkillTool(skillNames: List<String>): Tool = Tool(
         listOf(UIMessagePart.Text("Skill loaded."))
     },
 )
-
-/**
