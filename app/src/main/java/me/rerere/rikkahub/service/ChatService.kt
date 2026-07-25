@@ -490,12 +490,6 @@ class ChatService(
         launchWithConversationReference(event.conversationId) {
             try {
                 val session = getOrCreateSession(event.conversationId)
-                // 如果主 agent 正在生成，取消它让 recall 处理
-                if (session.getJob()?.isActive == true) {
-                    Log.i(TAG, "handleSubAgentRecall: cancelling active generation for recall")
-                    session.getJob()?.cancel()
-                    runCatching { session.getJob()?.join() }
-                }
 
                 val conversation = getConversationFlow(event.conversationId).value
                 val statusText = if (event.success) "completed" else "failed"
@@ -507,7 +501,7 @@ class ChatService(
                     appendLine("  <result>${event.result}</result>")
                     append("</task-notification>")
                 }
-                // 存入通知列表，不写入对话节点（用户不可见）
+                // 存入通知列表（用户不可见，供下次生成时注入）
                 pendingNotifications.getOrPut(event.conversationId) { mutableListOf() } +=
                     SubAgentNotification(
                         insertedAt = conversation.currentMessages.size,
@@ -515,10 +509,11 @@ class ChatService(
                     )
 
                 // 追加用户可见的完成提示
+                val statusLabel = if (event.success) "finished" else "failed"
                 val visibleMsg = UIMessage(
                     role = MessageRole.ASSISTANT,
                     parts = listOf(
-                        UIMessagePart.Text("\n\nAgent \"${event.description}\" $statusText\n")
+                        UIMessagePart.Text("\n\nAgent \"${event.description}\" $statusLabel\n")
                     )
                 )
                 val updatedConversation = conversation.copy(
@@ -527,11 +522,15 @@ class ChatService(
                 )
                 updateConversation(event.conversationId, updatedConversation)
 
-                // Trigger AI to respond, seeing the notification in context
-                val recallJob = appScope.launch {
-                    handleMessageComplete(event.conversationId)
+                // 如果主 agent 没有在生成，立即触发 recall
+                if (session.getJob()?.isActive != true) {
+                    val recallJob = appScope.launch {
+                        handleMessageComplete(event.conversationId)
+                    }
+                    session.setJob(recallJob)
+                } else {
+                    Log.i(TAG, "handleSubAgentRecall: generation active, deferring recall")
                 }
-                session.setJob(recallJob)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 Log.e(TAG, "handleSubAgentRecall failed", e)

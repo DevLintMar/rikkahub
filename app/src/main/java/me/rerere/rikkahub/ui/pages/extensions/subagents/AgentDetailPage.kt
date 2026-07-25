@@ -71,6 +71,8 @@ fun AgentDetailPage(agentName: String = "") {
     var effort by remember(agent) { mutableStateOf(agent?.effort) }
     var systemPrompt by remember(agent) { mutableStateOf(agent?.systemPrompt ?: "") }
     var inheritTools by remember(agent) { mutableStateOf(agent?.tools == null) }
+    var inheritMcp by remember(agent) { mutableStateOf(agent?.mcpServers == null) }
+    var inheritSkills by remember(agent) { mutableStateOf(agent?.skills == null) }
 
     // Selector visibility
     var showToolSelector by remember { mutableStateOf(false) }
@@ -206,43 +208,67 @@ fun AgentDetailPage(agentName: String = "") {
             }
 
             // MCP Servers
-            ListItem(
-                headlineContent = { Text(stringResource(R.string.sub_agents_detail_mcp_servers)) },
-                supportingContent = { Text(mcpServersSelected.joinToString(", ").ifEmpty { stringResource(R.string.sub_agents_detail_inherit) }) },
-            )
-            Row(modifier = Modifier.fillMaxWidth()) {
-                Button(
-                    onClick = { showMcpSelector = true },
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.sub_agents_detail_mcp_servers)) },
+                    supportingContent = {
+                        Text(
+                            if (inheritMcp) stringResource(R.string.sub_agents_detail_inherit)
+                            else mcpServersSelected.joinToString(", ").ifEmpty { "None" }
+                        )
+                    },
                     modifier = Modifier.weight(1f),
-                ) {
-                    Text(stringResource(R.string.sub_agents_detail_select_mcp))
-                }
-                if (mcpServersSelected.isNotEmpty()) {
-                    TextButton(
-                        onClick = { mcpServersSelected = emptyList() },
+                )
+                Switch(
+                    checked = inheritMcp,
+                    onCheckedChange = { inheritMcp = it },
+                )
+            }
+            if (!inheritMcp) {
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = { showMcpSelector = true },
+                        modifier = Modifier.weight(1f),
                     ) {
-                        Text(stringResource(R.string.sub_agents_detail_clear))
+                        Text(stringResource(R.string.sub_agents_detail_select_mcp))
+                    }
+                    if (mcpServersSelected.isNotEmpty()) {
+                        TextButton(onClick = { mcpServersSelected = emptyList() }) {
+                            Text(stringResource(R.string.sub_agents_detail_clear))
+                        }
                     }
                 }
             }
 
             // Skills
-            ListItem(
-                headlineContent = { Text(stringResource(R.string.sub_agents_detail_skills)) },
-                supportingContent = { Text(skillsSelected.joinToString(", ").ifEmpty { stringResource(R.string.sub_agents_detail_inherit) }) },
-            )
-            Row(modifier = Modifier.fillMaxWidth()) {
-                Button(
-                    onClick = { showSkillSelector = true },
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.sub_agents_detail_skills)) },
+                    supportingContent = {
+                        Text(
+                            if (inheritSkills) stringResource(R.string.sub_agents_detail_inherit)
+                            else skillsSelected.joinToString(", ").ifEmpty { "None" }
+                        )
+                    },
                     modifier = Modifier.weight(1f),
-                ) {
-                    Text(stringResource(R.string.sub_agents_detail_select_skills))
-                }
-                if (skillsSelected.isNotEmpty()) {
-                    TextButton(
-                        onClick = { skillsSelected = emptyList() },
+                )
+                Switch(
+                    checked = inheritSkills,
+                    onCheckedChange = { inheritSkills = it },
+                )
+            }
+            if (!inheritSkills) {
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = { showSkillSelector = true },
+                        modifier = Modifier.weight(1f),
                     ) {
-                        Text(stringResource(R.string.sub_agents_detail_clear))
+                        Text(stringResource(R.string.sub_agents_detail_select_skills))
+                    }
+                    if (skillsSelected.isNotEmpty()) {
+                        TextButton(onClick = { skillsSelected = emptyList() }) {
+                            Text(stringResource(R.string.sub_agents_detail_clear))
+                        }
                     }
                 }
             }
@@ -280,8 +306,8 @@ fun AgentDetailPage(agentName: String = "") {
                         description = description,
                         tools = if (inheritTools) null else tools,
                         disallowedTools = disallowedTools,
-                        mcpServers = mcpServersSelected.ifEmpty { null },
-                        skills = skillsSelected.ifEmpty { null },
+                        mcpServers = if (inheritMcp) null else mcpServersSelected,
+                        skills = if (inheritSkills) null else skillsSelected,
                         effort = effort,
                         systemPrompt = systemPrompt,
                     ) { success, msg ->

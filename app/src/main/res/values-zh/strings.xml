@@ -1230,7 +1230,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="sub_agents_detail_select_mcp">选择 MCP 服务器</string>
   <string name="sub_agents_detail_skills">Skills</string>
   <string name="sub_agents_detail_select_skills">选择 Skills</string>
-  <string name="sub_agents_detail_effort">推理努力</string>
+  <string name="sub_agents_detail_effort">思考深度</string>
   <string name="sub_agents_detail_effort_inherit">继承</string>
   <string name="sub_agents_detail_system_prompt">系统提示词（正文）</string>
   <string name="sub_agents_detail_inherit">继承自父级</string>
