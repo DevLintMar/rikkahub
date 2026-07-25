@@ -708,6 +708,7 @@ class ChatService(
                                     skillManager = skillManager,
                                     settingsStore = settingsStore,
                                     getConversationId = { conversationId },
+                                    needsApproval = { !assistant.enableSubAgentAutoApproval },
                                 )
                             }
                             "run_workflow" -> {

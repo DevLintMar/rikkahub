@@ -242,6 +242,20 @@ private fun AssistantLocalToolContent(
             )
             item(
                 headlineContent = {
+                    Text(stringResource(R.string.assistant_page_local_tools_sub_agent_auto_approval_title))
+                },
+                supportingContent = {
+                    Text(stringResource(R.string.assistant_page_local_tools_sub_agent_auto_approval_desc))
+                },
+                trailingContent = {
+                    Switch(
+                        checked = assistant.enableSubAgentAutoApproval,
+                        onCheckedChange = { onUpdate(assistant.copy(enableSubAgentAutoApproval = it)) }
+                    )
+                }
+            )
+            item(
+                headlineContent = {
                     Text(stringResource(R.string.assistant_page_local_tools_workflow_title))
                 },
                 supportingContent = {

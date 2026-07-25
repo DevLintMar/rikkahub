@@ -1305,6 +1305,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <!-- Sub-Agent 工具 -->
   <string name="assistant_page_local_tools_sub_agent_title">子代理</string>
   <string name="assistant_page_local_tools_sub_agent_desc">让AI启动一个独立的子代理来完成任务，支持同步和后台模式</string>
+  <string name="assistant_page_local_tools_sub_agent_auto_approval_title">子代理免批准</string>
+  <string name="assistant_page_local_tools_sub_agent_auto_approval_desc">调用子代理时跳过审批步骤</string>
 
   <!-- Workflow 工具 -->
   <string name="assistant_page_local_tools_workflow_title">工作流</string>

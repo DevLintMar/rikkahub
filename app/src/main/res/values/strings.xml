@@ -1317,6 +1317,8 @@
   <!-- Sub-Agent tool -->
   <string name="assistant_page_local_tools_sub_agent_title">Sub-Agent</string>
   <string name="assistant_page_local_tools_sub_agent_desc">Let the AI launch a sub-agent to independently complete tasks in sync or background mode</string>
+  <string name="assistant_page_local_tools_sub_agent_auto_approval_title">Sub Agent Auto Approval</string>
+  <string name="assistant_page_local_tools_sub_agent_auto_approval_desc">Skip approval step when calling sub-agent tools</string>
 
   <!-- Workflow tool -->
   <string name="assistant_page_local_tools_workflow_title">Workflow</string>

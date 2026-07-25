@@ -30,6 +30,7 @@ internal fun buildSubAgentTool(
     skillManager: SkillManager? = null,
     settingsStore: SettingsStore? = null,
     getConversationId: () -> Uuid = { error("sub_agent: conversationId not available") },
+    needsApproval: () -> Boolean = { true },
 ): Tool = Tool(
     name = "sub_agent",
     description = """
@@ -124,7 +125,7 @@ internal fun buildSubAgentTool(
             }
         } else ""
     },
-    needsApproval = { true },
+    needsApproval = { needsApproval() },
     execute = { args ->
         val obj = args.jsonObject
         val prompt = obj["prompt"]?.jsonPrimitive?.contentOrNull
