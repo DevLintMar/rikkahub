@@ -71,7 +71,7 @@ fun ToolSelector(
                 text = stringResource(R.string.sub_agents_tool_selector_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, bottom = 12.dp),
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
             )
 
             LazyColumn(
