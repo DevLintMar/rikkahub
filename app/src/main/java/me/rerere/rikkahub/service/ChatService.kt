@@ -490,17 +490,20 @@ class ChatService(
         launchWithConversationReference(event.conversationId) {
             try {
                 val session = getOrCreateSession(event.conversationId)
+                // 如果主 agent 正在生成，取消它让 recall 处理
                 if (session.getJob()?.isActive == true) {
-                    Log.i(TAG, "handleSubAgentRecall: generation already active, skipping")
-                    return@launchWithConversationReference
+                    Log.i(TAG, "handleSubAgentRecall: cancelling active generation for recall")
+                    session.getJob()?.cancel()
+                    runCatching { session.getJob()?.join() }
                 }
 
                 val conversation = getConversationFlow(event.conversationId).value
+                val statusText = if (event.success) "completed" else "failed"
                 val notificationXml = buildString {
                     appendLine("<task-notification>")
                     appendLine("  <task-id>${event.taskId}</task-id>")
-                    appendLine("  <status>${if (event.success) "completed" else "failed"}</status>")
-                    appendLine("  <summary>Agent \"${event.description}\" finished</summary>")
+                    appendLine("  <status>$statusText</status>")
+                    appendLine("  <summary>Agent \"${event.description}\" $statusText</summary>")
                     appendLine("  <result>${event.result}</result>")
                     append("</task-notification>")
                 }
@@ -515,7 +518,7 @@ class ChatService(
                 val visibleMsg = UIMessage(
                     role = MessageRole.ASSISTANT,
                     parts = listOf(
-                        UIMessagePart.Text("\n\nAgent \"${event.description}\" finished\n")
+                        UIMessagePart.Text("\n\nAgent \"${event.description}\" $statusText\n")
                     )
                 )
                 val updatedConversation = conversation.copy(
