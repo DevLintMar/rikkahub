@@ -11,7 +11,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -249,7 +248,7 @@ fun AgentDetailPage(agentName: String = "") {
             }
 
             // Effort
-            EffortSlider(
+            EffortSelector(
                 effort = effort,
                 onEffortChange = { effort = it },
             )
@@ -306,8 +305,9 @@ fun AgentDetailPage(agentName: String = "") {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun EffortSlider(
+private fun EffortSelector(
     effort: String?,
     onEffortChange: (String?) -> Unit,
 ) {
@@ -319,23 +319,33 @@ private fun EffortSlider(
         "high" to "High",
         "xhigh" to "X-High",
     )
+    var expanded by remember { mutableStateOf(false) }
 
-    Column {
-        Text(
-            text = stringResource(R.string.sub_agents_detail_effort),
-            style = MaterialTheme.typography.titleSmall,
-            modifier = Modifier.padding(bottom = 8.dp),
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+    ) {
+        OutlinedTextField(
+            value = labels[effort] ?: "",
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(stringResource(R.string.sub_agents_detail_effort)) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(),
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
         ) {
             options.forEach { value ->
-                val selected = effort == value
-                androidx.compose.material3.FilterChip(
-                    selected = selected,
-                    onClick = { onEffortChange(value) },
-                    label = { Text(labels[value] ?: "", style = MaterialTheme.typography.labelSmall) },
+                DropdownMenuItem(
+                    text = { Text(labels[value] ?: "") },
+                    onClick = {
+                        onEffortChange(value)
+                        expanded = false
+                    },
                 )
             }
         }
