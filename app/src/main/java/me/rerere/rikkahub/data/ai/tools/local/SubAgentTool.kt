@@ -137,35 +137,32 @@ internal fun buildSubAgentTool(
             runCatching { Uuid.parse(it) }.getOrNull()
         }
         val subagentType = obj["subagent_type"]?.jsonPrimitive?.contentOrNull
+            ?: AgentManager.GENERAL_PURPOSE.name
 
-        val (effectivePrompt, effectiveTools, systemPrompt) = if (subagentType != null) {
-            if (agentManager == null || skillManager == null) {
-                error("sub_agent: AgentManager is not available. Cannot resolve agent type.")
-            }
-            val agentDef = agentManager.getAgent(subagentType)
-                ?: error(
-                    "sub_agent: agent type '$subagentType' not found. " +
-                        "Available: ${agentManager.listAgents().joinToString { it.name }}",
-                )
-            val filtered = filterToolsByAgent(agentDef, availableTools, skillManager)
-            val combinedPrompt = if (agentDef.systemPrompt.isNotBlank()) {
-                "${agentDef.systemPrompt}\n\n$prompt"
-            } else {
-                prompt
-            }
-            Triple(combinedPrompt, filtered, null)
-        } else {
-            Triple(prompt, buildFullToolList(availableTools), null)
+        if (agentManager == null || skillManager == null) {
+            error("sub_agent: AgentManager is not available. Cannot resolve agent type.")
         }
+        val agentDef = agentManager.getAgent(subagentType)
+            ?: error(
+                "sub_agent: agent type '$subagentType' not found. " +
+                    "Available: ${agentManager.listAgents().joinToString { it.name }}",
+            )
+        val filtered = filterToolsByAgent(agentDef, availableTools, skillManager)
+        val combinedPrompt = if (agentDef.systemPrompt.isNotBlank()) {
+            "${agentDef.systemPrompt}\n\n$prompt"
+        } else {
+            prompt
+        }
+        val systemPrompt = null
 
         if (runInBackground) {
             val conversationId = getConversationId()
             val handle = runtime.executeAsync(
-                prompt = effectivePrompt,
+                prompt = combinedPrompt,
                 description = description,
                 conversationId = conversationId,
                 modelOverride = modelOverride,
-                tools = effectiveTools,
+                tools = filtered,
                 systemPrompt = systemPrompt,
             )
             val payload = buildJsonObject {
@@ -177,9 +174,9 @@ internal fun buildSubAgentTool(
             listOf(UIMessagePart.Text(payload.toString()))
         } else {
             val result = runtime.executeSync(
-                prompt = effectivePrompt,
+                prompt = combinedPrompt,
                 modelOverride = modelOverride,
-                tools = effectiveTools,
+                tools = filtered,
                 systemPrompt = systemPrompt,
             )
             val payload = buildJsonObject {
@@ -319,20 +316,3 @@ private fun createFilteredSkillTool(skillNames: List<String>): Tool = Tool(
 )
 
 /**
- * 向后兼容：不传 subagent_type 时构建子代理工具列表。
- * 保持与原有行为一致：搜索 + 时间 + Skill + MCP，
- * 不包含本地工具（js/clipboard/tts/askUser/calendar/screenTime/subAgent/workflow），
- * 不包含对话工具、工作区工具。
- */
-private fun buildFullToolList(ctx: SubAgentToolContext): List<Tool> {
-    val result = mutableListOf<Tool>()
-    // 仅搜索 + 时间（与原 subAgentTools 一致）
-    ctx.baseTools.filter { tool ->
-        tool.name == "search_web" || tool.name == "scrape_web" || tool.name == "time_info"
-    }.let { result.addAll(it) }
-    // MCP 工具
-    result.addAll(ctx.mcpToolGroups.flatMap { it.tools })
-    // Skill 工具
-    ctx.skillTool?.let { result.add(it) }
-    return result
-}
