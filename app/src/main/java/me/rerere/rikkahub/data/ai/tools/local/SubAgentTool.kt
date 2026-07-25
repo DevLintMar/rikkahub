@@ -198,12 +198,28 @@ internal fun buildSubAgentTool(
 )
 
 /**
+ * 需要显式声明才能使用的工具。
+ * 即使 `*` 通配符也不会包含这些工具，agent 必须在 `tools` 中写明具体名称才可用。
+ */
+private val RESTRICTED_TOOLS = setOf(
+    "ask_user",
+    "clipboard",
+    "recent_chats",
+    "conversation_search",
+    "sub_agent",
+    "run_workflow",
+)
+
+/**
  * 根据 AgentDefinition 的 frontmatter 规则筛选子代理可用的工具。
  *
  * 规则：
  * - baseTools 受 `tools`（白名单）和 `disallowedTools`（黑名单）控制
  * - MCP 工具受 `mcpServers` 控制
  * - Skill 工具受 `skills` 控制
+ * - 某些工具（ask_user、clipboard、recent_chats、conversation_search、
+ *   sub_agent、run_workflow）即使是 `*` 通配符也不会自动包含，
+ *   必须在 `tools` 中显式写明才可用。
  */
 private fun filterToolsByAgent(
     def: AgentDefinition,
@@ -213,15 +229,18 @@ private fun filterToolsByAgent(
     val result = mutableListOf<Tool>()
 
     // 1) 基础工具（受 tools / disallowedTools 控制）
-    if (def.tools != null) {
-        if (def.tools.size == 1 && def.tools[0] == "*") {
-            // * 通配符 = 全部基础工具
-            result.addAll(ctx.baseTools)
+    val baseToolNames = def.tools
+    if (baseToolNames != null) {
+        if (baseToolNames.size == 1 && baseToolNames[0] == "*") {
+            // * 通配符 = 全部基础工具（排除受限工具）
+            result.addAll(ctx.baseTools.filter { it.name !in RESTRICTED_TOOLS })
         } else {
-            ctx.baseTools.filter { it.name in def.tools }.let { result.addAll(it) }
+            // 显式白名单：即使包含受限工具也允许
+            ctx.baseTools.filter { it.name in baseToolNames }.let { result.addAll(it) }
         }
     } else {
-        result.addAll(ctx.baseTools)
+        // 继承全部（排除受限工具）
+        result.addAll(ctx.baseTools.filter { it.name !in RESTRICTED_TOOLS })
     }
     // 应用黑名单
     if (def.disallowedTools.isNotEmpty()) {
