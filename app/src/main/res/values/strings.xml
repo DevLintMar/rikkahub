@@ -395,6 +395,7 @@
   <string name="sub_agents_detail_save_failed">Save failed: %1$s</string>
   <string name="sub_agents_tool_selector_title">Select Tools</string>
   <string name="sub_agents_tool_selector_hint">Choose which base tools this agent can use</string>
+  <string name="sub_agents_detail_clear">Clear</string>
   <string name="extensions_page_prompts">Prompts</string>
   <string name="extensions_page_prompts_desc">Manage and use custom prompts</string>
   <string name="extensions_page_quick_messages_desc">Manage shared quick message templates</string>

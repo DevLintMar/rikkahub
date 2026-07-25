@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -22,6 +23,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -209,11 +211,20 @@ fun AgentDetailPage(agentName: String = "") {
                 headlineContent = { Text(stringResource(R.string.sub_agents_detail_mcp_servers)) },
                 supportingContent = { Text(mcpServersSelected.joinToString(", ").ifEmpty { stringResource(R.string.sub_agents_detail_inherit) }) },
             )
-            Button(
-                onClick = { showMcpSelector = true },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(stringResource(R.string.sub_agents_detail_select_mcp))
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = { showMcpSelector = true },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(stringResource(R.string.sub_agents_detail_select_mcp))
+                }
+                if (mcpServersSelected.isNotEmpty()) {
+                    TextButton(
+                        onClick = { mcpServersSelected = emptyList() },
+                    ) {
+                        Text(stringResource(R.string.sub_agents_detail_clear))
+                    }
+                }
             }
 
             // Skills
@@ -221,15 +232,24 @@ fun AgentDetailPage(agentName: String = "") {
                 headlineContent = { Text(stringResource(R.string.sub_agents_detail_skills)) },
                 supportingContent = { Text(skillsSelected.joinToString(", ").ifEmpty { stringResource(R.string.sub_agents_detail_inherit) }) },
             )
-            Button(
-                onClick = { showSkillSelector = true },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(stringResource(R.string.sub_agents_detail_select_skills))
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = { showSkillSelector = true },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(stringResource(R.string.sub_agents_detail_select_skills))
+                }
+                if (skillsSelected.isNotEmpty()) {
+                    TextButton(
+                        onClick = { skillsSelected = emptyList() },
+                    ) {
+                        Text(stringResource(R.string.sub_agents_detail_clear))
+                    }
+                }
             }
 
             // Effort
-            EffortSelector(
+            EffortSlider(
                 effort = effort,
                 onEffortChange = { effort = it },
             )
@@ -286,9 +306,8 @@ fun AgentDetailPage(agentName: String = "") {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun EffortSelector(
+private fun EffortSlider(
     effort: String?,
     onEffortChange: (String?) -> Unit,
 ) {
@@ -300,33 +319,23 @@ private fun EffortSelector(
         "high" to "High",
         "xhigh" to "X-High",
     )
-    var expanded by remember { mutableStateOf(false) }
 
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it },
-    ) {
-        OutlinedTextField(
-            value = labels[effort] ?: "",
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(stringResource(R.string.sub_agents_detail_effort)) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .menuAnchor(),
+    Column {
+        Text(
+            text = stringResource(R.string.sub_agents_detail_effort),
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.padding(bottom = 8.dp),
         )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
             options.forEach { value ->
-                DropdownMenuItem(
-                    text = { Text(labels[value] ?: "") },
-                    onClick = {
-                        onEffortChange(value)
-                        expanded = false
-                    },
+                val selected = effort == value
+                androidx.compose.material3.FilterChip(
+                    selected = selected,
+                    onClick = { onEffortChange(value) },
+                    label = { Text(labels[value] ?: "", style = MaterialTheme.typography.labelSmall) },
                 )
             }
         }
