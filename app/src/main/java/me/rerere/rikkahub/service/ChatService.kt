@@ -367,6 +367,7 @@ class ChatService(
             }
         }
         session.setJob(job)
+        job.invokeOnCompletion { checkPendingRecall(conversationId) }
     }
 
     private fun preprocessUserInputParts(parts: List<UIMessagePart>, assistant: Assistant): List<UIMessagePart> {
@@ -427,6 +428,7 @@ class ChatService(
         }
 
         session.setJob(job)
+        job.invokeOnCompletion { checkPendingRecall(conversationId) }
     }
 
     // ---- 处理工具调用审批 ----
@@ -490,6 +492,15 @@ class ChatService(
         }
 
         session.setJob(job)
+        job.invokeOnCompletion { checkPendingRecall(conversationId) }
+    }
+
+    /** 检查是否有 pending recall，有则触发 */
+    private fun checkPendingRecall(conversationId: Uuid) {
+        val pending = pendingRecall.remove(conversationId)
+        if (pending != null) {
+            fireRecall(conversationId, pending.description, pending.success)
+        }
     }
 
     // ---- 子代理 recall：不打断生成，等自然结束再触发 ----
@@ -549,10 +560,27 @@ class ChatService(
         )
         updateConversation(conversationId, updatedConversation)
 
-        val recallJob = appScope.launch {
+        setSessionJob(conversationId) {
             handleMessageComplete(conversationId)
         }
-        sessions[conversationId]?.setJob(recallJob)
+    }
+
+    /**
+     * 设置会话生成 job，并在 job 结束后检查 pending recall。
+     * 所有触发生成的地方都应使用此方法而非直接 session.setJob()，
+     * 以确保 pending recall 不会因竞态丢失。
+     */
+    private fun setSessionJob(conversationId: Uuid, block: suspend () -> Unit) {
+        val session = sessions[conversationId] ?: return
+        val job = appScope.launch { block() }
+        session.setJob(job)
+        job.invokeOnCompletion {
+            // job 结束后检查 pending recall
+            val pending = pendingRecall.remove(conversationId)
+            if (pending != null) {
+                fireRecall(conversationId, pending.description, pending.success)
+            }
+        }
     }
 
     // ---- 处理消息补全 ----
@@ -754,12 +782,6 @@ class ChatService(
                     updateAt = Instant.now()
                 )
                 updateConversation(conversationId, updatedConversation)
-
-                // 生成自然结束，检查 pending recall
-                val pending = pendingRecall.remove(conversationId)
-                if (pending != null) {
-                    fireRecall(conversationId, pending.description, pending.success)
-                }
 
                 // 生成结束：取消 Live Update 通知，后台时发送完成通知
                 appEventBus.emit(
