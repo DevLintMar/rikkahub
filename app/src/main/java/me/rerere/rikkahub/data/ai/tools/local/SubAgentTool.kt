@@ -52,9 +52,8 @@ internal fun buildSubAgentTool(
           need the result before continuing. Never fabricate or predict a pending
           agent's results — the notification is never something you write yourself;
           if the user asks before it arrives, say it's still running.
-        - When multiple sub-agents are running, results arrive one at a time as
-          they complete. Handle each result individually — do not wait for all
-          pending sub-agents to finish before responding.
+        - When multiple sub-agents are running, each will notify you upon
+          completion. Do not wait — report results as they arrive.
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
