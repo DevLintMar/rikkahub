@@ -498,10 +498,23 @@ class ChatService(
     private fun processRecallQueue(conversationId: Uuid) {
         if (recallProcessing.getOrDefault(conversationId, false)) return
         val session = sessions[conversationId] ?: return
-        if (session.getJob()?.isActive == true) return
-        val queue = recallQueues[conversationId] ?: return
-        val event = queue.poll() ?: return
+
+        // 双重检查：先锁住再确认没有活跃生成
         recallProcessing[conversationId] = true
+        val currentJob = session.getJob()
+        if (currentJob?.isActive == true) {
+            recallProcessing[conversationId] = false
+            return
+        }
+
+        val queue = recallQueues[conversationId] ?: run {
+            recallProcessing[conversationId] = false
+            return
+        }
+        val event = queue.poll() ?: run {
+            recallProcessing[conversationId] = false
+            return
+        }
 
         val job = appScope.launch {
             launchWithConversationReference(conversationId) {
@@ -541,7 +554,7 @@ class ChatService(
             }
         }
         session.setJob(job)
-        // job 完成后（被取消或自然结束），处理下一个 recall
+        // 等 job 完成后释放锁并处理下一个
         appScope.launch {
             try { job.join() } catch (_: CancellationException) { }
             recallProcessing[conversationId] = false
@@ -801,6 +814,8 @@ class ChatService(
                 generateSuggestion(conversationId, finalConversation)
             }
         }
+        // 主生成结束后，检查 recall 队列
+        processRecallQueue(conversationId)
     }
 
     private suspend fun createWorkspaceToolsIfReady(workspaceId: String?, cwd: String? = null): List<Tool> {
