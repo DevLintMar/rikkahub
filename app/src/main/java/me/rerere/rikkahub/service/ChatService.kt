@@ -180,7 +180,7 @@ class ChatService(
         appScope.launch {
             appEventBus.events.collect { event ->
                 if (event is AppEvent.SubAgentCompleted) {
-                    enqueueRecall(event)
+                    handleSubAgentRecall(event)
                 }
             }
         }
@@ -489,8 +489,6 @@ class ChatService(
     }
 
     // ---- 子代理 recall：不打断生成，等自然结束再触发 ----
-
-    private val pendingRecall = ConcurrentHashMap<Uuid, Boolean>()
 
     init {
         appScope.launch {
