@@ -50,6 +50,7 @@ import me.rerere.rikkahub.data.ai.tools.createConversationTools
 import me.rerere.rikkahub.data.ai.tools.local.LocalTools
 import me.rerere.rikkahub.data.ai.tools.local.McpToolGroup
 import me.rerere.rikkahub.data.ai.tools.local.SubAgentToolContext
+import me.rerere.rikkahub.data.ai.tools.local.TaskStatus
 import me.rerere.rikkahub.data.ai.tools.local.buildSubAgentTool
 import me.rerere.rikkahub.data.ai.tools.local.buildWorkflowTool
 import me.rerere.rikkahub.data.ai.tools.createSearchTools
@@ -509,10 +510,12 @@ class ChatService(
                 val statusLabel = if (event.success) "finished" else "failed"
 
                 // 1. 存 notification（供下次生成时注入）
+                val pendingCount = localTools.subAgentRuntime.getTaskInfos().count { it.status == TaskStatus.IN_PROGRESS }
                 val notificationXml = buildString {
                     appendLine("<task-notification>")
                     appendLine("  <task-id>${event.taskId}</task-id>")
                     appendLine("  <status>$statusText</status>")
+                    appendLine("  <pending-tasks>$pendingCount</pending-tasks>")
                     appendLine("  <summary>Agent \"${event.description}\" $statusText</summary>")
                     appendLine("  <result>${event.result}</result>")
                     append("</task-notification>")
