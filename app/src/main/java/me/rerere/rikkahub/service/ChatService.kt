@@ -180,7 +180,7 @@ class ChatService(
     private val pendingRecall = ConcurrentHashMap<Uuid, PendingRecall>()
 
     init {
-        // 监听子代理/工作流后台执行完成事件
+        // 监听子代理/工作流后台执行完成事件（仅有这一个 init 块订阅事件总线）
         appScope.launch {
             appEventBus.events.collect { event ->
                 if (event is AppEvent.SubAgentCompleted) {
@@ -494,16 +494,6 @@ class ChatService(
 
     // ---- 子代理 recall：不打断生成，等自然结束再触发 ----
 
-    init {
-        appScope.launch {
-            appEventBus.events.collect { event ->
-                if (event is AppEvent.SubAgentCompleted) {
-                    handleSubAgentRecall(event)
-                }
-            }
-        }
-    }
-
     private fun handleSubAgentRecall(event: AppEvent.SubAgentCompleted) {
         launchWithConversationReference(event.conversationId) {
             try {
@@ -765,6 +755,12 @@ class ChatService(
                 )
                 updateConversation(conversationId, updatedConversation)
 
+                // 生成自然结束，检查 pending recall
+                val pending = pendingRecall.remove(conversationId)
+                if (pending != null) {
+                    fireRecall(conversationId, pending.description, pending.success)
+                }
+
                 // 生成结束：取消 Live Update 通知，后台时发送完成通知
                 appEventBus.emit(
                     AppEvent.ChatGenerationEnded(
@@ -815,15 +811,6 @@ class ChatService(
             }
             launchWithConversationReference(conversationId) {
                 generateSuggestion(conversationId, finalConversation)
-            }
-        }
-        // 有 pending recall 且主 agent 空闲则触发 recall
-        val pending = pendingRecall.remove(conversationId)
-        if (pending != null) {
-            if (sessions[conversationId]?.getJob()?.isActive != true) {
-                fireRecall(conversationId, pending.description, pending.success)
-            } else {
-                pendingRecall[conversationId] = pending
             }
         }
     }
