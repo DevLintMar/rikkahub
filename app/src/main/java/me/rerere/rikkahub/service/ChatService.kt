@@ -171,9 +171,8 @@ class ChatService(
     )
     private val pendingNotifications = ConcurrentHashMap<Uuid, MutableList<SubAgentNotification>>()
 
-    // 子代理 recall 队列（串行，避免并发冲突）
-    private val recallQueues = ConcurrentHashMap<Uuid, java.util.concurrent.ConcurrentLinkedQueue<AppEvent.SubAgentCompleted>>()
-    private val recallProcessing = ConcurrentHashMap<Uuid, Boolean>()
+    // 子代理 pending recall 标记（生成结束后触发）
+    private val pendingRecall = ConcurrentHashMap<Uuid, Boolean>()
 
     init {
         // 监听子代理/工作流后台执行完成事件
@@ -488,77 +487,69 @@ class ChatService(
         session.setJob(job)
     }
 
-    // ---- 子代理 recall 队列（串行处理，不抢占主生成） ----
+    // ---- 子代理 recall：不打断生成，等自然结束再触发 ----
 
-    private fun enqueueRecall(event: AppEvent.SubAgentCompleted) {
-        recallQueues.getOrPut(event.conversationId) { java.util.concurrent.ConcurrentLinkedQueue() }.add(event)
-        processRecallQueue(event.conversationId)
-    }
+    private val pendingRecall = ConcurrentHashMap<Uuid, Boolean>()
 
-    private fun processRecallQueue(conversationId: Uuid) {
-        if (recallProcessing.getOrDefault(conversationId, false)) return
-        val session = sessions[conversationId] ?: return
-
-        // 双重检查：先锁住再确认没有活跃生成
-        recallProcessing[conversationId] = true
-        val currentJob = session.getJob()
-        if (currentJob?.isActive == true) {
-            recallProcessing[conversationId] = false
-            return
-        }
-
-        val queue = recallQueues[conversationId] ?: run {
-            recallProcessing[conversationId] = false
-            return
-        }
-        val event = queue.poll() ?: run {
-            recallProcessing[conversationId] = false
-            return
-        }
-
-        val job = appScope.launch {
-            launchWithConversationReference(conversationId) {
-                try {
-                    val conversation = getConversationFlow(conversationId).value
-                    val statusText = if (event.success) "completed" else "failed"
-                    val statusLabel = if (event.success) "finished" else "failed"
-                    val notificationXml = buildString {
-                        appendLine("<task-notification>")
-                        appendLine("  <task-id>${event.taskId}</task-id>")
-                        appendLine("  <status>$statusText</status>")
-                        appendLine("  <summary>Agent \"${event.description}\" $statusText</summary>")
-                        appendLine("  <result>${event.result}</result>")
-                        append("</task-notification>")
-                    }
-                    pendingNotifications.getOrPut(conversationId) { mutableListOf() } +=
-                        SubAgentNotification(
-                            insertedAt = conversation.currentMessages.size,
-                            xml = notificationXml,
-                        )
-                    val visibleMsg = UIMessage(
-                        role = MessageRole.ASSISTANT,
-                        parts = listOf(
-                            UIMessagePart.Text("\n\nAgent \"${event.description}\" $statusLabel\n")
-                        )
-                    )
-                    val updatedConversation = conversation.copy(
-                        messageNodes = conversation.messageNodes + visibleMsg.toMessageNode(),
-                        updateAt = Instant.now()
-                    )
-                    updateConversation(conversationId, updatedConversation)
-                    handleMessageComplete(conversationId)
-                } catch (e: Exception) {
-                    if (e is CancellationException) throw e
-                    Log.e(TAG, "processRecallQueue failed", e)
+    init {
+        appScope.launch {
+            appEventBus.events.collect { event ->
+                if (event is AppEvent.SubAgentCompleted) {
+                    handleSubAgentRecall(event)
                 }
             }
         }
-        session.setJob(job)
-        // 等 job 完成后释放锁并处理下一个
-        appScope.launch {
-            try { job.join() } catch (_: CancellationException) { }
-            recallProcessing[conversationId] = false
-            processRecallQueue(conversationId)
+    }
+
+    private fun handleSubAgentRecall(event: AppEvent.SubAgentCompleted) {
+        launchWithConversationReference(event.conversationId) {
+            try {
+                val conversation = getConversationFlow(event.conversationId).value
+                val statusText = if (event.success) "completed" else "failed"
+                val statusLabel = if (event.success) "finished" else "failed"
+
+                // 1. 存 notification（供下次生成时注入）
+                val notificationXml = buildString {
+                    appendLine("<task-notification>")
+                    appendLine("  <task-id>${event.taskId}</task-id>")
+                    appendLine("  <status>$statusText</status>")
+                    appendLine("  <summary>Agent \"${event.description}\" $statusText</summary>")
+                    appendLine("  <result>${event.result}</result>")
+                    append("</task-notification>")
+                }
+                pendingNotifications.getOrPut(event.conversationId) { mutableListOf() } +=
+                    SubAgentNotification(
+                        insertedAt = conversation.currentMessages.size,
+                        xml = notificationXml,
+                    )
+
+                // 2. 追加可见提示（SYSTEM role → 无头像、AI 不可见）
+                val visibleMsg = UIMessage(
+                    role = MessageRole.SYSTEM,
+                    parts = listOf(
+                        UIMessagePart.Text("Agent \"${event.description}\" $statusLabel")
+                    )
+                )
+                val updatedConversation = conversation.copy(
+                    messageNodes = conversation.messageNodes + visibleMsg.toMessageNode(),
+                    updateAt = Instant.now()
+                )
+                updateConversation(event.conversationId, updatedConversation)
+
+                // 3. 主 agent 空闲则立即 recall，否则等生成结束
+                val session = sessions[event.conversationId]
+                if (session?.getJob()?.isActive != true) {
+                    val recallJob = appScope.launch {
+                        handleMessageComplete(event.conversationId)
+                    }
+                    session?.setJob(recallJob)
+                } else {
+                    pendingRecall[event.conversationId] = true
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Log.e(TAG, "handleSubAgentRecall failed", e)
+            }
         }
     }
 
@@ -814,8 +805,18 @@ class ChatService(
                 generateSuggestion(conversationId, finalConversation)
             }
         }
-        // 主生成结束后，检查 recall 队列
-        processRecallQueue(conversationId)
+        // 有 pending recall 且主 agent 空闲则触发
+        if (pendingRecall.remove(conversationId) == true) {
+            if (sessions[conversationId]?.getJob()?.isActive != true) {
+                val recallJob = appScope.launch {
+                    handleMessageComplete(conversationId)
+                }
+                sessions[conversationId]?.setJob(recallJob)
+            } else {
+                // recall 期间被用户抢占，放回标记等下次空档
+                pendingRecall[conversationId] = true
+            }
+        }
     }
 
     private suspend fun createWorkspaceToolsIfReady(workspaceId: String?, cwd: String? = null): List<Tool> {
