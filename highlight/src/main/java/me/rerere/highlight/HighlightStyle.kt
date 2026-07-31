@@ -82,6 +82,11 @@ private fun getStyleForTokenType(
 /**
  * Colours follow the Atom One theme, the same palette the upstream stylesheet of that name uses,
  * so several scopes deliberately share a slot.
+ *
+ * The scope→slot assignment mirrors the pre-merge Prism.js classification so the on-screen colours
+ * match the old engine: `type`/`title.class`/`property` are class-name yellow, `literal` is
+ * boolean orange, `regexp`/`template-variable` are variable red, `built_in` is fallback grey
+ * (Prism had no slot for it). Tiered scopes like `title.function` resolve via [getStyleForTokenType].
  */
 private fun styleForScope(
     scope: String,
@@ -89,26 +94,41 @@ private fun styleForScope(
 ): SpanStyle? = when (scope) {
     "comment", "quote" -> SpanStyle(color = colors.comment, fontStyle = FontStyle.Italic)
 
-    "keyword", "doctag", "formula" -> SpanStyle(color = colors.keyword)
+    "keyword", "formula" -> SpanStyle(color = colors.keyword)
 
-    "string", "regexp", "addition" -> SpanStyle(color = colors.string)
+    "doctag" -> SpanStyle(color = colors.comment, fontStyle = FontStyle.Italic)
+
+    "string", "addition" -> SpanStyle(color = colors.string)
+
+    "regexp" -> SpanStyle(color = colors.variable)
+
+    "char" -> SpanStyle(color = colors.string)
 
     "attribute" -> SpanStyle(color = colors.attrValue)
 
-    "attr", "template-variable" -> SpanStyle(color = colors.attrName)
+    "attr", "selector-attr" -> SpanStyle(color = colors.attrName)
 
-    "number", "type", "selector-class", "selector-attr", "selector-pseudo" ->
-        SpanStyle(color = colors.number)
+    "template-variable" -> SpanStyle(color = colors.variable)
 
-    "literal", "char", "operator" -> SpanStyle(color = colors.operator)
+    "number" -> SpanStyle(color = colors.number)
 
-    "built_in" -> SpanStyle(color = colors.className)
+    "type", "selector-class" -> SpanStyle(color = colors.className)
+
+    "literal" -> SpanStyle(color = colors.boolean)
+
+    "operator" -> SpanStyle(color = colors.operator)
+
+    "built_in" -> SpanStyle(color = colors.fallback)
+
+    "title.class" -> SpanStyle(color = colors.className)
 
     "title", "function", "symbol", "bullet", "link", "meta", "selector-id" ->
         SpanStyle(color = colors.function)
 
-    "section", "name", "selector-tag", "deletion", "subst", "property" ->
+    "section", "name", "selector-tag", "deletion", "subst" ->
         SpanStyle(color = colors.property)
+
+    "property" -> SpanStyle(color = colors.className)
 
     "tag" -> SpanStyle(color = colors.tag)
 
