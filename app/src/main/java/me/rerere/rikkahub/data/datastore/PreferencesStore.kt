@@ -736,7 +736,7 @@ internal val DEFAULT_ASSISTANTS = listOf(
             You are a helpful assistant, called {{char}}, based on model {{model_name}}.
 
             ## Info
-            - Date: {{cur_date}}
+            - Time: {{cur_datetime}}
             - Locale: {{locale}}
             - Timezone: {{timezone}}
             - Device Info: {{device_info}}
