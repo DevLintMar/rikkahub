@@ -19,6 +19,7 @@ import me.rerere.rikkahub.ui.pages.extensions.subagents.AgentDetailVM
 import me.rerere.rikkahub.ui.pages.extensions.subagents.SubAgentsVM
 import me.rerere.rikkahub.ui.pages.extensions.workspace.WorkspaceDetailVM
 import me.rerere.rikkahub.ui.pages.extensions.workspace.WorkspaceVM
+import me.rerere.rikkahub.ui.pages.setting.SettingEmbedderViewModel
 import me.rerere.rikkahub.ui.pages.setting.SettingVM
 import me.rerere.rikkahub.ui.pages.share.handler.ShareHandlerVM
 import me.rerere.rikkahub.ui.pages.translator.TranslatorVM
@@ -42,6 +43,7 @@ val viewModelModule = module {
     }
     viewModelOf(::ChatDrawerVM)
     viewModelOf(::SettingVM)
+    viewModelOf(::SettingEmbedderViewModel)
     viewModelOf(::DebugVM)
     viewModelOf(::HistoryVM)
     viewModelOf(::AssistantVM)

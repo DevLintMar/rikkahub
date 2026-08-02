@@ -27,6 +27,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,7 +38,6 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import me.rerere.rikkahub.data.datastore.SettingsStore
-import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.FormItem
 import me.rerere.rikkahub.ui.components.ui.OutlinedNumberInput
@@ -45,25 +45,29 @@ import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.utils.plus
+import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 
 @Composable
-fun SettingEmbedderPage() {
+fun SettingEmbedderPage(vm: SettingEmbedderViewModel = koinViewModel()) {
     val settingsStore: SettingsStore = koinInject()
-    val conversationRepo: ConversationRepository = koinInject()
     val settings = LocalSettings.current
     val toaster = LocalToaster.current
     val scope = rememberCoroutineScope()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-
-    var isRebuilding by remember { mutableStateOf(false) }
-    var rebuildProgress by remember { mutableStateOf(0 to 0) }
 
     val embedder = settings.embedder
     var baseUrl by remember(embedder.baseUrl) { mutableStateOf(embedder.baseUrl) }
     var model by remember(embedder.model) { mutableStateOf(embedder.model) }
     var apiKey by remember(embedder.apiKey) { mutableStateOf(embedder.apiKey) }
     var batchSize by remember(embedder.batchSize) { mutableStateOf(embedder.batchSize) }
+
+    LaunchedEffect(vm.rebuildFinished) {
+        vm.rebuildFinished?.let { message ->
+            toaster.show(message)
+            vm.consumeRebuildFinished()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -226,27 +230,11 @@ fun SettingEmbedderPage() {
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Button(
-                            onClick = {
-                                if (isRebuilding) return@Button
-                                scope.launch {
-                                    isRebuilding = true
-                                    rebuildProgress = 0 to 0
-                                    try {
-                                        conversationRepo.rebuildAllIndexes { current, total ->
-                                            rebuildProgress = current to total
-                                        }
-                                        toaster.show("语义索引重建完成")
-                                    } catch (e: Exception) {
-                                        toaster.show("重建失败：${e.message ?: "未知错误"}")
-                                    } finally {
-                                        isRebuilding = false
-                                    }
-                                }
-                            },
-                            enabled = !isRebuilding,
+                            onClick = { vm.rebuild() },
+                            enabled = !vm.isRebuilding,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            if (isRebuilding) {
+                            if (vm.isRebuilding) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(18.dp),
                                     strokeWidth = 2.dp,
@@ -259,12 +247,14 @@ fun SettingEmbedderPage() {
                                 )
                             }
                             Spacer(Modifier.width(8.dp))
-                            Text(if (isRebuilding) "重建中..." else "重建语义索引")
+                            Text(if (vm.isRebuilding) "重建中..." else "重建语义索引")
                         }
-                        if (isRebuilding) {
-                            val (current, total) = rebuildProgress
+                        if (vm.isRebuilding) {
+                            val (current, total) = vm.progress
                             LinearProgressIndicator(
-                                progress = if (total > 0) current.toFloat() / total.toFloat() else 0f,
+                                progress = {
+                                    if (total > 0) current.toFloat() / total.toFloat() else 0f
+                                },
                                 modifier = Modifier.fillMaxWidth()
                             )
                             Text(
