@@ -437,6 +437,10 @@ class SettingsStore(
         }
     }
 
+    suspend fun updateEmbedder(fn: (EmbedderConfig) -> EmbedderConfig) {
+        update { it.copy(embedder = fn(it.embedder)) }
+    }
+
     suspend fun updateAssistantModel(assistantId: Uuid, modelId: Uuid) {
         update { settings ->
             settings.copy(
@@ -518,10 +522,20 @@ class SettingsStore(
 }
 
 @Serializable
+data class EmbedderConfig(
+    val enabled: Boolean = false,
+    val baseUrl: String = "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    val model: String = "qwen3-embedding-8b",
+    val apiKey: String = "",
+    val batchSize: Int = 8,
+)
+
+@Serializable
 data class Settings(
     @Transient
     val init: Boolean = false,
     val dynamicColor: Boolean = true,
+    val embedder: EmbedderConfig = EmbedderConfig(),
     val themeId: String = PresetThemes[0].id,
     val customThemes: List<CustomTheme> = emptyList(),
     val developerMode: Boolean = false,
