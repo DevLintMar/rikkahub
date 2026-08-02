@@ -153,8 +153,9 @@ object ToolPresentationResolver {
     fun resolve(tool: UIMessagePart.Tool): ToolPresentation {
         val kind = kindFor(tool.toolName)
         val envelope = parseEnvelope(tool.output)
-        val errorMessage = envelope?.get("error") as? JsonPrimitive
-            ?.let { it.contentOrNull }?.takeIf { it.isNotBlank() }
+        val errorMessage = envelope?.get("error")
+            ?.let { (it as? JsonPrimitive)?.contentOrNull }
+            ?.takeIf { it.isNotBlank() }
         val exitCode = (envelope?.get("exitCode") as? JsonPrimitive)?.intOrNull
         return ToolPresentation(
             toolName = tool.toolName,
@@ -193,6 +194,8 @@ object ToolPresentationResolver {
             ToolKind.SHELL_EXECUTE -> args?.string("command")
                 ?.replace('\n', ' ')?.trim()
             ToolKind.FILE_READ, ToolKind.FILE_WRITE, ToolKind.FILE_EDIT -> envelope?.string("path")
+            ToolKind.FILE_GLOB, ToolKind.FILE_GREP -> args?.string("pattern")
+                ?: envelope?.string("pattern")
             ToolKind.CLIPBOARD, ToolKind.TEXT_TO_SPEECH, ToolKind.SCREEN_TIME,
             ToolKind.CALENDAR_QUERY, ToolKind.CALENDAR_CREATE, ToolKind.TIME_INFO,
             ToolKind.EVAL_JAVASCRIPT, ToolKind.RUN_WORKFLOW, ToolKind.SUB_AGENT -> envelope?.string("path")
@@ -213,6 +216,7 @@ object ToolPresentationResolver {
             ?.let { (it as? JsonPrimitive)?.contentOrNull?.toLongOrNull()?.toInt() }
         ToolKind.SCREEN_TIME -> envelope?.arraySize("apps")
         ToolKind.CALENDAR_QUERY -> envelope?.arraySize("events")
+        ToolKind.FILE_GLOB, ToolKind.FILE_GREP -> envelope?.arraySize("matches")
         ToolKind.CLIPBOARD, ToolKind.TEXT_TO_SPEECH, ToolKind.CALENDAR_CREATE, ToolKind.TIME_INFO,
         ToolKind.EVAL_JAVASCRIPT, ToolKind.RUN_WORKFLOW, ToolKind.SUB_AGENT, ToolKind.UNKNOWN -> null
     }
@@ -736,13 +740,19 @@ private fun results(context: ToolUIContext): JsonArray =
 
 同步核对该 renderer 的 `Summary`/`Preview` 对每条 result 读取的字段（`title`/`conversation_id`/`messages` 等信封里都有，保持 camelCase）。
 
-- [ ] **Step 5: Verify（CI 编译）** — 参照 Task 3 Step 4。
+- [ ] **Step 5: `TextToSpeechToolUI` 补 `Preview`（TTS 重播回归，用户拍板 2026-08-02）**
 
-- [ ] **Step 6: Commit**
+Task 4 弃用 `renderer.Summary` 后，TTS 的重播按钮丢失（`TextToSpeechToolUI` 无 `Preview` override，详情 Sheet 走 `DefaultToolPreview` 显示原始 JSON）。给 `TextToSpeechToolUI` 加 `Preview` override（`BuiltinToolUIs.kt` ~289-335）：
+- 复用原 `Summary` 里的重播按钮（`FilledTonalIconButton`，emit `AppEvent.Speak(text)`，`BuiltinToolUIs.kt:323-332`），搬到 Preview 里；同时展示 TTS 文本（信封 `text` 字段，若有）。
+- 若 `hasSummary`/`Summary` override 因此无调用者，可顺手删掉该 renderer 的 Summary（其余 renderer 的 Summary 保留，final review 再统一裁）。
+
+- [ ] **Step 6: Verify（CI 编译）** — 参照 Task 3 Step 4。
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add app/src/main/java/me/rerere/rikkahub/ui/components/message/tools/BuiltinToolUIs.kt
-git commit -m "fix(ui): 修复 4 处展示回归（ScrapeWebPreview/SearchWeb answer/RecentChats/ConversationSearch 适配信封）"
+git commit -m "fix(ui): 修复展示回归 + TTS Preview 重播（ScrapeWebPreview/SearchWeb answer/RecentChats/ConversationSearch/TextToSpeech）"
 ```
 
 ---
