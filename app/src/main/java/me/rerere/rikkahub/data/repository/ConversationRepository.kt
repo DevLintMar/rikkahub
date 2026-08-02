@@ -13,12 +13,15 @@ import kotlinx.coroutines.flow.map
 import me.rerere.ai.ui.UIMessage
 import me.rerere.rikkahub.data.db.AppDatabase
 import me.rerere.rikkahub.data.db.fts.MessageFtsManager
+import me.rerere.rikkahub.data.db.fts.MessageSearchResult
 import me.rerere.rikkahub.data.db.fts.MessageSearchSort
 import me.rerere.rikkahub.data.db.dao.ConversationDAO
 import me.rerere.rikkahub.data.db.dao.FavoriteDAO
 import me.rerere.rikkahub.data.db.dao.MessageNodeDAO
 import me.rerere.rikkahub.data.db.entity.ConversationEntity
 import me.rerere.rikkahub.data.db.entity.MessageNodeEntity
+import me.rerere.rikkahub.data.embedding.SemanticIndexManager
+import me.rerere.rikkahub.data.embedding.rrfFuse
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.MessageNode
@@ -33,6 +36,7 @@ class ConversationRepository(
     private val database: AppDatabase,
     private val filesManager: FilesManager,
     private val messageFtsManager: MessageFtsManager,
+    private val semanticIndexManager: SemanticIndexManager,
 ) {
     companion object {
         private const val PAGE_SIZE = 20
@@ -291,6 +295,7 @@ class ConversationRepository(
             saveMessageNodes(conversation.id.toString(), conversation.messageNodes)
         }
         messageFtsManager.indexConversation(conversation)
+        semanticIndexManager.markPending(conversation)
     }
 
     suspend fun updateConversation(conversation: Conversation) {
@@ -303,6 +308,7 @@ class ConversationRepository(
             saveMessageNodes(conversation.id.toString(), conversation.messageNodes)
         }
         messageFtsManager.indexConversation(conversation)
+        semanticIndexManager.markPending(conversation)
     }
 
     suspend fun deleteConversation(conversation: Conversation) {
@@ -313,6 +319,7 @@ class ConversationRepository(
             conversation
         }
         messageFtsManager.deleteConversation(conversation.id.toString())
+        semanticIndexManager.deleteConversation(conversation.id)
         database.withTransaction {
             // message_node 会通过 CASCADE 自动删除
             conversationDAO.delete(
@@ -327,6 +334,35 @@ class ConversationRepository(
         sort: MessageSearchSort = MessageSearchSort.RELEVANCE,
     ) = messageFtsManager.search(keyword, sort)
 
+    suspend fun searchMessagesHybrid(query: String, limit: Int = 15): List<MessageSearchResult> {
+        val fts = searchMessages(query, MessageSearchSort.RELEVANCE).take(limit)
+        if (!semanticIndexManager.isConfigured()) return fts
+        val semanticHits = semanticIndexManager.search(query, limit)
+        if (semanticHits.isEmpty()) return fts
+
+        // 为语义命中解析 title / updateAt（按 conversation 去重加载，避免 N+1）
+        val metaByConv = HashMap<String, Pair<String, Instant>>()
+        fun metaFor(conversationId: String): Pair<String, Instant> =
+            metaByConv.getOrPut(conversationId) {
+                conversationDAO.getConversationById(conversationId)
+                    ?.let { entity -> entity.title to Instant.ofEpochMilli(entity.updateAt) }
+                    ?: ("" to Instant.EPOCH)
+            }
+
+        val semanticResults = semanticHits.map { hit ->
+            val (title, updateAt) = metaFor(hit.conversationId)
+            MessageSearchResult(
+                nodeId = hit.nodeId,
+                messageId = hit.messageId,
+                conversationId = hit.conversationId,
+                title = title,
+                updateAt = updateAt,
+                snippet = hit.chunkText.take(120),
+            )
+        }
+        return rrfFuse(fts, semanticResults, k = 60).take(limit)
+    }
+
     suspend fun rebuildAllIndexes(onProgress: (current: Int, total: Int) -> Unit = { _, _ -> }) {
         messageFtsManager.deleteAll()
         val allIds = conversationDAO.getAllIds()
@@ -338,6 +374,17 @@ class ConversationRepository(
             messageFtsManager.indexConversation(conversation)
             onProgress(index + 1, total)
         }
+
+        // 语义索引重建：清空后全量 markPending 并立即嵌入
+        semanticIndexManager.deleteAll()
+        allIds.forEachIndexed { index, id ->
+            val entity = conversationDAO.getConversationById(id) ?: return@forEachIndexed
+            val nodes = loadMessageNodes(entity.id)
+            val conversation = conversationEntityToConversation(entity, nodes)
+            semanticIndexManager.markPending(conversation)
+            onProgress(index + 1, total)
+        }
+        semanticIndexManager.indexPending(limit = Int.MAX_VALUE)
     }
 
     suspend fun deleteConversationOfAssistant(assistantId: Uuid) {
