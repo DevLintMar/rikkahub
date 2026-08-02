@@ -249,6 +249,19 @@ class WorkspaceRepository(
         manager.exportRootfsFile(workspace.root, path, outputStream)
     }
 
+    /** 按 Rootfs 内绝对路径读取字节范围 [offset, offset+limit), limit <= 0 读到文件尾 */
+    suspend fun exportRootfsFileRange(
+        id: String,
+        path: String,
+        offset: Long,
+        limit: Long,
+        outputStream: OutputStream,
+    ) = withContext(Dispatchers.IO) {
+        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        manager.ensureWorkspace(workspace.root)
+        manager.exportRootfsFileRange(workspace.root, path, offset, limit, outputStream)
+    }
+
     suspend fun deleteFile(
         id: String,
         area: WorkspaceStorageArea,

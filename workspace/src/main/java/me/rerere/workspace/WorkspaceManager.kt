@@ -143,6 +143,34 @@ class WorkspaceManager(
         outputStream.use { out -> file.inputStream().use { it.copyTo(out) } }
     }
 
+    /** 读取文件字节范围 [offset, offset+limit)。limit <= 0 表示读到文件尾。 */
+    fun exportRootfsFileRange(
+        root: String,
+        path: String,
+        offset: Long,
+        limit: Long,
+        outputStream: OutputStream,
+    ) {
+        val file = resolveRootfsFile(root, path)
+        file.requireReadableFile(path)
+        file.inputStream().use { input ->
+            input.skip(offset.coerceAtLeast(0))
+            if (limit <= 0) {
+                input.copyTo(outputStream)
+            } else {
+                // kotlin.io.DEFAULT_BUFFER_SIZE 是 stdlib internal, 这里直接写 8192
+                val buffer = ByteArray(8192)
+                var remaining = limit
+                while (remaining > 0) {
+                    val read = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                    if (read < 0) break
+                    outputStream.write(buffer, 0, read)
+                    remaining -= read
+                }
+            }
+        }
+    }
+
     private fun resolveRootfsFile(root: String, path: String): File {
         val location = resolveRootfsPath(root, path)
         return fileSystem.resolve(location.rootDir, location.relativePath)

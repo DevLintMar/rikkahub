@@ -5,6 +5,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
@@ -79,6 +80,14 @@ private fun createReadFileTool(
         InputSchema.Obj(
             properties = buildJsonObject {
                 putPathProperty(required = true)
+                put("offset", buildJsonObject {
+                    put("type", "integer")
+                    put("description", "字节偏移，用于分段读大文件")
+                })
+                put("limit", buildJsonObject {
+                    put("type", "integer")
+                    put("description", "最大读取字节数")
+                })
             },
             required = listOf("path"),
         )
@@ -89,13 +98,26 @@ private fun createReadFileTool(
         if (path.isImagePath()) {
             workspaceRepository.readImageInRootfs(workspaceId, path)
         } else {
-            val text = workspaceRepository.readTextInRootfs(workspaceId, path)
+            val offset = it.jsonObject["offset"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()?.coerceAtLeast(0) ?: 0L
+            val limit = it.jsonObject["limit"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()?.coerceAtLeast(0) ?: 0L
+            val totalChars = workspaceRepository.rootfsFileSize(workspaceId, path)
+            if (offset >= totalChars && totalChars > 0) {
+                error("offset $offset is beyond end of file ($totalChars bytes)")
+            }
+            val buffer = ByteArrayOutputStream()
+            workspaceRepository.exportRootfsFileRange(workspaceId, path, offset, limit, buffer)
+            val text = buffer.toString(Charsets.UTF_8.name())
+            val hasMore = limit > 0 && offset + limit < totalChars
             listOf(
                 UIMessagePart.Text(
                     buildJsonObject {
-                        put("type", "workspace_read_file")
-                        put("path", path)
-                        put("text", text)
+                        put("type", JsonPrimitive("workspace_read_file"))
+                        put("path", JsonPrimitive(path))
+                        put("text", JsonPrimitive(text))
+                        put("offset", JsonPrimitive(offset))
+                        put("limit", JsonPrimitive(limit))
+                        put("totalChars", JsonPrimitive(totalChars))
+                        put("hasMore", JsonPrimitive(hasMore))
                     }.toString()
                 )
             )
