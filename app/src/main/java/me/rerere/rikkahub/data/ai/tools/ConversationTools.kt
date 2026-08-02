@@ -1,6 +1,5 @@
 package me.rerere.rikkahub.data.ai.tools
 
-import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
@@ -53,13 +52,16 @@ fun createConversationTools(
                 assistantId = assistantId,
                 limit = limit,
             )
-            val payload = buildJsonArray {
-                recent.forEach { conversation ->
-                    add(buildJsonObject {
-                        put("id", conversation.id.toString())
-                        put("title", conversation.title.ifBlank { "Untitled" })
-                        put("last_chat", conversation.updateAt.toLocalDate())
-                    })
+            val payload = buildJsonObject {
+                put("type", "recent_chats")
+                putJsonArray("conversations") {
+                    recent.forEach { conversation ->
+                        add(buildJsonObject {
+                            put("id", conversation.id.toString())
+                            put("title", conversation.title.ifBlank { "Untitled" })
+                            put("last_chat", conversation.updateAt.toLocalDate())
+                        })
+                    }
                 }
             }
             listOf(UIMessagePart.Text(JsonInstantPretty.encodeToString(payload)))
@@ -104,23 +106,27 @@ fun createConversationTools(
             val limit = (it.jsonObject["limit"]?.jsonPrimitive?.intOrNull ?: 15).coerceIn(1, 50)
             val contextWindow = (it.jsonObject["context_window"]?.jsonPrimitive?.intOrNull ?: 8).coerceIn(4, 32)
             val windows = conversationRepo.searchConversationsHybrid(query, limit, contextWindow)
-            val payload = buildJsonArray {
-                windows.forEach { w ->
-                    add(buildJsonObject {
-                        put("title", w.title.ifBlank { "Untitled" })
-                        put("conversation_id", w.conversationId)
-                        put("top_score", w.topScore)
-                        put("match_count", w.matchCount)
-                        putJsonArray("messages") {
-                            w.messages.forEach { m ->
-                                add(buildJsonObject {
-                                    put("participant", m.participant)
-                                    put("text", m.text)
-                                    put("timestamp", m.timestamp)
-                                })
+            val payload = buildJsonObject {
+                put("type", "conversation_search")
+                put("query", query)
+                putJsonArray("results") {
+                    windows.forEach { w ->
+                        add(buildJsonObject {
+                            put("title", w.title.ifBlank { "Untitled" })
+                            put("conversation_id", w.conversationId)
+                            put("top_score", w.topScore)
+                            put("match_count", w.matchCount)
+                            putJsonArray("messages") {
+                                w.messages.forEach { m ->
+                                    add(buildJsonObject {
+                                        put("participant", m.participant)
+                                        put("text", m.text)
+                                        put("timestamp", m.timestamp)
+                                    })
+                                }
                             }
-                        }
-                    })
+                        })
+                    }
                 }
             }
             listOf(UIMessagePart.Text(JsonInstantPretty.encodeToString(payload)))
@@ -166,6 +172,7 @@ fun createConversationTools(
 
             val page = messages.drop(offset).take(limit)
             val payload = buildJsonObject {
+                put("type", "read_conversation")
                 put("conversation_id", conversationId)
                 put("title", conversation.title.ifBlank { "Untitled" })
                 put("total_messages", messages.size)
