@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.ui.components.message
 
 import androidx.compose.ui.util.fastForEachIndexed
+import kotlin.time.Clock
 import me.rerere.ai.ui.UIMessagePart
 
 /**
@@ -57,4 +58,21 @@ fun List<UIMessagePart>.groupMessageParts(): List<MessagePartBlock> {
     }
     flushThinkingSteps()
     return result
+}
+
+/** 聚合思考块：返回 (思考总毫秒数, 已执行的工具数)。 */
+fun List<ThinkingStep>.thinkingAggregate(): Pair<Long, Int> {
+    var thoughtMs = 0L
+    var toolCount = 0
+    forEach { step ->
+        when (step) {
+            is ThinkingStep.ReasoningStep -> {
+                val r = step.reasoning
+                val end = r.finishedAt ?: Clock.System.now()
+                thoughtMs += (end - r.createdAt).inWholeMilliseconds
+            }
+            is ThinkingStep.ToolStep -> if (step.tool.isExecuted) toolCount++
+        }
+    }
+    return thoughtMs to toolCount
 }
