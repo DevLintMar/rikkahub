@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.ui.pages.setting
 
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Connect
 import me.rerere.hugeicons.stroke.Refresh01
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
@@ -203,6 +205,73 @@ fun SettingEmbedderPage(vm: SettingEmbedderViewModel = koinViewModel()) {
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             )
+                        }
+
+                        FormItem(
+                            label = {
+                                Text("相似度阈值")
+                            },
+                            description = {
+                                Text("语义搜索仅保留余弦相似度 ≥ 该值的结果。值越高越精确但召回越少。")
+                            }
+                        ) {
+                            Column {
+                                Text(
+                                    text = "≥ ${"%.2f".format(embedder.threshold)}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Slider(
+                                    value = embedder.threshold,
+                                    onValueChange = { value ->
+                                        scope.launch {
+                                            settingsStore.updateEmbedder { it.copy(threshold = value) }
+                                        }
+                                    },
+                                    valueRange = 0f..1f,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+
+                        FormItem(
+                            label = {
+                                Text("测试连接")
+                            },
+                            description = {
+                                Text("用当前填写的配置发一次探测嵌入，验证 baseUrl / model / API Key 是否可用。")
+                            }
+                        ) {
+                            Button(
+                                onClick = { vm.testConnection(baseUrl, model, apiKey) },
+                                enabled = vm.testState != SettingEmbedderViewModel.TestState.TESTING,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                if (vm.testState == SettingEmbedderViewModel.TestState.TESTING) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = HugeIcons.Connect,
+                                        contentDescription = null
+                                    )
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                Text(if (vm.testState == SettingEmbedderViewModel.TestState.TESTING) "测试中..." else "测试连接")
+                            }
+                            vm.testResult?.let { result ->
+                                Text(
+                                    text = result,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (result.startsWith("连接成功"))
+                                        MaterialTheme.colorScheme.primary
+                                    else
+                                        MaterialTheme.colorScheme.error
+                                )
+                            }
                         }
                     }
                 }

@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import me.rerere.rikkahub.data.embedding.EmbeddingClient
 import me.rerere.rikkahub.data.repository.ConversationRepository
 
 /**
@@ -19,6 +20,7 @@ import me.rerere.rikkahub.data.repository.ConversationRepository
  */
 class SettingEmbedderViewModel(
     private val conversationRepo: ConversationRepository,
+    private val embeddingClient: EmbeddingClient,
 ) : ViewModel() {
     var isRebuilding by mutableStateOf(false)
         private set
@@ -27,6 +29,14 @@ class SettingEmbedderViewModel(
         private set
 
     var rebuildFinished by mutableStateOf<String?>(null)
+        private set
+
+    enum class TestState { IDLE, TESTING, DONE }
+
+    var testState by mutableStateOf(TestState.IDLE)
+        private set
+
+    var testResult by mutableStateOf<String?>(null)
         private set
 
     fun rebuild() {
@@ -54,7 +64,41 @@ class SettingEmbedderViewModel(
         }
     }
 
+    /** 用当前表单值（未必已保存）发起一次探测嵌入，验证 baseUrl/model/apiKey 是否可用。 */
+    fun testConnection(baseUrl: String, model: String, apiKey: String) {
+        if (testState == TestState.TESTING) return
+        viewModelScope.launch {
+            testState = TestState.TESTING
+            testResult = null
+            val start = System.currentTimeMillis()
+            val embeddings = try {
+                embeddingClient.computeEmbeddings(
+                    texts = listOf("测试"),
+                    model = model.ifBlank { "（未填）" },
+                    baseUrl = baseUrl.ifBlank { "（未填）" },
+                    apiKey = apiKey,
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+            val elapsed = System.currentTimeMillis() - start
+            val emb = embeddings?.firstOrNull()
+            testState = TestState.DONE
+            testResult = if (emb != null && emb.isNotEmpty()) {
+                "连接成功：维度 ${emb.size}，耗时 ${elapsed}ms，向量前 3 维 [${emb.take(3).joinToString { "%.4f".format(it) }}]"
+            } else {
+                "连接失败：未返回有效向量（耗时 ${elapsed}ms，请检查 baseUrl / model / API Key）"
+            }
+        }
+    }
+
     fun consumeRebuildFinished() {
         rebuildFinished = null
+    }
+
+    fun consumeTestResult() {
+        testResult = null
     }
 }

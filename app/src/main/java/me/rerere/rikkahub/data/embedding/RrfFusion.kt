@@ -2,8 +2,6 @@ package me.rerere.rikkahub.data.embedding
 
 import me.rerere.rikkahub.data.db.fts.MessageSearchResult
 
-const val RAG_THRESHOLD = 0.3f
-
 data class SemanticHit(
     val messageId: String,
     val nodeId: String,

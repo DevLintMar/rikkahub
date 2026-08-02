@@ -535,6 +535,7 @@ data class EmbedderConfig(
     val model: String = "qwen3-embedding-8b",
     val apiKey: String = "",
     val batchSize: Int = 8,
+    val threshold: Float = 0.3f,
 )
 
 @Serializable
