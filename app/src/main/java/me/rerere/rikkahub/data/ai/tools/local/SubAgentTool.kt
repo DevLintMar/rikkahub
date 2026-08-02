@@ -206,7 +206,6 @@ private val RESTRICTED_TOOLS = setOf(
     "clipboard_tool",
     "recent_chats",
     "conversation_search",
-    "read_conversation",
     "sub_agent",
     "run_workflow",
 )
@@ -219,7 +218,7 @@ private val RESTRICTED_TOOLS = setOf(
  * - MCP 工具受 `mcpServers` 控制
  * - Skill 工具受 `skills` 控制
  * - 某些工具（ask_user、clipboard、recent_chats、conversation_search、
- *   read_conversation、sub_agent、run_workflow）即使是 `*` 通配符也不会自动包含，
+ *   sub_agent、run_workflow）即使是 `*` 通配符也不会自动包含，
  *   必须在 `tools` 中显式写明才可用。
  */
 private fun filterToolsByAgent(
