@@ -53,7 +53,7 @@ enum class ToolState { CALLING, RUNNING, SUCCEEDED, EMPTY, FAILED, STOPPED }
 
 - `BACKGROUND_RUNNING` 不做（workspace_shell 的后台任务暂不单独呈现，归入 `RUNNING`/`SUCCEEDED`）。
 - 状态来源：执行期回传（CALLING→RUNNING）+ 结果信封推断（见 §3.2）。
-- **`liveOutput` 不持久化**：仅执行中存在，结束后清空，避免 DB 膨胀。`toolState` 持久化。
+- `liveOutput` 用 `@Transient` 标注**不持久化**（仅执行中内存存在，结束后清空，避免 DB 膨胀）。`toolState` 持久化。
 
 ### 2.2 `Tool.execute` 改流式（ai 模块 `core/Tool.kt`）
 
@@ -94,8 +94,9 @@ fun execute(args: JsonElement): Flow<ToolOutput>
 
 ### 2.4 持久化
 
-- `toolState` 纳入 `UIMessagePart.Tool` 的序列化 → Room **AutoMigration 25→26**（`message_node` 表存储的 node JSON 会带上新字段）。
-- migration 后 schema JSON（26.json）经已有 CI artifact 流程拉回提交。
+- `toolState` 是 `UIMessagePart.Tool` 的序列化字段，存于 `message_node.messages` TEXT 列（序列化 JSON）——**列不变，不需要 Room migration**。
+- `JsonInstant` 配置 `ignoreUnknownKeys=true` + `encodeDefaults=true`：旧 node JSON 缺新字段自动补默认值（`toolState=CALLING`），向后兼容。
+- `liveOutput` 用 `@Transient` 标注，**不持久化**（仅流式期间内存中存在，结束后清空）。
 
 ---
 
@@ -301,7 +302,6 @@ data class ToolPresentation(
 | app | `data/ai/tools/WorkspaceTools.kt` | 信封 + 错误码 + `workspace_shell` 流式自限 + `workspace_read_file` 加 `offset`/`limit` 分段读 |
 | app | `data/ai/tools/local/*.kt`（memory/clipboard/tts/calendar/ask_user/skill） | 信封 + 错误码（一次性工具） |
 | app | `service/ChatService.kt` | MCP 工具包装 adapter；失败文本简短化 |
-| app | `data/db/AppDatabase.kt` | version 26 + AutoMigration 25→26 |
 | app | `ui/components/message/tools/ToolPresentation.kt`（新增） | 解析器 + `toolSummary` + `ToolKind` |
 | app | `ui/components/ui/ChainOfThought.kt` | 聚合折叠头（左 AiBrain02 + 文案 + 右箭头） |
 | app | `ui/components/message/ChatMessage.kt` | ThinkingBlock 接入聚合头 |
