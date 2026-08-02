@@ -46,7 +46,7 @@ import me.rerere.hugeicons.stroke.FileAdd
 import me.rerere.hugeicons.stroke.FileEdit
 import me.rerere.hugeicons.stroke.FileView
 import me.rerere.hugeicons.stroke.Folder02
-import me.rerere.hugeicons.stroke.SearchList
+import me.rerere.hugeicons.stroke.Search01
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.richtext.DiffAddedColor
 import me.rerere.rikkahub.ui.components.richtext.DiffRemovedColor
@@ -576,7 +576,7 @@ object GrepToolUI : ToolUIRenderer {
 
     override val toolName: String = "workspace_grep"
 
-    override fun icon(context: ToolUIContext): ImageVector = HugeIcons.SearchList
+    override fun icon(context: ToolUIContext): ImageVector = HugeIcons.Search01
 
     @Composable
     override fun title(context: ToolUIContext): String {
