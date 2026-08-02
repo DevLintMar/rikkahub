@@ -38,6 +38,7 @@ val ALL_BASE_TOOLS = listOf(
     "calendar_create",
     "recent_chats",
     "conversation_search",
+    "read_conversation",
     "sub_agent",
     "run_workflow",
     "memory_tool",
