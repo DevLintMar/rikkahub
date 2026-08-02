@@ -343,42 +343,44 @@ private fun MessagePartsBlock(
                     val (thoughtMs, toolCount) = remember(block.steps) { block.steps.thinkingAggregate() }
                     val aggregateHeader: (@Composable () -> Unit)? =
                         if (isReasoningOnlyBlock) null else {
-                            val runningTool = block.steps.filterIsInstance<ThinkingStep.ToolStep>()
-                                .lastOrNull {
-                                    it.tool.toolState == ToolState.RUNNING ||
-                                        it.tool.toolState == ToolState.CALLING
-                                }
-                            if (runningTool != null) {
-                                ChainOfThoughtHeaderRow {
-                                    Text(
-                                        text = stringResource(R.string.chain_of_thought_calling),
-                                        style = MaterialTheme.typography.titleSmall,
-                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
+                            @Composable {
+                                val runningTool = block.steps.filterIsInstance<ThinkingStep.ToolStep>()
+                                    .lastOrNull {
+                                        it.tool.toolState == ToolState.RUNNING ||
+                                            it.tool.toolState == ToolState.CALLING
+                                    }
+                                if (runningTool != null) {
+                                    ChainOfThoughtHeaderRow {
+                                        Text(
+                                            text = stringResource(R.string.chain_of_thought_calling),
+                                            style = MaterialTheme.typography.titleSmall,
+                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        Text(
+                                            text = runningTool.tool.toolName,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                } else {
+                                    val thinkingSummary = stringResource(
+                                        R.string.chain_of_thought_aggregate,
+                                        (thoughtMs / 1000).toInt(),
+                                        toolCount,
                                     )
-                                    Text(
-                                        text = runningTool.tool.toolName,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
-                            } else {
-                                val thinkingSummary = stringResource(
-                                    R.string.chain_of_thought_aggregate,
-                                    (thoughtMs / 1000).toInt(),
-                                    toolCount,
-                                )
-                                ChainOfThoughtHeaderRow {
-                                    Text(
-                                        text = thinkingSummary,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
+                                    ChainOfThoughtHeaderRow {
+                                        Text(
+                                            text = thinkingSummary,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
                                 }
                             }
                         }
