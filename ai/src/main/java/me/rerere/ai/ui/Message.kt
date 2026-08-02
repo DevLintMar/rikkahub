@@ -5,6 +5,7 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import me.rerere.ai.core.MessageRole
@@ -385,6 +386,9 @@ fun ToolApprovalState.canResumeToolExecution(): Boolean {
     }
 }
 
+/** 工具执行状态（对齐 Agora ToolExecutionStates，省略 BACKGROUND_RUNNING）。 */
+enum class ToolState { CALLING, RUNNING, SUCCEEDED, EMPTY, FAILED, STOPPED }
+
 @Serializable
 sealed class UIMessagePart {
     abstract val metadata: JsonObject?
@@ -482,6 +486,9 @@ sealed class UIMessagePart {
         val input: String,
         val output: List<UIMessagePart> = emptyList(),
         val approvalState: ToolApprovalState = ToolApprovalState.Auto,
+        val toolState: ToolState = ToolState.CALLING,
+        @Transient
+        val liveOutput: String? = null,
         override var metadata: JsonObject? = null
     ) : UIMessagePart() {
         /** Whether the tool has been executed (has output) */
@@ -505,6 +512,8 @@ sealed class UIMessagePart {
                 input = input + other.input,
                 output = output + other.output,
                 approvalState = approvalState,
+                toolState = other.toolState.takeIf { it != ToolState.CALLING } ?: toolState,
+                liveOutput = other.liveOutput ?: liveOutput,
                 metadata = if (other.metadata != null) other.metadata else metadata,
             )
         }
