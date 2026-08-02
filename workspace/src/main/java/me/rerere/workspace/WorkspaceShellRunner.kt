@@ -120,24 +120,32 @@ private class StreamCollector(
                     val read = reader.read(buffer)
                     if (read < 0) break
                     // 超出上限后继续读到 EOF 并丢弃，否则管道写满会阻塞子进程导致其无法退出
+                    // liveCount: 本 chunk 落在 128KB 上限内(尚未截断)的字符数;
+                    // 截断后的行只进权威 builder 缓冲, 不再作为实时行上报, 防止火线输出放大 UI
+                    var liveCount = 0
                     synchronized(builder) {
                         val remaining = maxChars - builder.length
-                        if (remaining > 0) {
-                            builder.append(buffer, 0, minOf(read, remaining))
+                        val toAppend = minOf(read, remaining)
+                        if (toAppend > 0) {
+                            builder.append(buffer, 0, toAppend)
                         }
                         if (read > remaining) {
                             truncated = true
                         }
+                        liveCount = maxOf(0, toAppend)
                     }
-                    if (onLine != null) {
-                        emitCompleteLines(buffer, read)
+                    if (onLine != null && liveCount > 0) {
+                        emitCompleteLines(buffer, liveCount)
                     }
                 }
-                // 末尾无换行的一段也交付, 否则最后一行无法实时显示
-                onLine?.let { cb ->
-                    if (lineBuilder.isNotEmpty()) {
-                        cb(lineBuilder.toString())
-                        lineBuilder.setLength(0)
+                // 末尾无换行的一段也交付, 否则最后一行无法实时显示;
+                // 已截断时丢弃残余半行(它跨过 128KB 边界, 不属于截断前完整读到的行)
+                if (!truncated) {
+                    onLine?.let { cb ->
+                        if (lineBuilder.isNotEmpty()) {
+                            cb(lineBuilder.toString())
+                            lineBuilder.setLength(0)
+                        }
                     }
                 }
             }

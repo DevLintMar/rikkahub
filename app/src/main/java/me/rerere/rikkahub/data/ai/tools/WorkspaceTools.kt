@@ -1,7 +1,8 @@
 package me.rerere.rikkahub.data.ai.tools
 
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.buildJsonObject
@@ -272,19 +273,23 @@ private fun createShellTool(
         listOf(UIMessagePart.Text(shellEnvelope(result)))
     },
     executeFlow = { params ->
-        flow {
-            // 收集线程把输出行塞进无界 Channel, executeCommandStreaming 返回后行已收齐;
-            // 必须先 close() 再遍历, 否则 for 循环会在排空后一直挂起等待新元素
-            val lineChannel = Channel<String>(Channel.UNLIMITED)
-            val result = workspaceRepository.executeCommandStreaming(
-                id = workspaceId,
-                command = shellCommand(params.jsonObject),
-                cwd = shellCwd(params.jsonObject, defaultCwd),
-                timeoutMillis = shellTimeoutMillis(params.jsonObject),
-            ) { line -> lineChannel.trySend(line) }
-            lineChannel.close()
-            for (line in lineChannel) emit(ToolOutput.OutputDelta(line))
-            emit(ToolOutput.Completed(listOf(UIMessagePart.Text(shellEnvelope(result)))))
+        channelFlow {
+            // channelFlow 的 ProducerScope 本身就是 SendChannel; shell 收集线程(非协程)
+            // 在命令执行期间用 trySend 实时投递 OutputDelta, 由收集方边执行边消费,
+            // 不再等 executeCommandStreaming 返回后批量转发
+            val producer = this
+            val deferred = async(Dispatchers.IO) {
+                workspaceRepository.executeCommandStreaming(
+                    id = workspaceId,
+                    command = shellCommand(params.jsonObject),
+                    cwd = shellCwd(params.jsonObject, defaultCwd),
+                    timeoutMillis = shellTimeoutMillis(params.jsonObject),
+                ) { line -> producer.trySend(ToolOutput.OutputDelta(line)) }
+            }
+            val result = deferred.await()
+            // 命令返回时全部 OutputDelta 已按 FIFO 序入 channel, Completed 必然在其后
+            producer.trySend(ToolOutput.Completed(listOf(UIMessagePart.Text(shellEnvelope(result)))))
+            close()
         }
     },
 )
