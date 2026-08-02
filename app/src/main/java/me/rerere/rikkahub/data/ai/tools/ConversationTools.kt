@@ -7,10 +7,13 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import me.rerere.ai.core.InputSchema
+import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.Tool
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.db.fts.MessageSearchSort
+import me.rerere.rikkahub.data.embedding.MessageTextExtractor
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.utils.JsonInstantPretty
 import me.rerere.rikkahub.utils.toLocalDate
@@ -39,14 +42,14 @@ fun createConversationTools(
                         put("type", "integer")
                         put(
                             "description",
-                            "Maximum number of recent conversations to return (default: 10, max: 30)"
+                            "Maximum number of recent conversations to return (default: 10, max: 50)"
                         )
                     })
                 }
             )
         },
         execute = {
-            val limit = (it.jsonObject["limit"]?.jsonPrimitive?.intOrNull ?: 10).coerceIn(1, 30)
+            val limit = (it.jsonObject["limit"]?.jsonPrimitive?.intOrNull ?: 10).coerceIn(1, 50)
             val recent = conversationRepo.getRecentConversations(
                 assistantId = assistantId,
                 limit = limit,
@@ -107,5 +110,64 @@ fun createConversationTools(
             }
             listOf(UIMessagePart.Text(JsonInstantPretty.encodeToString(payload)))
         }
+    ),
+    Tool(
+        name = "read_conversation",
+        description = """
+            Read a specific conversation by ID, showing the currently selected message branch
+            as a linear list with pagination. Use this after recent_chats or conversation_search
+            to read a conversation of interest. Tool and system messages are excluded.
+        """.trimIndent(),
+        parameters = {
+            InputSchema.Obj(
+                properties = buildJsonObject {
+                    put("conversation_id", buildJsonObject {
+                        put("type", "string")
+                        put("description", "The conversation ID to read (from recent_chats or conversation_search results).")
+                    })
+                    put("offset", buildJsonObject {
+                        put("type", "integer")
+                        put("description", "Number of messages to skip (default: 0).")
+                    })
+                    put("limit", buildJsonObject {
+                        put("type", "integer")
+                        put("description", "Maximum messages to return (default: 50, max: 100).")
+                    })
+                },
+                required = listOf("conversation_id"),
+            )
+        },
+        execute = {
+            val conversationId = it.jsonObject["conversation_id"]?.jsonPrimitive?.contentOrNull
+                ?: error("conversation_id is required")
+            val offset = it.jsonObject["offset"]?.jsonPrimitive?.intOrNull ?: 0
+            val limit = (it.jsonObject["limit"]?.jsonPrimitive?.intOrNull ?: 50).coerceIn(1, 100)
+
+            val conversation = conversationRepo.getConversationById(Uuid.parse(conversationId))
+                ?: error("conversation not found: $conversationId")
+            val messages = runCatching { conversation.currentMessages }
+                .getOrDefault(emptyList())
+                .filter { m -> m.role == MessageRole.USER || m.role == MessageRole.ASSISTANT }
+
+            val page = messages.drop(offset).take(limit)
+            val payload = buildJsonObject {
+                put("conversation_id", conversationId)
+                put("title", conversation.title.ifBlank { "Untitled" })
+                put("total_messages", messages.size)
+                put("offset", offset)
+                put("limit", limit)
+                put("has_more", offset + limit < messages.size)
+                putJsonArray("messages") {
+                    page.forEach { m ->
+                        add(buildJsonObject {
+                            put("role", m.role.name.lowercase())
+                            put("text", MessageTextExtractor.messageToSearchText(m))
+                            put("timestamp", m.createdAt.toString())
+                        })
+                    }
+                }
+            }
+            listOf(UIMessagePart.Text(JsonInstantPretty.encodeToString(payload)))
+        },
     )
 )
