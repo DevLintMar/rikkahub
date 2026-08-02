@@ -102,6 +102,8 @@ object ToolUIRegistry {
         UseSkillToolUI,
         RecentChatsToolUI,
         ConversationSearchToolUI,
+        GlobToolUI,
+        GrepToolUI,
         EditFileToolUI,
         ReadFileToolUI,
         WriteFileToolUI,

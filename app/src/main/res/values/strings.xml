@@ -1311,6 +1311,7 @@
   <string name="tool_ui_delete_file_default">Delete file</string>
   <string name="tool_ui_deleted">Deleted %s</string>
   <string name="tool_ui_delete_failed">Failed to delete %s</string>
+  <string name="tool_ui_dir">dir</string>
   <string name="tool_ui_move_file">Move file</string>
   <string name="tool_ui_shell">Shell: %s</string>
   <string name="tool_ui_shell_default">Shell</string>
@@ -1321,6 +1322,15 @@
   <string name="tool_ui_scrape_truncated">… truncated, %1$d characters in total</string>
   <string name="tool_ui_delete_memory">Delete memory</string>
   <string name="tool_ui_file">file</string>
+  <string name="tool_ui_file_unknown">(unknown file)</string>
+  <string name="tool_ui_glob">Glob: %s</string>
+  <string name="tool_ui_glob_count">%d files</string>
+  <string name="tool_ui_glob_default">Glob files</string>
+  <string name="tool_ui_glob_empty">No files matched</string>
+  <string name="tool_ui_grep">Grep: %s</string>
+  <string name="tool_ui_grep_count">%d matches</string>
+  <string name="tool_ui_grep_default">Grep files</string>
+  <string name="tool_ui_grep_empty">No matches</string>
   <string name="workspace_page_name_duplicate">Name already exists</string>
   <string name="setting_mcp_page_name_invalid">Name can only contain English letters and numbers</string>
   <string name="log_page_record_requests">Record requests</string>

@@ -1291,6 +1291,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="tool_ui_delete_file_default">删除文件</string>
   <string name="tool_ui_deleted">已删除 %s</string>
   <string name="tool_ui_delete_failed">删除 %s 失败</string>
+  <string name="tool_ui_dir">目录</string>
   <string name="tool_ui_move_file">移动文件</string>
   <string name="tool_ui_shell">Shell: %s</string>
   <string name="tool_ui_shell_default">Shell</string>
@@ -1301,6 +1302,15 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="tool_ui_scrape_truncated">…已截断，共 %1$d 字符</string>
   <string name="tool_ui_delete_memory">删除记忆</string>
   <string name="tool_ui_file">文件</string>
+  <string name="tool_ui_file_unknown">（未知文件）</string>
+  <string name="tool_ui_glob">Glob：%s</string>
+  <string name="tool_ui_glob_count">%d 个文件</string>
+  <string name="tool_ui_glob_default">Glob 文件</string>
+  <string name="tool_ui_glob_empty">没有匹配的文件</string>
+  <string name="tool_ui_grep">Grep：%s</string>
+  <string name="tool_ui_grep_count">%d 条匹配</string>
+  <string name="tool_ui_grep_default">Grep 文件</string>
+  <string name="tool_ui_grep_empty">没有匹配</string>
   <string name="workspace_page_name_duplicate">名称已存在</string>
   <string name="setting_mcp_page_name_invalid">名称只能包含英文字母和数字</string>
   <string name="error_mcp_invalid_server_name">无效的MCP服务器名称（仅允许字母数字字符）：%1$s</string>

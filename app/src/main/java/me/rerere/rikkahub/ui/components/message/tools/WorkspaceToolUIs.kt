@@ -9,7 +9,10 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -21,12 +24,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.longOrNull
 import me.rerere.ai.ui.DiffMetadata
 import me.rerere.ai.ui.metadataAs
@@ -38,6 +45,8 @@ import me.rerere.hugeicons.stroke.ComputerTerminal01
 import me.rerere.hugeicons.stroke.FileAdd
 import me.rerere.hugeicons.stroke.FileEdit
 import me.rerere.hugeicons.stroke.FileView
+import me.rerere.hugeicons.stroke.Folder02
+import me.rerere.hugeicons.stroke.SearchList
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.richtext.DiffAddedColor
 import me.rerere.rikkahub.ui.components.richtext.DiffRemovedColor
@@ -426,6 +435,10 @@ private fun JsonElement?.int(key: String): Int? =
 private fun JsonElement?.long(key: String): Long? =
     this?.jsonObjectOrNull?.get(key)?.jsonPrimitiveOrNull?.longOrNull
 
+/** 从工具输出 JSON 读取字符串字段 */
+private fun JsonElement?.string(key: String): String? =
+    this?.jsonObjectOrNull?.get(key)?.jsonPrimitiveOrNull?.contentOrNull
+
 private const val FILE_SUMMARY_MAX_LINES = 10
 
 /** 由文件扩展名推断语法高亮语言 */
@@ -459,4 +472,203 @@ private fun languageOf(path: String?): String = when (
     "sql" -> "sql"
     "gradle" -> "groovy"
     else -> "plaintext"
+}
+
+/**
+ * 工作空间 glob: 详情为索引文件列表（路径 + 目录/大小标记）
+ */
+object GlobToolUI : ToolUIRenderer {
+    override val toolName: String = "workspace_glob"
+
+    override fun icon(context: ToolUIContext): ImageVector = HugeIcons.Folder02
+
+    @Composable
+    override fun title(context: ToolUIContext): String {
+        val pattern = context.arguments.getStringContent("pattern")
+        return if (pattern != null) {
+            stringResource(R.string.tool_ui_glob, pattern)
+        } else {
+            stringResource(R.string.tool_ui_glob_default)
+        }
+    }
+
+    override fun hasSummary(context: ToolUIContext): Boolean = context.content != null
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val files = files(context)
+        if (files.isNotEmpty()) {
+            Text(
+                text = stringResource(R.string.tool_ui_glob_count, files.size),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            )
+        }
+    }
+
+    @Composable
+    override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
+        val content = context.content
+        if (content == null) {
+            DefaultToolPreview(context = context)
+            return
+        }
+        val files = files(context)
+        ToolDetailContainer {
+            Text(
+                text = context.arguments.getStringContent("pattern") ?: toolName,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (files.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.tool_ui_glob_empty),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                files.forEachIndexed { index, f ->
+                    val isDir = f.boolean("isDirectory") ?: false
+                    val size = f.long("sizeBytes")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            text = (index + 1).toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                            modifier = Modifier.width(28.dp),
+                        )
+                        SelectionContainer(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = f.string("path") ?: f.string("name").orEmpty(),
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 12.sp,
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                        if (isDir) {
+                            ToolPill(stringResource(R.string.tool_ui_dir))
+                        } else if (size != null) {
+                            ToolPill(formatFileSize(size))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun files(context: ToolUIContext): List<JsonElement> =
+        context.content?.jsonObjectOrNull?.get("files")?.jsonArray ?: emptyList()
+}
+
+/**
+ * 工作空间 grep: 详情为按路径分组的行号匹配列表
+ */
+object GrepToolUI : ToolUIRenderer {
+    private data class GrepMatch(val path: String, val line: Int?, val text: String)
+
+    override val toolName: String = "workspace_grep"
+
+    override fun icon(context: ToolUIContext): ImageVector = HugeIcons.SearchList
+
+    @Composable
+    override fun title(context: ToolUIContext): String {
+        val pattern = context.arguments.getStringContent("pattern")
+        return if (pattern != null) {
+            stringResource(R.string.tool_ui_grep, pattern)
+        } else {
+            stringResource(R.string.tool_ui_grep_default)
+        }
+    }
+
+    override fun hasSummary(context: ToolUIContext): Boolean = context.content != null
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val matches = matches(context)
+        if (matches.isNotEmpty()) {
+            Text(
+                text = stringResource(R.string.tool_ui_grep_count, matches.size),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            )
+        }
+    }
+
+    @Composable
+    override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
+        val content = context.content
+        if (content == null) {
+            DefaultToolPreview(context = context)
+            return
+        }
+        val matches = matches(context)
+        ToolDetailContainer {
+            Text(
+                text = context.arguments.getStringContent("pattern") ?: toolName,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (matches.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.tool_ui_grep_empty),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                matches.groupBy { it.path }.forEach { (path, pathMatches) ->
+                    Text(
+                        text = path.ifBlank { stringResource(R.string.tool_ui_file_unknown) },
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        pathMatches.forEach { m ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.Top,
+                            ) {
+                                ToolPill(m.line?.toString() ?: "–")
+                                Spacer(Modifier.width(8.dp))
+                                SelectionContainer(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = m.text,
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 12.sp,
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun matches(context: ToolUIContext): List<GrepMatch> =
+        (context.content?.jsonObjectOrNull?.get("matches") as? kotlinx.serialization.json.JsonArray)
+            ?.mapNotNull { value ->
+                val item = value as? JsonObject ?: return@mapNotNull null
+                GrepMatch(
+                    path = item.string("path").orEmpty(),
+                    line = item.int("line"),
+                    text = item.string("text").orEmpty(),
+                )
+            }
+            .orEmpty()
 }
