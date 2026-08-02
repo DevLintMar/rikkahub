@@ -1041,6 +1041,214 @@ git commit -m "refactor(mcp): MCP 失败文本简短化（不套信封）"
 
 ---
 
+### Task 11: `workspace_glob` / `workspace_grep` 工具（照 Agora file_glob/file_grep，RikkaHub 命名）
+
+**Files:**
+- Modify: `workspace/src/main/java/me/rerere/workspace/WorkspaceManager.kt`（无改动——`glob`/`grep` 已存在，仅确认签名）
+- Modify: `app/src/main/java/me/rerere/rikkahub/data/repository/WorkspaceRepository.kt`
+- Modify: `app/src/main/java/me/rerere/rikkahub/data/ai/tools/WorkspaceTools.kt`
+- Modify: `app/src/main/java/me/rerere/rikkahub/ui/components/ai/ToolSelector.kt`（ALL_BASE_TOOLS）
+
+**Interfaces:**
+- Consumes（已存在）: `WorkspaceManager.glob(root, pattern, path="") : List<WorkspaceFileEntry>`；`WorkspaceManager.grep(root, query, path="", regex=false, ignoreCase=true, includeGlob=null) : List<WorkspaceSearchMatch>`；`WorkspaceSearchMatch(path, line, text)`；`WorkspaceFileEntry(path, name, isDirectory, sizeBytes, updatedAt)`。
+- Produces: `WorkspaceRepository.glob(id, pattern, path)` / `WorkspaceRepository.grep(id, query, path, regex, ignoreCase, includeGlob)` 委托；两个工具 `workspace_glob` / `workspace_grep`（camelCase 信封，`workspace_` 前缀，**无 `server`**——RikkaHub 纯本地）。
+- Plan 2 联动：`ToolKind` 加 `FILE_GLOB`/`FILE_GREP`，`kindFor` 映射 `workspace_glob→FILE_GLOB`、`workspace_grep→FILE_GREP`。
+
+- [ ] **Step 1: `WorkspaceRepository` 委托**（对齐现有 `id`/dao/ensureWorkspace 模式，参照 `executeCommand`/`exportRootfsFileRange`）
+
+```kotlin
+    suspend fun glob(
+        id: String,
+        pattern: String,
+        path: String = "",
+    ): List<WorkspaceFileEntry> = withContext(Dispatchers.IO) {
+        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        manager.ensureWorkspace(workspace.root)
+        manager.glob(workspace.root, pattern, path)
+    }
+
+    suspend fun grep(
+        id: String,
+        query: String,
+        path: String = "",
+        regex: Boolean = false,
+        ignoreCase: Boolean = true,
+        includeGlob: String? = null,
+    ): List<WorkspaceSearchMatch> = withContext(Dispatchers.IO) {
+        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        manager.ensureWorkspace(workspace.root)
+        manager.grep(workspace.root, query, path, regex, ignoreCase, includeGlob)
+    }
+```
+
+import 补：`me.rerere.workspace.WorkspaceSearchMatch`（`WorkspaceFileEntry` 已 import）。
+
+- [ ] **Step 2: 两个工具定义**（`WorkspaceTools.kt`，`createWorkspaceTools` 列表加两项）
+
+`workspace_glob`（只读，审批默认 false）：
+
+```kotlin
+private fun createGlobTool(
+    workspaceId: String,
+    needsApproval: (String) -> Boolean,
+    workspaceRepository: WorkspaceRepository,
+) = Tool(
+    name = "workspace_glob",
+    description = """
+        List files matching a glob pattern in the assistant's bound workspace Rootfs /workspace area.
+        The pattern is matched against file names (e.g. '*.go', '**/*.md'). 'path' is an optional base
+        directory relative to /workspace. Returns path, name, isDirectory, sizeBytes and updatedAt for each file.
+    """.trimIndent().replace("\n", " "),
+    parameters = {
+        InputSchema.Obj(
+            properties = buildJsonObject {
+                put("pattern", buildJsonObject {
+                    put("type", "string")
+                    put("description", "Glob pattern matched against file names (e.g. '*.go', '**/*.md')")
+                })
+                put("path", buildJsonObject {
+                    put("type", "string")
+                    put("description", "Optional base directory relative to /workspace. Omit for the workspace root.")
+                })
+            },
+            required = listOf("pattern"),
+        )
+    },
+    needsApproval = { needsApproval("workspace_glob") },
+    execute = {
+        val pattern = it.jsonObject.string("pattern") ?: error("pattern is required")
+        val path = it.jsonObject.string("path").orEmpty()
+        val files = workspaceRepository.glob(workspaceId, pattern, path)
+        listOf(
+            UIMessagePart.Text(
+                buildJsonObject {
+                    put("type", JsonPrimitive("workspace_glob"))
+                    put("pattern", JsonPrimitive(pattern))
+                    putJsonArray("files") {
+                        files.forEach { f ->
+                            add(buildJsonObject {
+                                put("path", JsonPrimitive(f.path))
+                                put("name", JsonPrimitive(f.name))
+                                put("isDirectory", JsonPrimitive(f.isDirectory))
+                                put("sizeBytes", JsonPrimitive(f.sizeBytes))
+                                put("updatedAt", JsonPrimitive(f.updatedAt))
+                            })
+                        }
+                    }
+                }.toString()
+            )
+        )
+    },
+)
+```
+
+`workspace_grep`（只读，审批默认 false；`regex` 默认 false=字面匹配，`glob` 为文件过滤）：
+
+```kotlin
+private fun createGrepTool(
+    workspaceId: String,
+    needsApproval: (String) -> Boolean,
+    workspaceRepository: WorkspaceRepository,
+) = Tool(
+    name = "workspace_grep",
+    description = """
+        Search for text or regex in files under the assistant's bound workspace Rootfs /workspace area.
+        Set 'regex'=true to treat the pattern as a regular expression (default is literal match).
+        'path' is an optional base directory relative to /workspace; 'glob' is an optional file-name filter.
+        Returns matching lines with file path, line number and content.
+    """.trimIndent().replace("\n", " "),
+    parameters = {
+        InputSchema.Obj(
+            properties = buildJsonObject {
+                put("pattern", buildJsonObject {
+                    put("type", "string")
+                    put("description", "Text to search for, or a regular expression when regex=true")
+                })
+                put("path", buildJsonObject {
+                    put("type", "string")
+                    put("description", "Optional base directory relative to /workspace. Omit to search the workspace root.")
+                })
+                put("regex", buildJsonObject {
+                    put("type", "boolean")
+                    put("description", "Whether to treat the pattern as a regular expression (default false = literal match)")
+                })
+                put("glob", buildJsonObject {
+                    put("type", "string")
+                    put("description", "Optional file-name glob filter (e.g. '*.kt')")
+                })
+            },
+            required = listOf("pattern"),
+        )
+    },
+    needsApproval = { needsApproval("workspace_grep") },
+    execute = {
+        val pattern = it.jsonObject.string("pattern") ?: error("pattern is required")
+        val path = it.jsonObject.string("path").orEmpty()
+        val regex = it.jsonObject["regex"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false
+        val glob = it.jsonObject.string("glob")
+        val matches = workspaceRepository.grep(
+            id = workspaceId, query = pattern, path = path, regex = regex,
+            ignoreCase = true, includeGlob = glob,
+        )
+        listOf(
+            UIMessagePart.Text(
+                buildJsonObject {
+                    put("type", JsonPrimitive("workspace_grep"))
+                    put("pattern", JsonPrimitive(pattern))
+                    putJsonArray("matches") {
+                        matches.forEach { m ->
+                            add(buildJsonObject {
+                                put("path", JsonPrimitive(m.path))
+                                put("line", JsonPrimitive(m.line))
+                                put("text", JsonPrimitive(m.text))
+                            })
+                        }
+                    }
+                }.toString()
+            )
+        )
+    },
+)
+```
+
+在 `createWorkspaceTools` 的返回列表加两项（在 `createShellTool` 之后）：
+
+```kotlin
+    return listOf(
+        createReadFileTool(workspaceId, ::needsApproval, workspaceRepository),
+        createWriteFileTool(workspaceId, ::needsApproval, workspaceRepository),
+        createEditFileTool(workspaceId, ::needsApproval, workspaceRepository),
+        createShellTool(workspaceId, ::needsApproval, workspaceRepository, shellCwd),
+        createGlobTool(workspaceId, ::needsApproval, workspaceRepository),
+        createGrepTool(workspaceId, ::needsApproval, workspaceRepository),
+    )
+```
+
+- [ ] **Step 3: 审批默认 + 工具选择器注册**
+
+`WorkspaceToolDefaultApprovals` 加：
+```kotlin
+    "workspace_glob" to false,
+    "workspace_grep" to false,
+```
+
+`ToolSelector.kt` 的 `ALL_BASE_TOOLS` 加（`workspace_shell` 之后）：
+```kotlin
+    "workspace_glob",
+    "workspace_grep",
+```
+
+- [ ] **Step 4: Verify（CI 编译）** — 参照 Task 4 Step 4（push 再触发）。
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/src/main/java/me/rerere/rikkahub/data/repository/WorkspaceRepository.kt app/src/main/java/me/rerere/rikkahub/data/ai/tools/WorkspaceTools.kt app/src/main/java/me/rerere/rikkahub/ui/components/ai/ToolSelector.kt
+git commit -m "feat(workspace): workspace_glob/workspace_grep 工具（照 Agora file_glob/file_grep）"
+```
+
+---
+
 ## Self-Review 结论
 
 - **Spec 覆盖**：§2.1/2.2/2.3/2.4（Task 1/2/3/4）、§3.1（Task 4 安全网 + Task 5/7 自限）、§3.2（Task 5/6/7/9）、§3.3（Task 4）、§3.4（Task 8）。展示层 §4 全部在 Plan 2。

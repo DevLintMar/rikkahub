@@ -105,7 +105,7 @@ import me.rerere.rikkahub.data.ai.tools.parseEnvelope
 enum class ToolKind {
     WEB_SEARCH, WEB_FETCH,
     CONVERSATION_LIST, CONVERSATION_SEARCH, CONVERSATION_READ,
-    SHELL_EXECUTE, FILE_READ, FILE_WRITE, FILE_EDIT,
+    SHELL_EXECUTE, FILE_READ, FILE_WRITE, FILE_EDIT, FILE_GLOB, FILE_GREP,
     CLIPBOARD, TEXT_TO_SPEECH, SCREEN_TIME, CALENDAR_QUERY, CALENDAR_CREATE, TIME_INFO,
     EVAL_JAVASCRIPT, RUN_WORKFLOW, SUB_AGENT,
     UNKNOWN,
@@ -135,6 +135,8 @@ object ToolPresentationResolver {
         "workspace_read_file" -> ToolKind.FILE_READ
         "workspace_write_file" -> ToolKind.FILE_WRITE
         "workspace_edit_file" -> ToolKind.FILE_EDIT
+        "workspace_glob" -> ToolKind.FILE_GLOB
+        "workspace_grep" -> ToolKind.FILE_GREP
         "clipboard_tool" -> ToolKind.CLIPBOARD
         "text_to_speech" -> ToolKind.TEXT_TO_SPEECH
         "get_screen_time" -> ToolKind.SCREEN_TIME
