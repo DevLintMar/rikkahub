@@ -123,8 +123,9 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
                     overflow = TextOverflow.Ellipsis,
                 )
                 if (loading || tool.toolState != ToolState.SUCCEEDED || tool.output.isNotEmpty()) {
-                    val summaryText = if (loading && tool.liveOutput != null) {
-                        tool.liveOutput.lineSequence().lastOrNull()?.take(80)
+                    val live = tool.liveOutput
+                    val summaryText = if (loading && live != null) {
+                        live.lineSequence().lastOrNull()?.take(80)
                             ?: toolSummary(presentation)
                     } else {
                         toolSummary(presentation)
