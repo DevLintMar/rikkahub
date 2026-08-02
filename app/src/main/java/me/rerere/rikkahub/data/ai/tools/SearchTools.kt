@@ -125,14 +125,17 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                             serviceOptions = options,
                         )
                         val payload = JsonInstantPretty.encodeToJsonElement(result.getOrThrow()).jsonObject
-                        val firstUrl = payload["urls"]?.jsonArray?.firstOrNull()?.jsonObject
+                        val urls = payload["urls"]?.jsonArray.orEmpty()
                         val url = it.jsonObject["url"]?.jsonPrimitive?.contentOrNull
-                            ?: firstUrl?.get("url")?.jsonPrimitive?.contentOrNull
+                            ?: urls.firstOrNull()?.jsonObject?.get("url")?.jsonPrimitive?.contentOrNull
                             ?: ""
-                        val text = firstUrl?.get("content")?.jsonPrimitive?.contentOrNull ?: ""
-                        val totalChars = text.length
+                        // 聚合所有 URL 的正文 (scrape 服务支持一次传入多个 URL), 避免只返回第一个 URL 的内容
+                        val fullText = urls.joinToString("\n\n") { entry ->
+                            entry.jsonObject["content"]?.jsonPrimitive?.contentOrNull ?: ""
+                        }
+                        val totalChars = fullText.length
                         val truncated = totalChars > MAX_SCRAPE_TEXT_CHARS
-                        val clippedText = if (truncated) text.take(MAX_SCRAPE_TEXT_CHARS) else text
+                        val clippedText = if (truncated) fullText.take(MAX_SCRAPE_TEXT_CHARS) else fullText
                         listOf(
                             UIMessagePart.Text(
                                 buildJsonObject {

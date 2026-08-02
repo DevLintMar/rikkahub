@@ -104,6 +104,11 @@ private fun createReadFileTool(
             if (offset >= totalChars && totalChars > 0) {
                 error("offset $offset is beyond end of file ($totalChars bytes)")
             }
+            // limit<=0 表示读到文件尾: exportRootfsFileRange 会把整个文件缓冲进内存
+            // (100KB 截断安全网在之后才生效), 需在缓冲前先做大小守卫, 防止大文件 OOM
+            if (limit <= 0 && totalChars > MAX_READ_FILE_BYTES) {
+                error("File is too large to read: $path (${totalChars / 1024 / 1024}MB, max ${MAX_READ_FILE_BYTES / 1024 / 1024}MB). Use shell commands like head, tail, or grep to read parts of it.")
+            }
             val buffer = ByteArrayOutputStream()
             workspaceRepository.exportRootfsFileRange(workspaceId, path, offset, limit, buffer)
             val text = buffer.toString(Charsets.UTF_8.name())
@@ -309,8 +314,11 @@ private fun createShellTool(
                 ) { line -> producer.trySend(ToolOutput.OutputDelta(line)) }
             }
             val result = deferred.await()
-            // 命令返回时全部 OutputDelta 已按 FIFO 序入 channel, Completed 必然在其后
-            producer.trySend(ToolOutput.Completed(listOf(UIMessagePart.Text(shellEnvelope(result)))))
+            // 命令返回时全部 OutputDelta 已按 FIFO 序入 channel, Completed 必然在其后。
+            // 用 suspend send() 保证 Completed 必然送达: channel 默认容量只有 64,
+            // 高输出量时 trySend 会因缓冲满而静默丢包, 导致成功命令被判为 FAILED;
+            // send() 在缓冲满时挂起等待收集方腾出空间, 收集方持续消费所以不会死锁。
+            producer.send(ToolOutput.Completed(listOf(UIMessagePart.Text(shellEnvelope(result)))))
             close()
         }
     },
