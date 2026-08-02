@@ -798,7 +798,7 @@ private fun ScrapeWebPreview(content: JsonElement) {
                 }
                 if (truncated) {
                     Text(
-                        text = "… truncated, $totalChars characters in total",
+                        text = stringResource(R.string.tool_ui_scrape_truncated, totalChars),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f),
                     )

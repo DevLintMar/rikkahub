@@ -341,14 +341,8 @@ private fun MessagePartsBlock(
                 if (block.steps.isNotEmpty()) {
                     val isReasoningOnlyBlock = block.steps.fastAll { it is ThinkingStep.ReasoningStep }
                     val (thoughtMs, toolCount) = remember(block.steps) { block.steps.thinkingAggregate() }
-                    ChainOfThought(
-                        modifier = Modifier.animateContentSize(),
-                        steps = block.steps,
-                        collapsedAdaptiveWidth = isReasoningOnlyBlock,
-                        cardColors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = settings.displaySetting.bubbleOpacity),
-                        ),
-                        header = {
+                    val aggregateHeader: (@Composable () -> Unit)? =
+                        if (isReasoningOnlyBlock) null else {
                             val runningTool = block.steps.filterIsInstance<ThinkingStep.ToolStep>()
                                 .lastOrNull {
                                     it.tool.toolState == ToolState.RUNNING ||
@@ -387,7 +381,15 @@ private fun MessagePartsBlock(
                                     )
                                 }
                             }
-                        },
+                        }
+                    ChainOfThought(
+                        modifier = Modifier.animateContentSize(),
+                        steps = block.steps,
+                        collapsedAdaptiveWidth = isReasoningOnlyBlock,
+                        cardColors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = settings.displaySetting.bubbleOpacity),
+                        ),
+                        header = aggregateHeader,
                     ) { step ->
                         when (step) {
                             is ThinkingStep.ReasoningStep -> {
