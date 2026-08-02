@@ -333,7 +333,7 @@ git commit -m "feat(ui): ToolPresentation 解析器 + toolSummary 一行概览"
 ```kotlin
 package me.rerere.rikkahub.data.ai.tools
 
-import kotlinx.datetime.Clock
+import kotlin.time.Clock  // ⚠️ 不是 kotlinx.datetime.Clock（kotlinx-datetime 0.8.0 已移除 Clock/Instant；项目用 kotlin.time.*）
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.ui.components.message.ThinkingStep
 import me.rerere.rikkahub.ui.components.message.thinkingAggregate
@@ -375,7 +375,7 @@ class ThinkingBlockAggregateTest {
 
 - [ ] **Step 2: Verify it fails（静态）** — `thinkingAggregate` 不存在。
 
-- [ ] **Step 3: 实现**（追加到 `ChatMessageCot.kt`，import `kotlinx.datetime.Clock`）
+- [ ] **Step 3: 实现**（追加到 `ChatMessageCot.kt`，import `kotlin.time.Clock`）
 
 ```kotlin
 /** 聚合思考块：返回 (思考总毫秒数, 已执行的工具数)。 */
