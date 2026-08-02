@@ -71,7 +71,7 @@ fun createConversationTools(
             Hybrid semantic + keyword search across the user's past conversations to recall specific information they mentioned before.
             Matches on meaning as well as exact keywords, so paraphrased queries can find relevant past messages.
             Run multiple searches with different phrasings if needed.
-            Each result includes the conversation title, a snippet with matched keywords wrapped in [brackets], and the date.
+            Each result is a window of surrounding messages from one conversation, ordered by relevance, with the conversation title, a relevance score, and the match count.
         """.trimIndent(),
         parameters = {
             InputSchema.Obj(
@@ -84,7 +84,14 @@ fun createConversationTools(
                         put("type", "integer")
                         put(
                             "description",
-                            "Maximum number of results to return (default: 15, max: 50)"
+                            "Maximum number of matching conversations to return (default: 15, max: 50)"
+                        )
+                    })
+                    put("context_window", buildJsonObject {
+                        put("type", "integer")
+                        put(
+                            "description",
+                            "Total context window size around each hit in messages (default: 8, min: 4, max: 32). Larger gives more surrounding context but uses more tokens."
                         )
                     })
                 },
@@ -95,14 +102,24 @@ fun createConversationTools(
             val query = it.jsonObject["query"]?.jsonPrimitive?.contentOrNull
                 ?: error("query is required")
             val limit = (it.jsonObject["limit"]?.jsonPrimitive?.intOrNull ?: 15).coerceIn(1, 50)
-            val results = conversationRepo.searchMessagesHybrid(query, limit)
+            val contextWindow = (it.jsonObject["context_window"]?.jsonPrimitive?.intOrNull ?: 8).coerceIn(4, 32)
+            val windows = conversationRepo.searchConversationsHybrid(query, limit, contextWindow)
             val payload = buildJsonArray {
-                results.forEach { result ->
+                windows.forEach { w ->
                     add(buildJsonObject {
-                        put("conversation_id", result.conversationId)
-                        put("title", result.title.ifBlank { "Untitled" })
-                        put("snippet", result.snippet)
-                        put("date", result.updateAt.toLocalDate())
+                        put("title", w.title.ifBlank { "Untitled" })
+                        put("conversation_id", w.conversationId)
+                        put("top_score", w.topScore)
+                        put("match_count", w.matchCount)
+                        putJsonArray("messages") {
+                            w.messages.forEach { m ->
+                                add(buildJsonObject {
+                                    put("participant", m.participant)
+                                    put("text", m.text)
+                                    put("timestamp", m.timestamp)
+                                })
+                            }
+                        }
                     })
                 }
             }

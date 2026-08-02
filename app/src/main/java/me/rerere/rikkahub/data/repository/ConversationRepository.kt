@@ -10,6 +10,7 @@ import androidx.room.withTransaction
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
 import me.rerere.rikkahub.data.db.AppDatabase
 import me.rerere.rikkahub.data.db.fts.MessageFtsManager
@@ -20,8 +21,9 @@ import me.rerere.rikkahub.data.db.dao.FavoriteDAO
 import me.rerere.rikkahub.data.db.dao.MessageNodeDAO
 import me.rerere.rikkahub.data.db.entity.ConversationEntity
 import me.rerere.rikkahub.data.db.entity.MessageNodeEntity
+import me.rerere.rikkahub.data.embedding.MessageTextExtractor
 import me.rerere.rikkahub.data.embedding.SemanticIndexManager
-import me.rerere.rikkahub.data.embedding.rrfFuse
+import me.rerere.rikkahub.data.embedding.rrfFuseScored
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.MessageNode
@@ -334,31 +336,141 @@ class ConversationRepository(
         sort: MessageSearchSort = MessageSearchSort.RELEVANCE,
     ) = messageFtsManager.search(keyword, sort)
 
-    suspend fun searchMessagesHybrid(query: String, limit: Int = 15): List<MessageSearchResult> {
+    data class ConversationSearchWindow(
+        val conversationId: String,
+        val title: String,
+        val topScore: Float,
+        val matchCount: Int,
+        val messages: List<WindowMessage>,
+    )
+
+    data class WindowMessage(
+        val participant: String,
+        val text: String,
+        val timestamp: String,
+    )
+
+    /**
+     * 混合搜索并返回上下文窗口（Agora 式结果形态）：对每个命中点展开 ±N/2 条
+     * 消息（不对称补偿、重叠合并、窗口上限 N*3、全局 200 条封顶），跨会话按
+     * 融合分降序。只沿选中分支（currentMessages）展开。
+     */
+    suspend fun searchConversationsHybrid(
+        query: String,
+        limit: Int = 15,
+        contextWindow: Int = 8,
+    ): List<ConversationSearchWindow> {
+        val n = contextWindow.coerceIn(4, 32)
+        val halfN = n / 2
+        val maxWindowSize = n * 3
+        val totalCap = 200
+
         val fts = searchMessages(query, MessageSearchSort.RELEVANCE).take(limit)
-        if (!semanticIndexManager.isConfigured()) return fts
-        val semanticHits = semanticIndexManager.search(query, limit)
-        if (semanticHits.isEmpty()) return fts
+        val semantic = if (semanticIndexManager.isConfigured()) {
+            semanticIndexManager.search(query, limit).map { hit ->
+                MessageSearchResult(
+                    nodeId = hit.nodeId,
+                    messageId = hit.messageId,
+                    conversationId = hit.conversationId,
+                    title = "",
+                    updateAt = Instant.EPOCH,
+                    snippet = hit.chunkText.take(120),
+                )
+            }
+        } else emptyList()
 
-        // 为语义命中解析 title / updateAt（按 conversation 去重加载，避免 N+1）
-        val metaByConv = semanticHits.map { it.conversationId }.distinct().associateWith { id ->
-            conversationDAO.getConversationById(id)
-                ?.let { entity -> entity.title to Instant.ofEpochMilli(entity.updateAt) }
-                ?: ("" to Instant.EPOCH)
+        val fused = rrfFuseScored(fts, semantic, k = 60)
+        if (fused.isEmpty()) return emptyList()
+
+        val scoreByMessageId = fused.associate { it.messageId to it.score.toFloat() }
+        val matchesByConv = fused.groupBy({ it.conversationId }, { it.messageId })
+        val allWindows = mutableListOf<ConversationSearchWindow>()
+
+        for ((convId, matchIds) in matchesByConv) {
+            val conversation = getConversationById(Uuid.parse(convId)) ?: continue
+            val branch = runCatching { conversation.currentMessages }
+                .getOrDefault(emptyList())
+                .filter { it.role == MessageRole.USER || it.role == MessageRole.ASSISTANT }
+            val indexMap = branch.withIndex().associate { (i, m) -> m.id.toString() to i }
+            val branchMatchIds = matchIds.filter { it in indexMap }.toSet()
+
+            // 每个命中点展开 ±halfN，一边不够从另一边补偿
+            val windows = mutableListOf<Pair<IntRange, Float>>()
+            for (matchId in branchMatchIds) {
+                val centerIdx = indexMap[matchId] ?: continue
+                val score = scoreByMessageId[matchId] ?: 1f
+                val before = halfN.coerceAtMost(centerIdx)
+                val after = halfN.coerceAtMost(branch.size - 1 - centerIdx)
+                val extraBefore = (halfN - before).coerceAtMost(branch.size - 1 - centerIdx - after)
+                val extraAfter = (halfN - after - extraBefore).coerceAtLeast(0).coerceAtMost(centerIdx - before)
+                val start = (centerIdx - before - extraAfter).coerceAtLeast(0)
+                val end = (centerIdx + after + extraBefore).coerceAtMost(branch.size - 1)
+                windows.add((start..end) to score)
+            }
+
+            // 合并重叠窗口（按分数降序，相邻/重叠合并取最高分）
+            val sorted = windows.sortedByDescending { it.second }
+            val merged = mutableListOf<Pair<IntRange, Float>>()
+            for ((range, score) in sorted) {
+                var mergedRange = range
+                val overlapIdx = merged.indexOfFirst { (existing, _) ->
+                    mergedRange.first <= existing.last + 1 && existing.first <= mergedRange.last + 1
+                }
+                if (overlapIdx >= 0) {
+                    val (existing, existingScore) = merged[overlapIdx]
+                    mergedRange = (minOf(mergedRange.first, existing.first)..maxOf(mergedRange.last, existing.last))
+                    merged[overlapIdx] = mergedRange to maxOf(score, existingScore)
+                } else {
+                    merged.add(mergedRange to score)
+                }
+            }
+
+            for ((range, score) in merged) {
+                var cappedRange = range
+                if (range.last - range.first + 1 > maxWindowSize) {
+                    val centerId = branchMatchIds.maxByOrNull { scoreByMessageId[it] ?: 0f }
+                    val centerIdx =
+                        if (centerId != null) indexMap[centerId] ?: (range.first + range.last) / 2
+                        else (range.first + range.last) / 2
+                    cappedRange = ((centerIdx - halfN).coerceAtLeast(range.first)..(centerIdx + halfN).coerceAtMost(range.last))
+                }
+                val windowMsgIds =
+                    branch.subList(cappedRange.first, cappedRange.last + 1).map { it.id.toString() }.toSet()
+                val matchedInWindow = branchMatchIds.count { it in windowMsgIds }
+                val messages = cappedRange.map { branch[it] }.map { m ->
+                    WindowMessage(
+                        participant = m.role.name.lowercase(),
+                        text = MessageTextExtractor.messageToSearchText(m),
+                        timestamp = m.createdAt.toString(),
+                    )
+                }
+                allWindows.add(
+                    ConversationSearchWindow(
+                        conversationId = convId,
+                        title = conversation.title,
+                        topScore = score,
+                        matchCount = matchedInWindow,
+                        messages = messages,
+                    ),
+                )
+            }
         }
 
-        val semanticResults = semanticHits.map { hit ->
-            val (title, updateAt) = metaByConv.getValue(hit.conversationId)
-            MessageSearchResult(
-                nodeId = hit.nodeId,
-                messageId = hit.messageId,
-                conversationId = hit.conversationId,
-                title = title,
-                updateAt = updateAt,
-                snippet = hit.chunkText.take(120),
-            )
+        // 跨会话按 topScore 降序，全局 200 条封顶
+        val finalWindows = mutableListOf<ConversationSearchWindow>()
+        var totalMessages = 0
+        for (window in allWindows.sortedByDescending { it.topScore }) {
+            if (totalMessages >= totalCap) break
+            val available = totalCap - totalMessages
+            if (window.messages.size > available) {
+                finalWindows.add(window.copy(messages = window.messages.take(available)))
+                totalMessages = totalCap
+            } else {
+                finalWindows.add(window)
+                totalMessages += window.messages.size
+            }
         }
-        return rrfFuse(fts, semanticResults, k = 60).take(limit)
+        return finalWindows
     }
 
     suspend fun rebuildAllIndexes(onProgress: (current: Int, total: Int) -> Unit = { _, _ -> }) {

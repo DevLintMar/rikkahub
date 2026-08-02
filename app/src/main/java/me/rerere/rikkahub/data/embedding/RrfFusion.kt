@@ -16,9 +16,26 @@ fun rrfFuse(
     fts: List<MessageSearchResult>,
     semantic: List<MessageSearchResult>,
     k: Int = 60,
-): List<MessageSearchResult> {
-    if (fts.isEmpty()) return semantic
-    if (semantic.isEmpty()) return fts
+): List<MessageSearchResult> =
+    rrfFuseScored(fts, semantic, k).map { it.source }
+
+/** RRF 融合结果，保留每个命中的融合分（供上下文窗口排序用）。 */
+data class FusedHit(
+    val source: MessageSearchResult,
+    val score: Double,
+) {
+    val messageId get() = source.messageId
+    val nodeId get() = source.nodeId
+    val conversationId get() = source.conversationId
+    val snippet get() = source.snippet
+}
+
+fun rrfFuseScored(
+    fts: List<MessageSearchResult>,
+    semantic: List<MessageSearchResult>,
+    k: Int = 60,
+): List<FusedHit> {
+    if (fts.isEmpty() && semantic.isEmpty()) return emptyList()
 
     val scores = linkedMapOf<String, Double>()
     val byId = linkedMapOf<String, MessageSearchResult>()
@@ -34,5 +51,7 @@ fun rrfFuse(
 
     return scores.entries
         .sortedByDescending { it.value }
-        .mapNotNull { byId[it.key] }
+        .mapNotNull { (messageId, score) ->
+            byId[messageId]?.let { FusedHit(it, score) }
+        }
 }
