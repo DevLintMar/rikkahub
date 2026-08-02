@@ -118,8 +118,17 @@ class SemanticIndexManager(
         val rows = dao.getByModel(config.model)
         if (rows.isEmpty()) return@withContext emptyList()
 
-        scoreSemanticHits(queryEmbedding, rows, RAG_THRESHOLD, limit)
-    }
+        val hits = scoreSemanticHits(queryEmbedding, rows, RAG_THRESHOLD, limit)
+        val top = hits.take(5).joinToString { it.messageId + ":" + "%.3f".format(it.score) }
+        val rawTop = rows.asSequence()
+            .filter { it.status == EmbeddingStatus.INDEXED && it.embedding != null && it.dimension == queryEmbedding.size }
+            .map { it to EmbeddingIndexer.cosineSimilarity(queryEmbedding, EmbeddingIndexer.bytesToFloats(it.embedding!!)) }
+            .sortedByDescending { it.second }
+            .take(5)
+            .joinToString { it.first.messageId + ":" + "%.3f".format(it.second) }
+        Log.d(TAG, "semantic search '$query' model=${config.model} dim=${queryEmbedding.size} rows=${rows.size} " +
+            "threshold=$RAG_THRESHOLD hitsTop=[$top] rawTop=[$rawTop]")
+        hits
 
     suspend fun deleteConversation(conversationId: Uuid) {
         dao.deleteByConversation(conversationId.toString())

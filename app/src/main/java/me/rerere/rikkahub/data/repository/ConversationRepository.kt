@@ -350,6 +350,11 @@ class ConversationRepository(
         val timestamp: String,
     )
 
+    data class RebuildResult(
+        val indexed: Int,
+        val failed: Int,
+    )
+
     /**
      * 混合搜索并返回上下文窗口（Agora 式结果形态）：对每个命中点展开 ±N/2 条
      * 消息（不对称补偿、重叠合并、窗口上限 N*3、全局 200 条封顶），跨会话按
@@ -473,7 +478,9 @@ class ConversationRepository(
         return finalWindows
     }
 
-    suspend fun rebuildAllIndexes(onProgress: (current: Int, total: Int) -> Unit = { _, _ -> }) {
+    suspend fun rebuildAllIndexes(
+        onProgress: (current: Int, total: Int) -> Unit = { _, _ -> },
+    ): RebuildResult {
         messageFtsManager.deleteAll()
         val allIds = conversationDAO.getAllIds()
         val total = allIds.size
@@ -496,16 +503,21 @@ class ConversationRepository(
             onProgress(index + 1, total)
         }
         // 分批嵌入：反复调用直到队列清空（indexPending 内部按 batchSize 分块请求，单趟最多 64 行）
+        var indexed = 0
+        var failed = 0
         if (pendingRows > 0) {
             var processed = 0
             while (true) {
                 val counts = semanticIndexManager.indexPending()
+                indexed += counts.indexed
+                failed += counts.failed
                 processed += counts.indexed
                 onProgress(processed, pendingRows)
                 // 队列已清空，或整批失败（indexed == 0）——后者留给 worker 退避重试，避免死循环
                 if (counts.indexed == 0) break
             }
         }
+        return RebuildResult(indexed = indexed, failed = failed)
     }
 
     suspend fun deleteConversationOfAssistant(assistantId: Uuid) {

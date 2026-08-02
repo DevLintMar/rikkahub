@@ -36,10 +36,14 @@ class SettingEmbedderViewModel(
             progress = 0 to 0
             rebuildFinished = null
             try {
-                conversationRepo.rebuildAllIndexes { current, total ->
+                val result = conversationRepo.rebuildAllIndexes { current, total ->
                     progress = current to total
                 }
-                rebuildFinished = "语义索引重建完成"
+                rebuildFinished = if (result.failed > 0) {
+                    "重建完成：${result.indexed} 条已嵌入，${result.failed} 条失败（请检查 embedder 配置）"
+                } else {
+                    "语义索引重建完成：${result.indexed} 条已嵌入"
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
