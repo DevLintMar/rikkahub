@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -80,7 +81,9 @@ fun ReasoningButton(
                 modifier = Modifier.size(24.dp),
                 contentAlignment = Alignment.Center
             ) {
-                ReasoningIcon(reasoningLevel)
+                // 图标颜色固定为默认内容色（onSurface，和输入区搜索图标一致），
+                // 不随 ToggleSurface 勾选态变为主题色（primary）
+                ReasoningIcon(reasoningLevel, MaterialTheme.colorScheme.onSurface)
             }
             if (!onlyIcon) Text(stringResource(R.string.setting_provider_page_reasoning))
         }
@@ -267,14 +270,14 @@ private fun ReasoningScale(
 }
 
 @Composable
-private fun ReasoningIcon(level: ReasoningLevel) {
+private fun ReasoningIcon(level: ReasoningLevel, tint: Color) {
     when (level) {
-        ReasoningLevel.OFF -> Icon(HugeIcons.Idea, null)
-        ReasoningLevel.AUTO -> Icon(HugeIcons.Idea01, null)
-        ReasoningLevel.LOW -> Icon(ReasoningLow, null)
-        ReasoningLevel.MEDIUM -> Icon(ReasoningMedium, null)
-        ReasoningLevel.HIGH -> Icon(ReasoningHigh, null)
-        ReasoningLevel.XHIGH -> Icon(ReasoningHigh, null)
+        ReasoningLevel.OFF -> Icon(HugeIcons.Idea, null, tint = tint)
+        ReasoningLevel.AUTO -> Icon(HugeIcons.Idea01, null, tint = tint)
+        ReasoningLevel.LOW -> Icon(ReasoningLow, null, tint = tint)
+        ReasoningLevel.MEDIUM -> Icon(ReasoningMedium, null, tint = tint)
+        ReasoningLevel.HIGH -> Icon(ReasoningHigh, null, tint = tint)
+        ReasoningLevel.XHIGH -> Icon(ReasoningHigh, null, tint = tint)
     }
 }
 
