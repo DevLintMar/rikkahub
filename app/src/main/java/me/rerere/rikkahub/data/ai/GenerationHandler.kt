@@ -18,6 +18,7 @@ import kotlinx.serialization.json.put
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.core.Tool
+import me.rerere.ai.core.ToolOutput
 import me.rerere.ai.core.merge
 import me.rerere.ai.provider.CustomBody
 import me.rerere.ai.provider.Model
@@ -29,13 +30,13 @@ import me.rerere.ai.registry.ModelRegistry
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.ToolApprovalState
+import me.rerere.ai.ui.ToolState
 import me.rerere.ai.ui.handleMessageChunk
 import me.rerere.ai.ui.limitContext
 import me.rerere.rikkahub.data.ai.transformers.InputMessageTransformer
 import me.rerere.rikkahub.data.ai.transformers.MessageTransformer
 import me.rerere.rikkahub.data.ai.transformers.OutputMessageTransformer
-import me.rerere.rikkahub.data.files.FileFolders
-import java.io.File
+import me.rerere.rikkahub.data.ai.tools.inferToolState
 import me.rerere.rikkahub.data.ai.transformers.onGenerationFinish
 import me.rerere.rikkahub.data.ai.transformers.transforms
 import me.rerere.rikkahub.data.ai.transformers.visualTransforms
@@ -52,8 +53,7 @@ import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 private const val TAG = "GenerationHandler"
-private const val MAX_TOOL_OUTPUT_CHARS = 32 * 1024
-private const val TOOL_OUTPUT_PREVIEW_CHARS = 4 * 1024
+private const val MAX_TOOL_RESULT_LENGTH = 100_000
 
 @Serializable
 sealed interface GenerationChunk {
@@ -238,6 +238,21 @@ class GenerationHandler(
 
             // Handle tools (execute approved tools, handle denied tools)
             val executedTools = arrayListOf<UIMessagePart.Tool>()
+
+            // 工具实时输出：把 OutputDelta 注入最后一条消息的对应 Tool 部件并发出中间更新
+            suspend fun updateToolLive(toolCallId: String, text: String?) {
+                val lastMessage = messages.last()
+                val updatedParts = lastMessage.parts.map { part ->
+                    if (part is UIMessagePart.Tool && part.toolCallId == toolCallId) {
+                        part.copy(liveOutput = text, toolState = ToolState.RUNNING)
+                    } else {
+                        part
+                    }
+                }
+                messages = messages.dropLast(1) + lastMessage.copy(parts = updatedParts)
+                emit(GenerationChunk.Messages(messages))
+            }
+
             toolsToProcess.forEach { tool ->
                 when (tool.approvalState) {
                     is ToolApprovalState.Denied -> {
@@ -284,31 +299,45 @@ class GenerationHandler(
                                 error("Invalid tool arguments JSON for ${tool.toolName}: ${it.message}")
                             }
                             Log.i(TAG, "generateText: executing tool ${toolDef.name} with args: $args")
-                            val result = toolDef.execute(args)
-                            val hasShellAccess = toolsInternal.any { it.name == "workspace_shell" }
-                            executedTools += tool.copy(
-                                output = maybeTruncateToolOutput(tool.toolCallId, result, hasShellAccess)
+                            var completed: UIMessagePart.Tool? = null
+                            toolDef.executeFlow(args).collect { output ->
+                                when (output) {
+                                    is ToolOutput.OutputDelta -> updateToolLive(tool.toolCallId, output.text)
+                                    is ToolOutput.Progress -> updateToolLive(tool.toolCallId, null)
+                                    is ToolOutput.Completed -> {
+                                        completed = tool.copy(
+                                            output = clipToolOutput(output.parts),
+                                            toolState = inferToolState(output.parts),
+                                        )
+                                    }
+                                }
+                            }
+                            executedTools += completed ?: tool.copy(
+                                output = emptyList(),
+                                toolState = ToolState.FAILED,
                             )
                         }.onFailure {
                             // 取消必须向上传播，否则停止生成会被误报为工具执行错误
                             if (it is CancellationException) throw it
-                            it.printStackTrace()
+                            Log.e(TAG, "Tool ${tool.toolName} execution failed", it)
                             executedTools += tool.copy(
                                 output = listOf(
                                     UIMessagePart.Text(
                                         json.encodeToString(
                                             buildJsonObject {
+                                                put("type", JsonPrimitive(tool.toolName))
+                                                put("error", JsonPrimitive("error"))
                                                 put(
-                                                    "error",
-                                                    JsonPrimitive(buildString {
-                                                        append("[${it.javaClass.name}] ${it.message}")
-                                                        append("\n${it.stackTraceToString()}")
-                                                    })
+                                                    "message",
+                                                    JsonPrimitive(
+                                                        "[${it.javaClass.name}] ${it.message ?: it.javaClass.simpleName}"
+                                                    )
                                                 )
                                             }
                                         )
                                     )
-                                )
+                                ),
+                                toolState = ToolState.FAILED,
                             )
                         }
                     }
@@ -455,38 +484,15 @@ class GenerationHandler(
         }
     }
 
-    private fun maybeTruncateToolOutput(
-        toolCallId: String,
-        output: List<UIMessagePart>,
-        hasShellAccess: Boolean,
-    ): List<UIMessagePart> {
-        val textParts = output.filterIsInstance<UIMessagePart.Text>()
-        val nonTextParts = output.filter { it !is UIMessagePart.Text }
+    /** 硬性安全网：文本输出超 100KB 截断并加标记（兜底 MCP/use_skill 非信封大输出）。 */
+    private fun clipToolOutput(parts: List<UIMessagePart>): List<UIMessagePart> {
+        val textParts = parts.filterIsInstance<UIMessagePart.Text>()
+        val nonTextParts = parts.filter { it !is UIMessagePart.Text }
         val totalChars = textParts.sumOf { it.text.length }
-
-        if (totalChars <= MAX_TOOL_OUTPUT_CHARS || !hasShellAccess) return output
-
-        Log.i(TAG, "maybeTruncateToolOutput: truncating tool $toolCallId output ($totalChars chars)")
-
-        val fullText = textParts.joinToString("\n") { it.text }
-        val preview = fullText.take(TOOL_OUTPUT_PREVIEW_CHARS)
-
-        val fileName = "${toolCallId}.txt"
-        val outputDir = File(context.filesDir, FileFolders.TOOL_OUTPUTS).apply { mkdirs() }
-        File(outputDir, fileName).writeText(fullText)
-
-        return listOf(
-            UIMessagePart.Text(
-                buildString {
-                    appendLine("[Tool output truncated: $totalChars characters total]")
-                    appendLine("Full output saved to: /tool_outputs/$fileName")
-                    appendLine("Use shell to read: `cat /tool_outputs/$fileName`")
-                    appendLine("Use shell to search: `grep \"pattern\" /tool_outputs/$fileName`")
-                    appendLine()
-                    append(preview)
-                }
-            )
-        ) + nonTextParts
+        if (totalChars <= MAX_TOOL_RESULT_LENGTH) return parts
+        val clipped = textParts.joinToString("\n") { it.text }
+            .take(MAX_TOOL_RESULT_LENGTH) + "…[truncated]"
+        return listOf(UIMessagePart.Text(clipped)) + nonTextParts
     }
 
     fun translateText(
