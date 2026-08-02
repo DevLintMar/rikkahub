@@ -263,21 +263,19 @@ fun ChatMessage(
     }
 }
 
-/** 聚合思考块头部共用行：[AiBrain02] + 左侧内容（完成态或执行中态）。 */
+/** 聚合思考块头部共用行：[AiBrain02] + 左侧内容（完成态或执行中态）。紧凑比例参考 Agora，黑色 onSurface。 */
 @Composable
 private fun ChainOfThoughtHeaderRow(content: @Composable () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Box(modifier = Modifier.size(24.dp), contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = HugeIcons.AiBrain02,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-            )
-        }
+        Icon(
+            imageVector = HugeIcons.AiBrain02,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = MaterialTheme.colorScheme.onSurface,
+        )
         content()
     }
 }
@@ -354,14 +352,14 @@ private fun MessagePartsBlock(
                                         Text(
                                             text = stringResource(R.string.chain_of_thought_calling),
                                             style = MaterialTheme.typography.titleSmall,
-                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                            color = MaterialTheme.colorScheme.onSurface,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                         )
                                         Text(
                                             text = runningTool.tool.toolName,
                                             style = MaterialTheme.typography.titleSmall,
-                                            color = MaterialTheme.colorScheme.primary,
+                                            color = MaterialTheme.colorScheme.onSurface,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                         )
@@ -376,7 +374,7 @@ private fun MessagePartsBlock(
                                         Text(
                                             text = thinkingSummary,
                                             style = MaterialTheme.typography.titleSmall,
-                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                            color = MaterialTheme.colorScheme.onSurface,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                         )

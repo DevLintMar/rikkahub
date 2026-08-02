@@ -107,13 +107,13 @@ fun <T> ChainOfThought(
                 }
 
                 if (aggregateMode) {
-                    // 聚合折叠头：[icon+text …… 箭头]，箭头在最右
+                    // 聚合折叠头：[icon+text …… 箭头]，箭头在最右；紧凑比例
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(MaterialTheme.shapes.small)
                             .clickable { expanded = !expanded }
-                            .padding(vertical = 6.dp),
+                            .padding(vertical = 3.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         header()
@@ -173,21 +173,24 @@ fun <T> ChainOfThought(
 
                 val lineColor = MaterialTheme.colorScheme.outlineVariant
                 val scope = remember { ChainOfThoughtScopeImpl() }
-                Box(
-                    modifier = Modifier.drawBehind {
-                        val x = 12.dp.toPx()
-                        val offsetPx = 18.dp.toPx()
-                        drawLine(
-                            color = lineColor,
-                            start = Offset(x, offsetPx),
-                            end = Offset(x, size.height - offsetPx),
-                            strokeWidth = 1.dp.toPx()
-                        )
-                    }
-                ) {
-                    Column {
-                        visibleSteps.fastForEach { step ->
-                            scope.content(step)
+                // 只在有可见步骤时画时间线竖线——聚合折叠态（visibleSteps 空）不画，避免大脑图标处残留竖线
+                if (visibleSteps.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier.drawBehind {
+                            val x = 12.dp.toPx()
+                            val offsetPx = 18.dp.toPx()
+                            drawLine(
+                                color = lineColor,
+                                start = Offset(x, offsetPx),
+                                end = Offset(x, size.height - offsetPx),
+                                strokeWidth = 1.dp.toPx()
+                            )
+                        }
+                    ) {
+                        Column {
+                            visibleSteps.fastForEach { step ->
+                                scope.content(step)
+                            }
                         }
                     }
                 }
