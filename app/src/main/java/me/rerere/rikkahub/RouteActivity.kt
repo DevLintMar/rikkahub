@@ -120,6 +120,7 @@ import me.rerere.rikkahub.ui.pages.setting.SettingPreferencesUIPage
 import me.rerere.rikkahub.ui.pages.setting.SettingSystemToolsPage
 import me.rerere.rikkahub.ui.pages.setting.SettingThemePage
 import me.rerere.rikkahub.ui.pages.setting.SettingDonatePage
+import me.rerere.rikkahub.ui.pages.setting.SettingEmbedderPage
 import me.rerere.rikkahub.ui.pages.setting.SettingFilesPage
 import me.rerere.rikkahub.ui.pages.setting.SettingMcpPage
 import me.rerere.rikkahub.ui.pages.setting.SettingModelPage
@@ -468,6 +469,10 @@ class RouteActivity : ComponentActivity() {
                                 SettingSearchDetailPage(id)
                             }
 
+                            entry<Screen.SettingEmbedder> {
+                                SettingEmbedderPage()
+                            }
+
                             entry<Screen.SettingSpeech> {
                                 SettingSpeechPage()
                             }
@@ -700,6 +705,9 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data class SettingSearchDetail(val serviceId: String) : Screen
+
+    @Serializable
+    data object SettingEmbedder : Screen
 
     @Serializable
     data object SettingSpeech : Screen

@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.AiMagic
+import me.rerere.hugeicons.stroke.AiSearch02
 import me.rerere.hugeicons.stroke.Alert01
 import me.rerere.hugeicons.stroke.Book01
 import me.rerere.hugeicons.stroke.Book03
@@ -225,6 +226,12 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         leadingContent = { Icon(HugeIcons.GlobalSearch, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_search_service_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_search_service)) },
+                    )
+                    item(
+                        onClick = { navController.navigate(Screen.SettingEmbedder) },
+                        leadingContent = { Icon(HugeIcons.AiSearch02, null) },
+                        supportingContent = { Text("配置向量化模型并管理语义搜索索引") },
+                        headlineContent = { Text("语义搜索") },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingSpeech) },
