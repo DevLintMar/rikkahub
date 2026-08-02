@@ -375,16 +375,27 @@ class ConversationRepository(
             onProgress(index + 1, total)
         }
 
-        // 语义索引重建：清空后全量 markPending 并立即嵌入
+        // 语义索引重建：清空后全量 markPending，再分批嵌入
         semanticIndexManager.deleteAll()
+        var pendingRows = 0
         allIds.forEachIndexed { index, id ->
             val entity = conversationDAO.getConversationById(id) ?: return@forEachIndexed
             val nodes = loadMessageNodes(entity.id)
             val conversation = conversationEntityToConversation(entity, nodes)
-            semanticIndexManager.markPending(conversation)
+            pendingRows += semanticIndexManager.markPending(conversation)
             onProgress(index + 1, total)
         }
-        semanticIndexManager.indexPending(limit = Int.MAX_VALUE)
+        // 分批嵌入：反复调用直到队列清空（indexPending 内部按 batchSize 分块请求，单趟最多 64 行）
+        if (pendingRows > 0) {
+            var processed = 0
+            while (true) {
+                val counts = semanticIndexManager.indexPending()
+                processed += counts.indexed
+                onProgress(processed, pendingRows)
+                // 队列已清空，或整批失败（indexed == 0）——后者留给 worker 退避重试，避免死循环
+                if (counts.indexed == 0) break
+            }
+        }
     }
 
     suspend fun deleteConversationOfAssistant(assistantId: Uuid) {

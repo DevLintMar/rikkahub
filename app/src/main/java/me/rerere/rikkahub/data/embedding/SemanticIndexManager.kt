@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import me.rerere.rikkahub.data.db.dao.MessageEmbeddingDAO
 import me.rerere.rikkahub.data.db.entity.EmbeddingStatus
+import me.rerere.rikkahub.data.datastore.EmbedderConfig
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.service.EmbeddingIndexWorker
@@ -27,18 +28,15 @@ class SemanticIndexManager(
 ) {
     data class IndexCounts(val indexed: Int, val failed: Int)
 
-    suspend fun isConfigured(): Boolean {
-        val c = settingsStore.settingsFlowRaw.first().embedder
-        return c.enabled && c.apiKey.isNotBlank() && c.baseUrl.isNotBlank()
-    }
+    suspend fun isConfigured(): Boolean = currentConfig().isConfigured()
 
     private suspend fun currentConfig() =
         settingsStore.settingsFlowRaw.first().embedder
 
-    /** 保存路径调用：纯本地写，标记 PENDING/DIRTY；有活时排期 worker。 */
-    suspend fun markPending(conversation: Conversation): Boolean {
+    /** 保存路径调用：纯本地写，标记 PENDING/DIRTY；有活时排期 worker。返回本次排入的条数。 */
+    suspend fun markPending(conversation: Conversation): Int {
         val config = currentConfig()
-        if (!config.enabled) return false
+        if (!config.isConfigured()) return 0
 
         val conversationId = conversation.id.toString()
         val existing = dao.getByConversation(conversationId)
@@ -55,41 +53,49 @@ class SemanticIndexManager(
             modelName = config.model,
             now = now,
         )
-        if (planned.isEmpty()) return false
+        if (planned.isEmpty()) return 0
         dao.upsertAll(planned)
         EmbeddingIndexWorker.enqueue(context)
-        return true
+        return planned.size
     }
 
-    /** worker 调用：批量嵌入 PENDING/DIRTY/FAILED。 */
+    /**
+     * 单趟批量嵌入 PENDING/DIRTY/FAILED，最多处理 [limit] 行；
+     * 内部按 config.batchSize 将一次取出的行拆成多个请求，避免超大单请求。
+     * 返回成功/失败行数；调用方（worker / 重建循环）负责在失败时重试或停止。
+     */
     suspend fun indexPending(limit: Int = 64): IndexCounts = withContext(Dispatchers.IO) {
         val config = currentConfig()
-        if (!config.enabled) return@withContext IndexCounts(0, 0)
+        if (!config.isConfigured()) return@withContext IndexCounts(0, 0)
 
         val rows = dao.getPending(statuses = listOf(
             EmbeddingStatus.PENDING, EmbeddingStatus.DIRTY, EmbeddingStatus.FAILED,
         ), limit = limit)
         if (rows.isEmpty()) return@withContext IndexCounts(0, 0)
 
-        val texts = rows.map { it.chunkText }
-        val embeddings = embeddingClient.computeEmbeddings(
-            texts = texts,
-            model = config.model,
-            baseUrl = config.baseUrl,
-            apiKey = config.apiKey,
-        )
-        val updated = rows.mapIndexed { i, row ->
-            val emb = embeddings.getOrNull(i)
-            if (emb != null) {
-                row.copy(
-                    status = EmbeddingStatus.INDEXED,
-                    embedding = EmbeddingIndexer.floatsToBytes(emb),
-                    dimension = emb.size,
-                    modelName = config.model,
-                    updatedAt = System.currentTimeMillis(),
+        val batchSize = config.batchSize.coerceAtLeast(1)
+        val updated = buildList {
+            for (chunk in rows.chunked(batchSize)) {
+                val embeddings = embeddingClient.computeEmbeddings(
+                    texts = chunk.map { it.chunkText },
+                    model = config.model,
+                    baseUrl = config.baseUrl,
+                    apiKey = config.apiKey,
                 )
-            } else {
-                row.copy(status = EmbeddingStatus.FAILED, updatedAt = System.currentTimeMillis())
+                chunk.forEachIndexed { i, row ->
+                    val emb = embeddings.getOrNull(i)
+                    if (emb != null) {
+                        add(row.copy(
+                            status = EmbeddingStatus.INDEXED,
+                            embedding = EmbeddingIndexer.floatsToBytes(emb),
+                            dimension = emb.size,
+                            modelName = config.model,
+                            updatedAt = System.currentTimeMillis(),
+                        ))
+                    } else {
+                        add(row.copy(status = EmbeddingStatus.FAILED, updatedAt = System.currentTimeMillis()))
+                    }
+                }
             }
         }
         dao.upsertAll(updated)
@@ -100,7 +106,7 @@ class SemanticIndexManager(
     /** 搜索：query 嵌入 + 余弦 + 阈值 + 维度保护。 */
     suspend fun search(query: String, limit: Int): List<SemanticHit> = withContext(Dispatchers.IO) {
         val config = currentConfig()
-        if (!config.enabled) return@withContext emptyList()
+        if (!config.isConfigured()) return@withContext emptyList()
 
         val queryEmbedding = embeddingClient.computeEmbeddings(
             texts = listOf(query),
@@ -123,3 +129,6 @@ class SemanticIndexManager(
         dao.deleteAll()
     }
 }
+
+private fun EmbedderConfig.isConfigured(): Boolean =
+    enabled && apiKey.isNotBlank() && baseUrl.isNotBlank()

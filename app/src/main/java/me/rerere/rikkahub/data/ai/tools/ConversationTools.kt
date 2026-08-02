@@ -12,7 +12,6 @@ import me.rerere.ai.core.InputSchema
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.Tool
 import me.rerere.ai.ui.UIMessagePart
-import me.rerere.rikkahub.data.db.fts.MessageSearchSort
 import me.rerere.rikkahub.data.embedding.MessageTextExtractor
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.utils.JsonInstantPretty
@@ -69,8 +68,9 @@ fun createConversationTools(
     Tool(
         name = "conversation_search",
         description = """
-            Full-text search across the user's past conversations to recall specific information they mentioned before.
-            Use focused keywords. Run multiple searches with different keywords if needed.
+            Hybrid semantic + keyword search across the user's past conversations to recall specific information they mentioned before.
+            Matches on meaning as well as exact keywords, so paraphrased queries can find relevant past messages.
+            Run multiple searches with different phrasings if needed.
             Each result includes the conversation title, a snippet with matched keywords wrapped in [brackets], and the date.
         """.trimIndent(),
         parameters = {
@@ -95,9 +95,7 @@ fun createConversationTools(
             val query = it.jsonObject["query"]?.jsonPrimitive?.contentOrNull
                 ?: error("query is required")
             val limit = (it.jsonObject["limit"]?.jsonPrimitive?.intOrNull ?: 15).coerceIn(1, 50)
-            val results = conversationRepo
-                .searchMessages(query, MessageSearchSort.RELEVANCE)
-                .take(limit)
+            val results = conversationRepo.searchMessagesHybrid(query, limit)
             val payload = buildJsonArray {
                 results.forEach { result ->
                     add(buildJsonObject {
@@ -140,7 +138,7 @@ fun createConversationTools(
         execute = {
             val conversationId = it.jsonObject["conversation_id"]?.jsonPrimitive?.contentOrNull
                 ?: error("conversation_id is required")
-            val offset = it.jsonObject["offset"]?.jsonPrimitive?.intOrNull ?: 0
+            val offset = (it.jsonObject["offset"]?.jsonPrimitive?.intOrNull ?: 0).coerceAtLeast(0)
             val limit = (it.jsonObject["limit"]?.jsonPrimitive?.intOrNull ?: 50).coerceIn(1, 100)
 
             val conversation = conversationRepo.getConversationById(Uuid.parse(conversationId))

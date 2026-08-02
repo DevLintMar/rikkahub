@@ -18,8 +18,15 @@ class EmbeddingIndexWorker(
 
     override suspend fun doWork(): Result {
         return try {
-            semanticIndexManager.indexPending()
-            Result.success()
+            val counts = semanticIndexManager.indexPending()
+            if (counts.indexed == 0 && counts.failed > 0) {
+                // 整批失败（如 API 不可用/鉴权失败）：让 WorkManager 按退避策略重试
+                Result.retry()
+            } else {
+                Result.success()
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.retry()
         }

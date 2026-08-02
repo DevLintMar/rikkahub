@@ -45,6 +45,10 @@ class EmbeddingClient(private val okHttpClient: OkHttpClient) {
                 .build()
             val response = okHttpClient.newCall(request).execute()
             response.use {
+                if (!it.isSuccessful) {
+                    Log.w(TAG, "computeEmbeddings failed: HTTP ${it.code} from $baseUrl")
+                    return@withContext texts.map { null }
+                }
                 val responseBody = it.body?.string() ?: return@withContext texts.map { null }
                 parseEmbeddingResponse(responseBody, texts.size)
             }
