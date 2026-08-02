@@ -125,7 +125,8 @@ object ToolPresentationResolver {
             ?.let { (it as? JsonPrimitive)?.contentOrNull?.toLongOrNull()?.toInt() }
         ToolKind.SCREEN_TIME -> envelope?.arraySize("apps")
         ToolKind.CALENDAR_QUERY -> envelope?.arraySize("events")
-        ToolKind.FILE_GLOB, ToolKind.FILE_GREP -> envelope?.arraySize("matches")
+        ToolKind.FILE_GLOB -> envelope?.arraySize("files")   // workspace_glob 信封发 "files"（非 "matches"）
+        ToolKind.FILE_GREP -> envelope?.arraySize("matches")
         ToolKind.CLIPBOARD, ToolKind.TEXT_TO_SPEECH, ToolKind.CALENDAR_CREATE, ToolKind.TIME_INFO,
         ToolKind.EVAL_JAVASCRIPT, ToolKind.RUN_WORKFLOW, ToolKind.SUB_AGENT, ToolKind.UNKNOWN -> null
     }
