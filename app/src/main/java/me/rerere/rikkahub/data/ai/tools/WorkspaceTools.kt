@@ -80,6 +80,7 @@ private fun createReadFileTool(
         Read a file using the assistant's bound workspace Rootfs. Paths must be absolute inside Rootfs.
         Use /workspace for the workspace files area.
         Supports UTF-8 text files and image files (png, jpg, jpeg, gif, webp, bmp, svg, heic, heif, avif, ico).
+        For large files, read a byte range with offset (default 0) and limit (default 0 = read to end); the result includes totalChars and hasMore so you can page through.
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
@@ -87,11 +88,11 @@ private fun createReadFileTool(
                 putPathProperty(required = true)
                 put("offset", buildJsonObject {
                     put("type", "integer")
-                    put("description", "字节偏移，用于分段读大文件")
+                    put("description", "字节偏移，用于分段读大文件 (default 0)")
                 })
                 put("limit", buildJsonObject {
                     put("type", "integer")
-                    put("description", "最大读取字节数")
+                    put("description", "最大读取字节数 (default 0 = 读到文件尾)")
                 })
             },
             required = listOf("path"),
@@ -337,15 +338,15 @@ private fun createGlobTool(
     name = "workspace_glob",
     description = """
         List files matching a glob pattern in the assistant's bound workspace Rootfs /workspace area.
-        The pattern is matched against file names (e.g. '*.go', '**/*.md'). 'path' is an optional base
-        directory relative to /workspace. Returns path, name, isDirectory, sizeBytes and updatedAt for each file.
+        The pattern matches paths relative to the base directory; '*.go' matches top-level only, use '**/*.go' to recurse.
+        'path' is an optional base directory relative to /workspace. Returns path, name, isDirectory, sizeBytes and updatedAt for each file.
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
             properties = buildJsonObject {
                 put("pattern", buildJsonObject {
                     put("type", "string")
-                    put("description", "Glob pattern matched against file names (e.g. '*.go', '**/*.md')")
+                    put("description", "Glob pattern matching paths; '*.go' matches top-level only, use '**/*.go' to recurse")
                 })
                 put("path", buildJsonObject {
                     put("type", "string")

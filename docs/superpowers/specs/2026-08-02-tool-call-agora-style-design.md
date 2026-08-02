@@ -199,7 +199,7 @@ fun execute(args: JsonElement): Flow<ToolOutput>
 
 ```kotlin
 data class ToolPresentation(
-    val kind: ToolKind,          // 从信封 type 映射（兜底 toolName），未知 → UNKNOWN
+    val kind: ToolKind,          // 由 resolver 基于 tool.toolName 映射（见下方定案），未知 → UNKNOWN
     val state: ToolState,        // 从 tool.toolState + 信封 error/exitCode 推断
     val subject: String?,        // query / url / path / 命令名（一行概览素材）
     val count: Int?,             // items / files / matches 数量
@@ -207,6 +207,8 @@ data class ToolPresentation(
     val exitCode: Int?,
 )
 ```
+
+**Resolver 依据定案**：展示层 resolver 一律基于 `tool.toolName`（字面工具名）映射 `ToolKind`，**不依赖信封 `type` 字段**。`SearchTools` 的 `type` 字段保持 `web_search`/`web_fetch` 等模型侧语义名（不改），二者不一致由 resolver 的 toolName 映射规避——不再 retrofit SearchTools。
 
 `ToolKind` 枚举（对齐 Agora）：`WEB_SEARCH / WEB_FETCH / CONVERSATION_SEARCH / CONVERSATION_LIST / CONVERSATION_READ / SHELL_EXECUTE / SHELL_JOB_* / FILE_READ / FILE_WRITE / FILE_EDIT / FILE_GLOB / FILE_GREP / MEMORY_* / IMAGE_GENERATE / TASK_* / LOOP_* / UNKNOWN`。RikkaHub 现有工具映射到对应 kind；**MCP 工具名 / use_skill → `UNKNOWN`**。
 
