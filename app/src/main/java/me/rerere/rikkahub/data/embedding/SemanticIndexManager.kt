@@ -129,6 +129,7 @@ class SemanticIndexManager(
         Log.d(TAG, "semantic search '$query' model=${config.model} dim=${queryEmbedding.size} rows=${rows.size} " +
             "threshold=${config.threshold} hitsTop=[$top] rawTop=[$rawTop]")
         hits
+    }
 
     suspend fun deleteConversation(conversationId: Uuid) {
         dao.deleteByConversation(conversationId.toString())
