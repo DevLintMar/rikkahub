@@ -800,6 +800,38 @@ git commit -m "feat(ui): 聚合头执行中状态（正在调用工具…）+ �
 
 ---
 
+### Task 7: 顺手 minor 修复（台账 [PLAN2 顺手修] 清单）
+
+**Files:**
+- Modify: `app/src/main/java/me/rerere/rikkahub/data/ai/tools/WorkspaceTools.kt`（read_file 描述/schema、glob 描述）
+- 文档：`docs/superpowers/specs/2026-08-02-tool-call-agora-style-design.md`（type 统一规则定案）
+
+**Interfaces:** 无——纯描述/schema 文案修正，不改行为。
+
+- [ ] **Step 1: `workspace_read_file` 描述与 schema 补 offset/limit**
+
+现状（Task 8 后）：工具已有 `offset`/`limit` 参数，但**描述没提、schema 没广告 `default:0`**，模型不知道能分段读。修改 `createReadFileTool`：
+
+- 描述追加一句：`For large files, read a byte range with offset (default 0) and limit (default 0 = read to end); the result includes totalChars and hasMore so you can page through.`
+- schema 的 `offset`/`limit` 参数描述补 `(default 0)`。
+
+- [ ] **Step 2: `workspace_glob` 描述微调**
+
+描述里把 "matched against file names" 改为更准确：`pattern matches paths relative to the base directory; '*.go' matches top-level only, use '**/*.go' to recurse.`（明示 RikkaHub glob 的 `**` 语义，避免模型按 Agora 习惯传裸模式漏匹配）。
+
+- [ ] **Step 3: SearchTools `type` 统一规则定案（文档）**
+
+在 spec 里加一句定案：**展示层 resolver 一律基于 `tool.toolName`（字面工具名）映射 kind，不信赖信封 `type`**。SearchTools 的 `type` 字段保持 `web_search`/`web_fetch`（模型侧语义名，不改），二者不一致由 resolver 用 toolName 规避——不再 retrofit SearchTools。Plan 2 Task 1 的 `kindFor` 已按此实现。
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add app/src/main/java/me/rerere/rikkahub/data/ai/tools/WorkspaceTools.kt docs/superpowers/specs/2026-08-02-tool-call-agora-style-design.md
+git commit -m "docs+fix: 顺手 minor（read_file 描述补 offset/limit、glob 描述明示 ** 语义、type 规则定案）"
+```
+
+---
+
 ## Self-Review 结论
 
 - **Spec 覆盖**：§4.1 解析器（Task 1）、§4.2 一行概览（Task 1）、§4.3 聚合卡片（Task 3/4/6）、§4.4 组件落点（Task 3/4）、§4.5 MCP/use_skill UNKNOWN 兜底（Task 1 kindFor else→UNKNOWN）、CARRY-TO-PLAN2 回归（Task 5）。
