@@ -70,6 +70,7 @@ import me.rerere.ai.ui.UIMessageAnnotation
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.isEmptyUIMessage
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.AiBrain02
 import me.rerere.hugeicons.stroke.File02
 import me.rerere.hugeicons.stroke.MusicNote03
 import me.rerere.hugeicons.stroke.Video01
@@ -319,6 +320,7 @@ private fun MessagePartsBlock(
             is MessagePartBlock.ThinkingBlock -> {
                 if (block.steps.isNotEmpty()) {
                     val isReasoningOnlyBlock = block.steps.fastAll { it is ThinkingStep.ReasoningStep }
+                    val (thoughtMs, toolCount) = remember(block.steps) { block.steps.thinkingAggregate() }
                     ChainOfThought(
                         modifier = Modifier.animateContentSize(),
                         steps = block.steps,
@@ -326,6 +328,33 @@ private fun MessagePartsBlock(
                         cardColors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = settings.displaySetting.bubbleOpacity),
                         ),
+                        header = {
+                            val thinkingSummary = stringResource(
+                                R.string.chain_of_thought_aggregate,
+                                (thoughtMs / 1000).toInt(),
+                                toolCount,
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Box(modifier = Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = HugeIcons.AiBrain02,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                    )
+                                }
+                                Text(
+                                    text = thinkingSummary,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        },
                     ) { step ->
                         when (step) {
                             is ThinkingStep.ReasoningStep -> {

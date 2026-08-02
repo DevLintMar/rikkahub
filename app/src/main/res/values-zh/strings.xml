@@ -226,6 +226,8 @@
   <string name="calculating">计算中...</string>
   <string name="cancel">取消</string>
   <string name="cancel_edit">取消编辑</string>
+  <string name="chain_of_thought_aggregate">思考了 %1$d 秒 · 调用了 %2$d 个工具</string>
+  <string name="chain_of_thought_calling">正在调用工具…</string>
   <string name="chain_of_thought_collapse">收起</string>
   <string name="chain_of_thought_show_more_steps">再显示 %d 步</string>
   <string name="chat_input_placeholder">输入消息与AI聊天</string>

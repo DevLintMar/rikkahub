@@ -226,6 +226,8 @@
   <string name="calculating">Calculating...</string>
   <string name="cancel">Cancel</string>
   <string name="cancel_edit">Cancel Edit</string>
+  <string name="chain_of_thought_aggregate">Thought for %1$d s · called %2$d tools</string>
+  <string name="chain_of_thought_calling">Calling tools…</string>
   <string name="chain_of_thought_collapse">Collapse</string>
   <string name="chain_of_thought_show_more_steps">Show %d more steps</string>
   <string name="chat_input_placeholder">Chat with AI</string>

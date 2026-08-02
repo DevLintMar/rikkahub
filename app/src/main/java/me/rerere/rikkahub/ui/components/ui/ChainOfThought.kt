@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -63,6 +64,8 @@ private val LocalCardColor = staticCompositionLocalOf { Color.White }
  * @param steps 需要渲染的步骤数据列表
  * @param collapsedVisibleCount 折叠时保留可见的尾部步骤数
  * @param collapsedAdaptiveWidth 是否在折叠态下使用内容自适应宽度
+ * @param header 聚合折叠头；非 null 时启用聚合模式，折叠态仅显示该头部（展开显示全部步骤）。
+ *   为 null 时保持旧的“显示 N 条更多”折叠控制。
  * @param content 每个步骤的具体 UI，由 [ChainOfThoughtScope] 提供步骤构建能力
  */
 @Composable
@@ -74,10 +77,12 @@ fun <T> ChainOfThought(
     steps: List<T>,
     collapsedVisibleCount: Int = 2,
     collapsedAdaptiveWidth: Boolean = false,
+    header: (@Composable () -> Unit)? = null,
     content: @Composable ChainOfThoughtScope.(T) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val canCollapse = steps.size > collapsedVisibleCount
+    val aggregateMode = header != null
+    val canCollapse = aggregateMode || steps.size > collapsedVisibleCount
     val shouldFillCollapseControlWidth = expanded || !collapsedAdaptiveWidth
 
     CompositionLocalProvider(
@@ -95,14 +100,33 @@ fun <T> ChainOfThought(
                         animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec()
                     ),
             ) {
-                val visibleSteps = if (expanded || !canCollapse) {
-                    steps
-                } else {
-                    steps.takeLast(collapsedVisibleCount)
+                val visibleSteps = when {
+                    aggregateMode -> if (expanded) steps else emptyList()
+                    expanded || !canCollapse -> steps
+                    else -> steps.takeLast(collapsedVisibleCount)
                 }
 
-                // 显示展开/折叠按钮（统一在顶部）
-                if (canCollapse) {
+                if (aggregateMode) {
+                    // 聚合折叠头：[icon+text …… 箭头]，箭头在最右
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.small)
+                            .clickable { expanded = !expanded }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        header()
+                        Spacer(Modifier.weight(1f))
+                        Icon(
+                            imageVector = if (expanded) HugeIcons.ArrowUp01 else HugeIcons.ArrowDown01,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                        )
+                    }
+                } else if (canCollapse) {
+                    // 显示展开/折叠按钮（统一在顶部）
                     Row(
                         modifier = Modifier
                             .then(
