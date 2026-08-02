@@ -6,12 +6,8 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.wrapContentWidth
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
@@ -44,15 +40,17 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.ai.ui.ToolApprovalState
+import me.rerere.ai.ui.ToolState
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.BubbleChatQuestion
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Tick01
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.ui.components.message.tools.ToolPresentationResolver
 import me.rerere.rikkahub.ui.components.message.tools.ToolUIContext
 import me.rerere.rikkahub.ui.components.message.tools.ToolUIRegistry
-import me.rerere.rikkahub.ui.components.richtext.ZoomableAsyncImage
+import me.rerere.rikkahub.ui.components.message.tools.toolSummary
 import me.rerere.rikkahub.ui.components.ui.ChainOfThoughtScope
 import me.rerere.rikkahub.ui.components.ui.DotLoading
 import me.rerere.rikkahub.ui.modifier.shimmer
@@ -91,24 +89,20 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
         )
     }
 
-    var showResult by remember { mutableStateOf(false) }
-    var showDenyDialog by remember { mutableStateOf(false) }
-    var expanded by remember { mutableStateOf(true) }
-    val isPending = tool.approvalState is ToolApprovalState.Pending
-    val isDenied = tool.approvalState is ToolApprovalState.Denied
+    val presentation = remember(tool) { ToolPresentationResolver.resolve(tool) }
     val images = tool.output.filterIsInstance<UIMessagePart.Image>()
 
-    // 摘要由注册的渲染器决定; 图片输出与拒绝原因为所有工具通用
-    val hasExtraContent = renderer.hasSummary(context) || isDenied || images.isNotEmpty()
+    var showResult by remember { mutableStateOf(false) }
+    var showDenyDialog by remember { mutableStateOf(false) }
+    val isPending = tool.approvalState is ToolApprovalState.Pending
+    val isDenied = tool.approvalState is ToolApprovalState.Denied
+    val hasClickable = context.content != null || isPending || images.isNotEmpty()
 
-    ControlledChainOfThoughtStep(
-        expanded = expanded,
-        onExpandedChange = { expanded = it },
+    // 聚合列表行: 非受控、不可内联展开; 图标 + 显示名 + 一行概览, 点击进详情 BottomSheet
+    ChainOfThoughtStep(
         icon = {
             if (loading) {
-                DotLoading(
-                    size = 10.dp
-                )
+                DotLoading(size = 10.dp)
             } else {
                 Icon(
                     imageVector = renderer.icon(context),
@@ -119,14 +113,31 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
             }
         },
         label = {
-            Text(
-                text = renderer.title(context),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier.shimmer(isLoading = loading),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = renderer.title(context),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.shimmer(isLoading = loading),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (loading || tool.toolState != ToolState.SUCCEEDED || tool.output.isNotEmpty()) {
+                    val summaryText = if (loading && tool.liveOutput != null) {
+                        tool.liveOutput.lineSequence().lastOrNull()?.take(80)
+                            ?: toolSummary(presentation)
+                    } else {
+                        toolSummary(presentation)
+                    }
+                    Text(
+                        text = summaryText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
         },
         extra = if (isPending && onToolApproval != null) {
             {
@@ -155,48 +166,21 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
                     }
                 }
             }
-        } else {
-            null
-        },
-        onClick = if (context.content != null || isPending || images.isNotEmpty()) {
-            { showResult = true }
-        } else {
-            null
-        },
-        content = if (hasExtraContent) {
+        } else if (isDenied) {
             {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    renderer.Summary(context)
-                    if (images.isNotEmpty()) {
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier.wrapContentWidth(),
-                        ) {
-                            items(images) { image ->
-                                ZoomableAsyncImage(
-                                    model = image.url,
-                                    contentDescription = null,
-                                    modifier = Modifier
-                                        .height(64.dp)
-                                        .wrapContentWidth(),
-                                )
-                            }
-                        }
-                    }
-                    if (isDenied) {
-                        val reason = (tool.approvalState as ToolApprovalState.Denied).reason
-                        Text(
-                            text = stringResource(R.string.chat_message_tool_denied) +
-                                if (reason.isNotBlank()) ": $reason" else "",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-                }
+                val reason = (tool.approvalState as ToolApprovalState.Denied).reason
+                Text(
+                    text = stringResource(R.string.chat_message_tool_denied) +
+                        if (reason.isNotBlank()) ": $reason" else "",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
         } else {
             null
         },
+        onClick = if (hasClickable) { { showResult = true } } else null,
+        content = null, // 列表行不内联展开, 详情全进 BottomSheet
     )
 
     if (showDenyDialog && onToolApproval != null) {
