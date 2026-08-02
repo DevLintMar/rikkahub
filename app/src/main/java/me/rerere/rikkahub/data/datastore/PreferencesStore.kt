@@ -123,6 +123,9 @@ class SettingsStore(
         // S3
         val S3_CONFIG = stringPreferencesKey("s3_config")
 
+        // Embedder
+        val EMBEDDER = stringPreferencesKey("embedder")
+
         // TTS
         val TTS_PROVIDERS = stringPreferencesKey("tts_providers")
         val SELECTED_TTS_PROVIDER = stringPreferencesKey("selected_tts_provider")
@@ -250,6 +253,9 @@ class SettingsStore(
                 } ?: BackupReminderConfig(),
                 launchCount = preferences[LAUNCH_COUNT] ?: 0,
                 sponsorAlertDismissedAt = preferences[SPONSOR_ALERT_DISMISSED_AT] ?: 0,
+                embedder = preferences[EMBEDDER]?.let {
+                    JsonInstant.decodeFromString(it)
+                } ?: EmbedderConfig(),
             )
         }
         .map {
@@ -424,6 +430,7 @@ class SettingsStore(
             preferences[BACKUP_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.backupReminderConfig)
             preferences[LAUNCH_COUNT] = settings.launchCount
             preferences[SPONSOR_ALERT_DISMISSED_AT] = settings.sponsorAlertDismissedAt
+            preferences[EMBEDDER] = JsonInstant.encodeToString(settings.embedder)
         }
     }
 
