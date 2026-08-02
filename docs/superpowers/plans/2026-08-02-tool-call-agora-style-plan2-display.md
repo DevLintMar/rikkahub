@@ -16,6 +16,7 @@
 - **展示 key 基于 `tool.toolName`（字面工具名）**，不用信封 `type`——规避 Plan 1 的 `search_web`/`web_fetch` 语义名 vs 字面名不一致（用户可接受：`toolName` 始终可用）。
 - 保留每工具小图标（`ToolUIRenderer.icon`）；聚合头图标 `HugeIcons.AiBrain02`；箭头 `HugeIcons.ArrowUp01`/`ArrowDown01` 在**最右**。
 - 字符串走 `strings.xml`，遵循 `tool_ui_*` / `chat_message_tool_*` / `chain_of_thought_*` 现有模式。
+- **字符串语言归属（用户 2026-08-02 拍板）**：英文默认串进 `values/strings.xml`，中文翻译进 `values-zh/strings.xml`（照现有 `chain_of_thought_*` 模式；ja/ko/ru 不新增，回退英文默认）。本计划所有新增字符串（Task 1 的 `tool_summary_*`、Task 3 的 `chain_of_thought_aggregate`/`chain_of_thought_calling`）都按此双写。
 - 不改任何数据流/模型侧（Plan 1 已冻结）。
 
 ---
@@ -285,7 +286,7 @@ private fun succeededSummary(p: ToolPresentation, subject: String?): String = wh
 }
 ```
 
-- [ ] **Step 4: 加字符串资源**（`app/src/main/res/values/strings.xml`，本任务先加 `tool_summary_*`，聚合头字符串在 Task 3 加）：
+- [ ] **Step 4: 加字符串资源**（**双写**：英文进 `app/src/main/res/values/strings.xml`、中文进 `values-zh/strings.xml`，见 Global Constraints「字符串语言归属」；聚合头字符串在 Task 3 加）。中文版原样如下，英文版由实现者按 Global Constraints 约定补写（Task 1 已落地，后续任务照做）：
 
 ```xml
     <string name="tool_summary_calling">正在调用 %1$s…</string>
@@ -416,9 +417,13 @@ git commit -m "feat(ui): thinkingAggregate 聚合头计算（思考时长+工具
 - Consumes: `thinkingAggregate`（Task 2）、`ToolPresentationResolver`（Task 1，用于执行中显示最后一个工具名）。
 - Produces: `ChainOfThought` 新可选参数 `header: (@Composable () -> Unit)? = null`（聚合模式）。Export 不传 header → 行为不变。
 
-- [ ] **Step 1: 加字符串**（`strings.xml`）
+- [ ] **Step 1: 加字符串**（双写：英文进 `values/strings.xml`，中文进 `values-zh/strings.xml`，按字母序插入）
 
 ```xml
+    <!-- values/strings.xml（英文默认） -->
+    <string name="chain_of_thought_aggregate">Thought for %1$d s · called %2$d tools</string>
+    <string name="chain_of_thought_calling">Calling tools…</string>
+    <!-- values-zh/strings.xml（中文翻译） -->
     <string name="chain_of_thought_aggregate">思考了 %1$d 秒 · 调用了 %2$d 个工具</string>
     <string name="chain_of_thought_calling">正在调用工具…</string>
 ```
