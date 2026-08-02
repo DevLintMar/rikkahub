@@ -65,6 +65,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.provider.Model
+import me.rerere.ai.ui.ToolState
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessageAnnotation
 import me.rerere.ai.ui.UIMessagePart
@@ -262,6 +263,25 @@ fun ChatMessage(
     }
 }
 
+/** 聚合思考块头部共用行：[AiBrain02] + 左侧内容（完成态或执行中态）。 */
+@Composable
+private fun ChainOfThoughtHeaderRow(content: @Composable () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Box(modifier = Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = HugeIcons.AiBrain02,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+            )
+        }
+        content()
+    }
+}
+
 @OptIn(FlowPreview::class)
 @Composable
 private fun MessagePartsBlock(
@@ -329,30 +349,43 @@ private fun MessagePartsBlock(
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = settings.displaySetting.bubbleOpacity),
                         ),
                         header = {
-                            val thinkingSummary = stringResource(
-                                R.string.chain_of_thought_aggregate,
-                                (thoughtMs / 1000).toInt(),
-                                toolCount,
-                            )
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Box(modifier = Modifier.size(24.dp), contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = HugeIcons.AiBrain02,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp),
-                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                            val runningTool = block.steps.filterIsInstance<ThinkingStep.ToolStep>()
+                                .lastOrNull {
+                                    it.tool.toolState == ToolState.RUNNING ||
+                                        it.tool.toolState == ToolState.CALLING
+                                }
+                            if (runningTool != null) {
+                                ChainOfThoughtHeaderRow {
+                                    Text(
+                                        text = stringResource(R.string.chain_of_thought_calling),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        text = runningTool.tool.toolName,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
                                     )
                                 }
-                                Text(
-                                    text = thinkingSummary,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                            } else {
+                                val thinkingSummary = stringResource(
+                                    R.string.chain_of_thought_aggregate,
+                                    (thoughtMs / 1000).toInt(),
+                                    toolCount,
                                 )
+                                ChainOfThoughtHeaderRow {
+                                    Text(
+                                        text = thinkingSummary,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
                             }
                         },
                     ) { step ->
