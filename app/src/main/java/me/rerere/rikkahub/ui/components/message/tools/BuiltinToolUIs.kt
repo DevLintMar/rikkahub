@@ -39,6 +39,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
@@ -170,21 +171,10 @@ object SearchWebToolUI : ToolUIRenderer {
     private fun items(context: ToolUIContext): List<JsonElement> =
         context.content?.jsonObjectOrNull?.get("items")?.jsonArray ?: emptyList()
 
-    override fun hasSummary(context: ToolUIContext): Boolean =
-        context.content.getStringContent("answer") != null || items(context).isNotEmpty()
+    override fun hasSummary(context: ToolUIContext): Boolean = items(context).isNotEmpty()
 
     @Composable
     override fun Summary(context: ToolUIContext) {
-        context.content.getStringContent("answer")?.let { answer ->
-            Text(
-                text = answer,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.shimmer(isLoading = context.loading),
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
         val items = items(context)
         if (items.isNotEmpty()) {
             Row(
@@ -299,36 +289,40 @@ object TextToSpeechToolUI : ToolUIRenderer {
         return stringResource(R.string.tool_ui_speaking, preview)
     }
 
-    override fun hasSummary(context: ToolUIContext): Boolean =
-        context.arguments.getStringContent("text") != null
-
     @Composable
-    override fun Summary(context: ToolUIContext) {
+    override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
         val eventBus: AppEventBus = koinInject()
         val scope = rememberCoroutineScope()
-        val text = context.arguments.getStringContent("text") ?: ""
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        val text = context.content.getStringContent("text")
+            ?: context.arguments.getStringContent("text")
+            ?: ""
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxHeight(0.8f)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            FilledTonalIconButton(
-                onClick = { scope.launch { eventBus.emit(AppEvent.Speak(text)) } },
-                modifier = Modifier.size(28.dp),
-            ) {
-                Icon(
-                    imageVector = HugeIcons.Refresh01,
-                    contentDescription = stringResource(R.string.tool_ui_replay),
-                    modifier = Modifier.size(14.dp),
+            item {
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.fillMaxWidth(),
                 )
+            }
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    FilledTonalIconButton(
+                        onClick = { scope.launch { eventBus.emit(AppEvent.Speak(text)) } },
+                    ) {
+                        Icon(
+                            imageVector = HugeIcons.Refresh01,
+                            contentDescription = stringResource(R.string.tool_ui_replay),
+                        )
+                    }
+                }
             }
         }
     }
@@ -363,7 +357,7 @@ object RecentChatsToolUI : ToolUIRenderer {
         stringResource(R.string.chat_message_tool_recent_chats)
 
     private fun chats(context: ToolUIContext): List<JsonElement> =
-        (context.content as? JsonArray) ?: emptyList()
+        (context.content as? JsonObject)?.get("conversations") as? JsonArray ?: emptyList()
 
     override fun hasSummary(context: ToolUIContext): Boolean = chats(context).isNotEmpty()
 
@@ -397,7 +391,7 @@ object ConversationSearchToolUI : ToolUIRenderer {
     )
 
     private fun results(context: ToolUIContext): List<JsonElement> =
-        (context.content as? JsonArray) ?: emptyList()
+        (context.content as? JsonObject)?.get("results") as? JsonArray ?: emptyList()
 
     override fun hasSummary(context: ToolUIContext): Boolean = results(context).isNotEmpty()
 
@@ -672,7 +666,6 @@ private fun SearchWebPreview(
 ) {
     val context = LocalContext.current
     val items = content.jsonObject["items"]?.jsonArray ?: emptyList()
-    val answer = content.getStringContent("answer")
     val query = arguments.getStringContent("query") ?: ""
     val images = content.jsonObject["images"]?.jsonArray
         ?.mapNotNull { it.jsonPrimitive.contentOrNull }
@@ -687,24 +680,6 @@ private fun SearchWebPreview(
     ) {
         item {
             Text(stringResource(R.string.chat_message_tool_search_prefix, query))
-        }
-
-        if (answer != null) {
-            item {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                    )
-                ) {
-                    MarkdownBlock(
-                        content = answer,
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .fillMaxWidth(),
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
         }
 
         if (images.isNotEmpty()) {
@@ -784,7 +759,12 @@ private fun SearchWebPreview(
 
 @Composable
 private fun ScrapeWebPreview(content: JsonElement) {
-    val urls = content.jsonObject["urls"]?.jsonArray ?: emptyList()
+    val url = content.getStringContent("url")
+    val text = content.getStringContent("text")
+    val truncated = content.jsonObjectOrNull
+        ?.get("truncated")?.jsonPrimitiveOrNull?.booleanOrNull ?: false
+    val totalChars = content.jsonObjectOrNull
+        ?.get("totalChars")?.jsonPrimitiveOrNull?.longOrNull ?: 0L
 
     LazyColumn(
         modifier = Modifier
@@ -796,29 +776,31 @@ private fun ScrapeWebPreview(content: JsonElement) {
             Text(
                 text = stringResource(
                     R.string.chat_message_tool_scrape_prefix,
-                    urls.joinToString(", ") { it.getStringContent("url") ?: "" }
+                    url ?: ""
                 )
             )
         }
 
-        items(urls) { url ->
-            val urlObject = url.jsonObject
+        item {
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text(
-                    text = urlObject["url"]?.jsonPrimitive?.content ?: "",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Card {
-                    MarkdownBlock(
-                        content = urlObject["content"]?.jsonPrimitive?.content ?: "",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(8.dp)
+                if (!text.isNullOrBlank()) {
+                    Card {
+                        MarkdownBlock(
+                            content = text,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp)
+                        )
+                    }
+                }
+                if (truncated) {
+                    Text(
+                        text = "… truncated, $totalChars characters in total",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f),
                     )
                 }
             }
