@@ -3,9 +3,12 @@ package me.rerere.rikkahub.data.ai.tools
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.ai.core.Tool
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.datastore.Settings
@@ -15,6 +18,8 @@ import me.rerere.search.SearchService
 import me.rerere.search.SearchServiceOptions
 import java.time.LocalDate
 import kotlin.uuid.Uuid
+
+private const val MAX_SCRAPE_TEXT_CHARS = 32 * 1024
 
 fun createSearchTools(settings: Settings): Set<Tool> {
     return buildSet {
@@ -74,7 +79,17 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                                 })
                             JsonObject(map)
                         }
-                    listOf(UIMessagePart.Text(results.toString()))
+                    val query = it.jsonObject["query"]?.jsonPrimitive?.contentOrNull
+                    listOf(
+                        UIMessagePart.Text(
+                            buildJsonObject {
+                                put("type", JsonPrimitive("web_search"))
+                                query?.let { q -> put("query", JsonPrimitive(q)) }
+                                put("items", results["items"] ?: JsonArray(emptyList()))
+                                put("images", results["images"] ?: JsonArray(emptyList()))
+                            }.toString()
+                        )
+                    )
                 }
             )
         )
@@ -110,7 +125,25 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                             serviceOptions = options,
                         )
                         val payload = JsonInstantPretty.encodeToJsonElement(result.getOrThrow()).jsonObject
-                        listOf(UIMessagePart.Text(payload.toString()))
+                        val firstUrl = payload["urls"]?.jsonArray?.firstOrNull()?.jsonObject
+                        val url = it.jsonObject["url"]?.jsonPrimitive?.contentOrNull
+                            ?: firstUrl?.get("url")?.jsonPrimitive?.contentOrNull
+                            ?: ""
+                        val text = firstUrl?.get("content")?.jsonPrimitive?.contentOrNull ?: ""
+                        val totalChars = text.length
+                        val truncated = totalChars > MAX_SCRAPE_TEXT_CHARS
+                        val clippedText = if (truncated) text.take(MAX_SCRAPE_TEXT_CHARS) else text
+                        listOf(
+                            UIMessagePart.Text(
+                                buildJsonObject {
+                                    put("type", JsonPrimitive("web_fetch"))
+                                    put("url", JsonPrimitive(url))
+                                    put("text", JsonPrimitive(clippedText))
+                                    put("truncated", JsonPrimitive(truncated))
+                                    put("totalChars", JsonPrimitive(totalChars))
+                                }.toString()
+                            )
+                        )
                     }
                 ))
         }
