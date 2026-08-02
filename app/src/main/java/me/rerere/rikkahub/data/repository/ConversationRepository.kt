@@ -341,16 +341,14 @@ class ConversationRepository(
         if (semanticHits.isEmpty()) return fts
 
         // 为语义命中解析 title / updateAt（按 conversation 去重加载，避免 N+1）
-        val metaByConv = HashMap<String, Pair<String, Instant>>()
-        fun metaFor(conversationId: String): Pair<String, Instant> =
-            metaByConv.getOrPut(conversationId) {
-                conversationDAO.getConversationById(conversationId)
-                    ?.let { entity -> entity.title to Instant.ofEpochMilli(entity.updateAt) }
-                    ?: ("" to Instant.EPOCH)
-            }
+        val metaByConv = semanticHits.map { it.conversationId }.distinct().associateWith { id ->
+            conversationDAO.getConversationById(id)
+                ?.let { entity -> entity.title to Instant.ofEpochMilli(entity.updateAt) }
+                ?: ("" to Instant.EPOCH)
+        }
 
         val semanticResults = semanticHits.map { hit ->
-            val (title, updateAt) = metaFor(hit.conversationId)
+            val (title, updateAt) = metaByConv.getValue(hit.conversationId)
             MessageSearchResult(
                 nodeId = hit.nodeId,
                 messageId = hit.messageId,
