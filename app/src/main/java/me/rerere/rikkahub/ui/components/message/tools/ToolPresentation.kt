@@ -62,8 +62,9 @@ object ToolPresentationResolver {
     fun resolve(tool: UIMessagePart.Tool): ToolPresentation {
         val kind = kindFor(tool.toolName)
         val envelope = parseEnvelope(tool.output)
-        val errorMessage = envelope?.get("error") as? JsonPrimitive
-            ?.let { it.contentOrNull }?.takeIf { it.isNotBlank() }
+        val errorMessage = envelope?.get("error")
+            ?.let { (it as? JsonPrimitive)?.contentOrNull }
+            ?.takeIf { it.isNotBlank() }
         val exitCode = (envelope?.get("exitCode") as? JsonPrimitive)?.intOrNull
         return ToolPresentation(
             toolName = tool.toolName,
@@ -102,6 +103,8 @@ object ToolPresentationResolver {
             ToolKind.SHELL_EXECUTE -> args?.string("command")
                 ?.replace('\n', ' ')?.trim()
             ToolKind.FILE_READ, ToolKind.FILE_WRITE, ToolKind.FILE_EDIT -> envelope?.string("path")
+            ToolKind.FILE_GLOB, ToolKind.FILE_GREP -> args?.string("pattern")
+                ?: envelope?.string("pattern")
             ToolKind.CLIPBOARD, ToolKind.TEXT_TO_SPEECH, ToolKind.SCREEN_TIME,
             ToolKind.CALENDAR_QUERY, ToolKind.CALENDAR_CREATE, ToolKind.TIME_INFO,
             ToolKind.EVAL_JAVASCRIPT, ToolKind.RUN_WORKFLOW, ToolKind.SUB_AGENT -> envelope?.string("path")
@@ -122,6 +125,7 @@ object ToolPresentationResolver {
             ?.let { (it as? JsonPrimitive)?.contentOrNull?.toLongOrNull()?.toInt() }
         ToolKind.SCREEN_TIME -> envelope?.arraySize("apps")
         ToolKind.CALENDAR_QUERY -> envelope?.arraySize("events")
+        ToolKind.FILE_GLOB, ToolKind.FILE_GREP -> envelope?.arraySize("matches")
         ToolKind.CLIPBOARD, ToolKind.TEXT_TO_SPEECH, ToolKind.CALENDAR_CREATE, ToolKind.TIME_INFO,
         ToolKind.EVAL_JAVASCRIPT, ToolKind.RUN_WORKFLOW, ToolKind.SUB_AGENT, ToolKind.UNKNOWN -> null
     }
