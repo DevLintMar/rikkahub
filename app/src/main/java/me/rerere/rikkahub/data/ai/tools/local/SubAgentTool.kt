@@ -169,6 +169,7 @@ internal fun buildSubAgentTool(
                 systemPrompt = systemPrompt,
             )
             val payload = buildJsonObject {
+                put("type", JsonPrimitive("sub_agent"))
                 put("status", JsonPrimitive("started"))
                 put("task_id", JsonPrimitive(handle.taskId))
                 put("description", JsonPrimitive(description))
@@ -183,6 +184,7 @@ internal fun buildSubAgentTool(
                 systemPrompt = systemPrompt,
             )
             val payload = buildJsonObject {
+                put("type", JsonPrimitive("sub_agent"))
                 put("status", JsonPrimitive(if (result.success) "completed" else "failed"))
                 put("description", JsonPrimitive(description))
                 put("mode", JsonPrimitive("synchronous"))

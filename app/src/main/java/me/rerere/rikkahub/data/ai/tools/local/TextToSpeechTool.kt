@@ -48,6 +48,7 @@ internal fun buildTextToSpeechTool(
             ?: error("text is required")
         eventBus.emit(AppEvent.Speak(text))
         val payload = buildJsonObject {
+            put("type", "text_to_speech")
             put("success", true)
         }
         listOf(UIMessagePart.Text(payload.toString()))

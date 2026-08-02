@@ -26,6 +26,7 @@ internal fun buildTimeInfoTool(): Tool = Tool(
         val time = now.toLocalTime().withNano(0)
         val weekday = now.dayOfWeek
         val payload = buildJsonObject {
+            put("type", "get_time_info")
             put("year", date.year)
             put("month", date.monthValue)
             put("day", date.dayOfMonth)

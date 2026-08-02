@@ -123,6 +123,7 @@ internal fun buildWorkflowTool(
         }
 
         val payload = buildJsonObject {
+            put("type", JsonPrimitive("run_workflow"))
             put("status", JsonPrimitive(topLevelStatus))
             put("parallel", JsonPrimitive(definition.parallel))
             put("steps", stepsJson)

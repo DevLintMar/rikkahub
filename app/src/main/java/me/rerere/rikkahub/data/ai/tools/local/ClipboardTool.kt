@@ -49,6 +49,7 @@ internal fun buildClipboardTool(context: Context): Tool = Tool(
         when (action) {
             "read" -> {
                 val payload = buildJsonObject {
+                    put("type", "clipboard_tool")
                     put("text", context.readClipboardText())
                 }
                 listOf(UIMessagePart.Text(payload.toString()))
@@ -58,6 +59,7 @@ internal fun buildClipboardTool(context: Context): Tool = Tool(
                 val text = params["text"]?.jsonPrimitive?.contentOrNull ?: error("text is required")
                 context.writeClipboardText(text)
                 val payload = buildJsonObject {
+                    put("type", "clipboard_tool")
                     put("success", true)
                     put("text", text)
                 }

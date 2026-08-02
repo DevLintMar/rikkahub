@@ -80,6 +80,7 @@ internal fun buildScreenTimeTool(context: Context, eventBus: AppEventBus): Tool 
         if (!context.hasUsageStatsPermission()) {
             eventBus.emit(AppEvent.OpenUsageAccessSettings)
             val payload = buildJsonObject {
+                put("type", "get_screen_time")
                 put("error", "NO_PERMISSION")
                 put(
                     "message",
@@ -111,6 +112,7 @@ internal fun buildScreenTimeTool(context: Context, eventBus: AppEventBus): Tool 
             }
         } catch (e: Exception) {
             val payload = buildJsonObject {
+                put("type", "get_screen_time")
                 put("error", "INVALID_TIME")
                 put("message", e.message ?: "Invalid time format for begin/end.")
             }
@@ -119,6 +121,7 @@ internal fun buildScreenTimeTool(context: Context, eventBus: AppEventBus): Tool 
 
         if (!startTime.isBefore(endTime)) {
             val payload = buildJsonObject {
+                put("type", "get_screen_time")
                 put("error", "INVALID_RANGE")
                 put("message", "begin must be earlier than end.")
             }
@@ -146,6 +149,7 @@ internal fun buildScreenTimeTool(context: Context, eventBus: AppEventBus): Tool 
         val apps = sorted.take(top)
 
         val payload = buildJsonObject {
+            put("type", "get_screen_time")
             put("range", if (isCustom) "custom" else rangePreset)
             put("start", startTime.withNano(0).toString())
             put("end", endTime.withNano(0).toString())

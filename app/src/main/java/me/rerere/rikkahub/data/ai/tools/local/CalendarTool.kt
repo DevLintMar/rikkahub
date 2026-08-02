@@ -84,6 +84,7 @@ internal fun buildCalendarQueryTool(context: Context): Tool = Tool(
     execute = { args ->
         if (!hasCalendarReadPermission(context)) {
             val payload = buildJsonObject {
+                put("type", "calendar_query")
                 put("error", "NO_PERMISSION")
                 put(
                     "message",
@@ -123,6 +124,7 @@ internal fun buildCalendarQueryTool(context: Context): Tool = Tool(
             }
         } catch (e: Exception) {
             val payload = buildJsonObject {
+                put("type", "calendar_query")
                 put("error", "INVALID_TIME")
                 put("message", e.message ?: "Invalid time format for begin/end.")
             }
@@ -131,6 +133,7 @@ internal fun buildCalendarQueryTool(context: Context): Tool = Tool(
 
         if (!startTime.isBefore(endTime)) {
             val payload = buildJsonObject {
+                put("type", "calendar_query")
                 put("error", "INVALID_RANGE")
                 put("message", "begin must be earlier than end.")
             }
@@ -211,6 +214,7 @@ internal fun buildCalendarQueryTool(context: Context): Tool = Tool(
         }
 
         val payload = buildJsonObject {
+            put("type", "calendar_query")
             put("range_start", startTime.withNano(0).toString())
             put("range_end", endTime.withNano(0).toString())
             put("count", events.size)
@@ -272,6 +276,7 @@ internal fun buildCalendarCreateTool(context: Context): Tool = Tool(
     execute = { args ->
         if (!hasCalendarWritePermission(context)) {
             val payload = buildJsonObject {
+                put("type", "calendar_create")
                 put("error", "NO_PERMISSION")
                 put(
                     "message",
@@ -290,6 +295,7 @@ internal fun buildCalendarCreateTool(context: Context): Tool = Tool(
 
         if (title.isNullOrBlank() || startRaw.isNullOrBlank()) {
             val payload = buildJsonObject {
+                put("type", "calendar_create")
                 put("error", "MISSING_REQUIRED")
                 put("message", "Both 'title' and 'start' are required.")
             }
@@ -310,6 +316,7 @@ internal fun buildCalendarCreateTool(context: Context): Tool = Tool(
             }
         } catch (e: Exception) {
             val payload = buildJsonObject {
+                put("type", "calendar_create")
                 put("error", "INVALID_TIME")
                 put("message", e.message ?: "Invalid time format.")
             }
@@ -318,6 +325,7 @@ internal fun buildCalendarCreateTool(context: Context): Tool = Tool(
 
         if (!startTime.isBefore(endTime)) {
             val payload = buildJsonObject {
+                put("type", "calendar_create")
                 put("error", "INVALID_RANGE")
                 put("message", "end must be later than start.")
             }
@@ -335,6 +343,7 @@ internal fun buildCalendarCreateTool(context: Context): Tool = Tool(
             val endDate = endTime.toLocalDate()
             if (!startDate.isBefore(endDate)) {
                 val payload = buildJsonObject {
+                    put("type", "calendar_create")
                     put("error", "INVALID_RANGE")
                     put("message", "all-day event end date must be later than start date.")
                 }
@@ -352,6 +361,7 @@ internal fun buildCalendarCreateTool(context: Context): Tool = Tool(
         val calendarId = getDefaultCalendarId(context)
         if (calendarId == null) {
             val payload = buildJsonObject {
+                put("type", "calendar_create")
                 put("error", "NO_CALENDAR")
                 put("message", "No calendar account found on this device. Please add a calendar account first.")
             }
@@ -374,6 +384,7 @@ internal fun buildCalendarCreateTool(context: Context): Tool = Tool(
         val uri = context.contentResolver.insert(CalendarContract.Events.CONTENT_URI, values)
         if (uri == null) {
             val payload = buildJsonObject {
+                put("type", "calendar_create")
                 put("error", "INSERT_FAILED")
                 put("message", "Failed to insert calendar event.")
             }
@@ -382,6 +393,7 @@ internal fun buildCalendarCreateTool(context: Context): Tool = Tool(
 
         val eventId = ContentUris.parseId(uri)
         val payload = buildJsonObject {
+            put("type", "calendar_create")
             put("success", true)
             put("event_id", eventId)
             put("title", title)

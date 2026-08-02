@@ -57,6 +57,7 @@ internal fun buildJavascriptTool(): Tool = Tool(
         val code = it.jsonObject["code"]?.jsonPrimitive?.contentOrNull
         val result = context.evaluate(code)
         val payload = buildJsonObject {
+            put("type", "eval_javascript")
             if (logs.isNotEmpty()) {
                 put("logs", JsonPrimitive(logs.joinToString("\n")))
             }
