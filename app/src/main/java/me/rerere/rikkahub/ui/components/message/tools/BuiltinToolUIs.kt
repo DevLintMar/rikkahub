@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -39,6 +40,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
@@ -374,6 +376,44 @@ object RecentChatsToolUI : ToolUIRenderer {
             overflow = TextOverflow.Ellipsis,
         )
     }
+
+    @Composable
+    override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
+        val content = context.content
+        if (content == null) {
+            DefaultToolPreview(context = context)
+            return
+        }
+        val chats = chats(context)
+        ToolDetailContainer {
+            if (chats.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.tool_ui_recent_chats_empty),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                chats.forEach { c ->
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = c.getStringContent("title") ?: stringResource(R.string.tool_ui_untitled),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        c.getStringContent("last_chat")?.let { lastChat ->
+                            Text(
+                                text = lastChat,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /**
@@ -404,6 +444,62 @@ object ConversationSearchToolUI : ToolUIRenderer {
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
         )
+    }
+
+    @Composable
+    override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
+        val content = context.content
+        if (content == null) {
+            DefaultToolPreview(context = context)
+            return
+        }
+        val results = results(context)
+        ToolDetailContainer {
+            if (results.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.tool_ui_conv_search_empty),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                results.forEach { r ->
+                    val title = r.getStringContent("title") ?: stringResource(R.string.tool_ui_untitled)
+                    val matchCount = (r.jsonObjectOrNull?.get("match_count") as? JsonPrimitive)?.contentOrNull?.toIntOrNull()
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (matchCount != null && matchCount > 0) {
+                            ToolPill(stringResource(R.string.tool_ui_match_count, matchCount))
+                        }
+                    }
+                    // 前 3 条消息片段
+                    (r.jsonObjectOrNull?.get("messages") as? JsonArray)
+                        ?.take(3)
+                        ?.forEach { m ->
+                            val text = m.getStringContent("text").orEmpty()
+                            if (text.isNotBlank()) {
+                                Text(
+                                    text = text.take(120),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                }
+            }
+        }
     }
 }
 

@@ -1331,6 +1331,10 @@
   <string name="tool_ui_grep_count">%d matches</string>
   <string name="tool_ui_grep_default">Grep files</string>
   <string name="tool_ui_grep_empty">No matches</string>
+  <string name="tool_ui_conv_search_empty">No conversations found</string>
+  <string name="tool_ui_match_count">%d matches</string>
+  <string name="tool_ui_recent_chats_empty">No conversations</string>
+  <string name="tool_ui_untitled">Untitled</string>
   <string name="workspace_page_name_duplicate">Name already exists</string>
   <string name="setting_mcp_page_name_invalid">Name can only contain English letters and numbers</string>
   <string name="log_page_record_requests">Record requests</string>
