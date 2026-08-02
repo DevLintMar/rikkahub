@@ -16,6 +16,7 @@ import me.rerere.workspace.RootfsInstaller
 import me.rerere.workspace.WorkspaceCommandResult
 import me.rerere.workspace.WorkspaceFileEntry
 import me.rerere.workspace.WorkspaceManager
+import me.rerere.workspace.WorkspaceSearchMatch
 import me.rerere.workspace.WorkspaceShellStatus
 import me.rerere.workspace.WorkspaceStorageArea
 import java.io.ByteArrayOutputStream
@@ -284,6 +285,31 @@ class WorkspaceRepository(
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
         manager.ensureWorkspace(workspace.root)
         manager.moveFile(workspace.root, source, target, overwrite)
+    }
+
+    /** 按 glob 模式列出工作区文件; pattern/path 相对于工作区文件根目录 */
+    suspend fun glob(
+        id: String,
+        pattern: String,
+        path: String = "",
+    ): List<WorkspaceFileEntry> = withContext(Dispatchers.IO) {
+        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        manager.ensureWorkspace(workspace.root)
+        manager.glob(workspace.root, pattern, path)
+    }
+
+    /** 在工作区文件中搜索文本或正则; query/path/includeGlob 相对于工作区文件根目录 */
+    suspend fun grep(
+        id: String,
+        query: String,
+        path: String = "",
+        regex: Boolean = false,
+        ignoreCase: Boolean = true,
+        includeGlob: String? = null,
+    ): List<WorkspaceSearchMatch> = withContext(Dispatchers.IO) {
+        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        manager.ensureWorkspace(workspace.root)
+        manager.grep(workspace.root, query, path, regex, ignoreCase, includeGlob)
     }
 
     suspend fun executeCommand(

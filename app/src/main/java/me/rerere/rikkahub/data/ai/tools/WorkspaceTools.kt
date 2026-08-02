@@ -11,6 +11,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import me.rerere.ai.core.InputSchema
 import me.rerere.ai.core.Tool
 import me.rerere.ai.core.ToolOutput
@@ -34,6 +35,8 @@ val WorkspaceToolDefaultApprovals: Map<String, Boolean> = mapOf(
     "workspace_write_file" to false,
     "workspace_edit_file" to false,
     "workspace_shell" to true,
+    "workspace_glob" to false,
+    "workspace_grep" to false,
 )
 
 fun resolveWorkspaceToolApproval(name: String, overrides: Map<String, Boolean>): Boolean =
@@ -55,6 +58,8 @@ suspend fun createWorkspaceTools(
         createWriteFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createEditFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createShellTool(workspaceId, ::needsApproval, workspaceRepository, shellCwd),
+        createGlobTool(workspaceId, ::needsApproval, workspaceRepository),
+        createGrepTool(workspaceId, ::needsApproval, workspaceRepository),
     )
 }
 
@@ -321,6 +326,124 @@ private fun createShellTool(
             producer.send(ToolOutput.Completed(listOf(UIMessagePart.Text(shellEnvelope(result)))))
             close()
         }
+    },
+)
+
+private fun createGlobTool(
+    workspaceId: String,
+    needsApproval: (String) -> Boolean,
+    workspaceRepository: WorkspaceRepository,
+) = Tool(
+    name = "workspace_glob",
+    description = """
+        List files matching a glob pattern in the assistant's bound workspace Rootfs /workspace area.
+        The pattern is matched against file names (e.g. '*.go', '**/*.md'). 'path' is an optional base
+        directory relative to /workspace. Returns path, name, isDirectory, sizeBytes and updatedAt for each file.
+    """.trimIndent().replace("\n", " "),
+    parameters = {
+        InputSchema.Obj(
+            properties = buildJsonObject {
+                put("pattern", buildJsonObject {
+                    put("type", "string")
+                    put("description", "Glob pattern matched against file names (e.g. '*.go', '**/*.md')")
+                })
+                put("path", buildJsonObject {
+                    put("type", "string")
+                    put("description", "Optional base directory relative to /workspace. Omit for the workspace root.")
+                })
+            },
+            required = listOf("pattern"),
+        )
+    },
+    needsApproval = { needsApproval("workspace_glob") },
+    execute = {
+        val pattern = it.jsonObject.string("pattern") ?: error("pattern is required")
+        val path = it.jsonObject.string("path").orEmpty()
+        val files = workspaceRepository.glob(workspaceId, pattern, path)
+        listOf(
+            UIMessagePart.Text(
+                buildJsonObject {
+                    put("type", JsonPrimitive("workspace_glob"))
+                    put("pattern", JsonPrimitive(pattern))
+                    putJsonArray("files") {
+                        files.forEach { f ->
+                            add(buildJsonObject {
+                                put("path", JsonPrimitive(f.path))
+                                put("name", JsonPrimitive(f.name))
+                                put("isDirectory", JsonPrimitive(f.isDirectory))
+                                put("sizeBytes", JsonPrimitive(f.sizeBytes))
+                                put("updatedAt", JsonPrimitive(f.updatedAt))
+                            })
+                        }
+                    }
+                }.toString()
+            )
+        )
+    },
+)
+
+private fun createGrepTool(
+    workspaceId: String,
+    needsApproval: (String) -> Boolean,
+    workspaceRepository: WorkspaceRepository,
+) = Tool(
+    name = "workspace_grep",
+    description = """
+        Search for text or regex in files under the assistant's bound workspace Rootfs /workspace area.
+        Set 'regex'=true to treat the pattern as a regular expression (default is literal match).
+        'path' is an optional base directory relative to /workspace; 'glob' is an optional file-name filter.
+        Returns matching lines with file path, line number and content.
+    """.trimIndent().replace("\n", " "),
+    parameters = {
+        InputSchema.Obj(
+            properties = buildJsonObject {
+                put("pattern", buildJsonObject {
+                    put("type", "string")
+                    put("description", "Text to search for, or a regular expression when regex=true")
+                })
+                put("path", buildJsonObject {
+                    put("type", "string")
+                    put("description", "Optional base directory relative to /workspace. Omit to search the workspace root.")
+                })
+                put("regex", buildJsonObject {
+                    put("type", "boolean")
+                    put("description", "Whether to treat the pattern as a regular expression (default false = literal match)")
+                })
+                put("glob", buildJsonObject {
+                    put("type", "string")
+                    put("description", "Optional file-name glob filter (e.g. '*.kt')")
+                })
+            },
+            required = listOf("pattern"),
+        )
+    },
+    needsApproval = { needsApproval("workspace_grep") },
+    execute = {
+        val pattern = it.jsonObject.string("pattern") ?: error("pattern is required")
+        val path = it.jsonObject.string("path").orEmpty()
+        val regex = it.jsonObject["regex"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false
+        val glob = it.jsonObject.string("glob")
+        val matches = workspaceRepository.grep(
+            id = workspaceId, query = pattern, path = path, regex = regex,
+            ignoreCase = true, includeGlob = glob,
+        )
+        listOf(
+            UIMessagePart.Text(
+                buildJsonObject {
+                    put("type", JsonPrimitive("workspace_grep"))
+                    put("pattern", JsonPrimitive(pattern))
+                    putJsonArray("matches") {
+                        matches.forEach { m ->
+                            add(buildJsonObject {
+                                put("path", JsonPrimitive(m.path))
+                                put("line", JsonPrimitive(m.line))
+                                put("text", JsonPrimitive(m.text))
+                            })
+                        }
+                    }
+                }.toString()
+            )
+        )
     },
 )
 

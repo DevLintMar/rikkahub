@@ -28,6 +28,8 @@ val ALL_BASE_TOOLS = listOf(
     "workspace_write_file",
     "workspace_edit_file",
     "workspace_shell",
+    "workspace_glob",
+    "workspace_grep",
     "get_time_info",
     "clipboard_tool",
     "eval_javascript",
