@@ -24,6 +24,8 @@ import me.rerere.rikkahub.data.api.SponsorAPI
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.db.AppDatabase
 import me.rerere.rikkahub.data.db.fts.MessageFtsManager
+import me.rerere.rikkahub.data.embedding.EmbeddingClient
+import me.rerere.rikkahub.data.embedding.SemanticIndexManager
 import me.rerere.rikkahub.data.db.fts.SimpleDictManager
 import me.rerere.rikkahub.data.db.migrations.Migration_6_7
 import me.rerere.rikkahub.data.db.migrations.Migration_11_12
@@ -148,6 +150,16 @@ val dataSourceModule = module {
 
     single {
         MessageFtsManager(get())
+    }
+
+    single { EmbeddingClient(okHttpClient = get()) }
+    single {
+        SemanticIndexManager(
+            dao = get<AppDatabase>().messageEmbeddingDao(),
+            embeddingClient = get(),
+            settingsStore = get(),
+            context = get(),
+        )
     }
 
     single { McpManager(settingsStore = get(), appScope = get(), filesManager = get(), appEventBus = get()) }
