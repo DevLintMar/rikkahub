@@ -20,6 +20,11 @@ data class WorkspaceShellContext(
     val timeoutMillis: Long,
     val stdin: ByteArray? = null,
     val bindMounts: List<WorkspaceBindMount> = emptyList(),
+    /**
+     * 逐行输出回调(用于实时展示), 在收集线程里调用(非协程上下文), 需自行桥接到协程。
+     * 默认为 null, 保持向后兼容。
+     */
+    val onLine: ((String) -> Unit)? = null,
 )
 
 class HostShellRunner : WorkspaceShellRunner {
@@ -28,7 +33,7 @@ class HostShellRunner : WorkspaceShellRunner {
             .directory(context.workingDir)
             .redirectErrorStream(false)
             .start()
-        return process.readResult(context.timeoutMillis, context.stdin)
+        return process.readResult(context.timeoutMillis, context.stdin, context.onLine)
     }
 
     private fun defaultShell(): String =
@@ -38,9 +43,13 @@ class HostShellRunner : WorkspaceShellRunner {
 // 单个流保留的最大字符数, 防止命令疯狂输出导致 OOM 或撑爆 LLM 上下文
 const val MAX_OUTPUT_CHARS = 128 * 1024
 
-fun Process.readResult(timeoutMillis: Long, stdin: ByteArray? = null): WorkspaceCommandResult {
-    val stdout = StreamCollector(inputStream)
-    val stderr = StreamCollector(errorStream)
+fun Process.readResult(
+    timeoutMillis: Long,
+    stdin: ByteArray? = null,
+    onLine: ((String) -> Unit)? = null,
+): WorkspaceCommandResult {
+    val stdout = StreamCollector(inputStream, onLine = onLine)
+    val stderr = StreamCollector(errorStream, onLine = onLine)
     val stdinWriter = stdin?.let { bytes -> StreamWriter(outputStream, bytes) }
     try {
         val finished = waitFor(timeoutMillis, TimeUnit.MILLISECONDS)
@@ -92,8 +101,12 @@ private class StreamWriter(
 private class StreamCollector(
     stream: InputStream,
     private val maxChars: Int = MAX_OUTPUT_CHARS,
+    private val onLine: ((String) -> Unit)? = null,
 ) {
     private val builder = StringBuilder()
+
+    // 仅由收集线程访问: 累积未完成的行, 遇 '\n' 时把整行交给 onLine
+    private val lineBuilder = StringBuilder()
 
     @Volatile
     var truncated = false
@@ -116,6 +129,16 @@ private class StreamCollector(
                             truncated = true
                         }
                     }
+                    if (onLine != null) {
+                        emitCompleteLines(buffer, read)
+                    }
+                }
+                // 末尾无换行的一段也交付, 否则最后一行无法实时显示
+                onLine?.let { cb ->
+                    if (lineBuilder.isNotEmpty()) {
+                        cb(lineBuilder.toString())
+                        lineBuilder.setLength(0)
+                    }
                 }
             }
         } catch (_: IOException) {
@@ -126,6 +149,19 @@ private class StreamCollector(
         // 设为 daemon: 即使 proot grandchild 残留 fd 导致 read() 永久阻塞, 也不会阻止 JVM 退出
         isDaemon = true
         start()
+    }
+
+    /** 在锁外按 '\n' 切分行并回调 onLine, 保证回调不持有 builder 锁 */
+    private fun emitCompleteLines(buffer: CharArray, count: Int) {
+        val cb = onLine ?: return
+        for (i in 0 until count) {
+            val c = buffer[i]
+            lineBuilder.append(c)
+            if (c == '\n') {
+                cb(lineBuilder.toString().trimEnd('\r', '\n'))
+                lineBuilder.setLength(0)
+            }
+        }
     }
 
     fun join(millis: Long) = thread.join(millis)

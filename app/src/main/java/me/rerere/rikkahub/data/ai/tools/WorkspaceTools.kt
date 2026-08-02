@@ -1,13 +1,17 @@
 package me.rerere.rikkahub.data.ai.tools
 
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.flow
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import me.rerere.ai.core.InputSchema
 import me.rerere.ai.core.Tool
+import me.rerere.ai.core.ToolOutput
 import me.rerere.ai.ui.DiffMetadata
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.toMetadata
@@ -88,6 +92,7 @@ private fun createReadFileTool(
             listOf(
                 UIMessagePart.Text(
                     buildJsonObject {
+                        put("type", "workspace_read_file")
                         put("path", path)
                         put("text", text)
                     }.toString()
@@ -130,7 +135,18 @@ private fun createWriteFileTool(
         val text = params.string("text") ?: error("text is required")
         val overwrite = params["overwrite"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: true
         val entry = workspaceRepository.writeTextInRootfs(workspaceId, path, text, overwrite)
-        listOf(UIMessagePart.Text(entry.toJson().toString()))
+        listOf(
+            UIMessagePart.Text(
+                buildJsonObject {
+                    put("type", "workspace_write_file")
+                    put("path", entry.path)
+                    put("name", entry.name)
+                    put("isDirectory", entry.isDirectory)
+                    put("sizeBytes", entry.sizeBytes)
+                    put("updatedAt", entry.updatedAt)
+                }.toString()
+            )
+        )
     },
 )
 
@@ -187,6 +203,7 @@ private fun createEditFileTool(
         listOf(
             UIMessagePart.Text(
                 text = buildJsonObject {
+                    put("type", "workspace_edit_file")
                     put("path", entry.path)
                     put("replacements", result.replacements)
                     if (result.strategy != ExactReplacer.name) put("matchStrategy", result.strategy)
@@ -245,29 +262,55 @@ private fun createShellTool(
         )
     },
     needsApproval = { needsApproval("workspace_shell") },
-    execute = {
-        val params = it.jsonObject
-        val command = params.string("command") ?: error("command is required")
-        val cwd = (params.string("cwd") ?: defaultCwd.orEmpty())
-            .removePrefix("/workspace/").removePrefix("/workspace")
-        val timeoutMillis = params.string("timeout")?.toLongOrNull()
-            ?.coerceIn(1L, SHELL_TIMEOUT_MAX_SECONDS)
-            ?.times(1_000L)
-            ?: WorkspaceManager.DEFAULT_COMMAND_TIMEOUT_MS
-        val result = workspaceRepository.executeCommand(workspaceId, command, cwd, timeoutMillis)
-        listOf(
-            UIMessagePart.Text(
-                buildJsonObject {
-                    put("exitCode", result.exitCode)
-                    put("stdout", result.stdout)
-                    put("stderr", result.stderr)
-                    put("timedOut", result.timedOut)
-                    if (result.truncated) put("truncated", true)
-                }.toString()
-            )
+    execute = { params ->
+        val result = workspaceRepository.executeCommand(
+            workspaceId,
+            shellCommand(params.jsonObject),
+            shellCwd(params.jsonObject, defaultCwd),
+            shellTimeoutMillis(params.jsonObject),
         )
+        listOf(UIMessagePart.Text(shellEnvelope(result)))
+    },
+    executeFlow = { params ->
+        flow {
+            // 收集线程把输出行塞进无界 Channel, executeCommandStreaming 返回后行已收齐;
+            // 必须先 close() 再遍历, 否则 for 循环会在排空后一直挂起等待新元素
+            val lineChannel = Channel<String>(Channel.UNLIMITED)
+            val result = workspaceRepository.executeCommandStreaming(
+                id = workspaceId,
+                command = shellCommand(params.jsonObject),
+                cwd = shellCwd(params.jsonObject, defaultCwd),
+                timeoutMillis = shellTimeoutMillis(params.jsonObject),
+            ) { line -> lineChannel.trySend(line) }
+            lineChannel.close()
+            for (line in lineChannel) emit(ToolOutput.OutputDelta(line))
+            emit(ToolOutput.Completed(listOf(UIMessagePart.Text(shellEnvelope(result)))))
+        }
     },
 )
+
+private fun shellCommand(params: JsonObject): String =
+    params.string("command") ?: error("command is required")
+
+private fun shellCwd(params: JsonObject, defaultCwd: String?): String =
+    (params.string("cwd") ?: defaultCwd.orEmpty())
+        .removePrefix("/workspace/").removePrefix("/workspace")
+
+private fun shellTimeoutMillis(params: JsonObject): Long =
+    params.string("timeout")?.toLongOrNull()
+        ?.coerceIn(1L, SHELL_TIMEOUT_MAX_SECONDS)
+        ?.times(1_000L)
+        ?: WorkspaceManager.DEFAULT_COMMAND_TIMEOUT_MS
+
+private fun shellEnvelope(result: WorkspaceCommandResult): String = buildJsonObject {
+    put("type", "workspace_shell")
+    put("exitCode", result.exitCode)
+    put("stdout", result.stdout)
+    put("stderr", result.stderr)
+    put("timedOut", result.timedOut)
+    put("totalChars", result.stdout.length + result.stderr.length)
+    if (result.truncated) put("truncated", true)
+}.toString()
 
 private fun kotlinx.serialization.json.JsonObject.string(name: String): String? =
     this[name]?.jsonPrimitive?.contentOrNull
@@ -304,6 +347,7 @@ private suspend fun WorkspaceRepository.readImageInRootfs(
         UIMessagePart.Image(url = uris.first().toString()),
         UIMessagePart.Text(
             buildJsonObject {
+                put("type", "workspace_read_file")
                 put("path", path)
                 put("description", "Image file read successfully")
             }.toString()
@@ -439,12 +483,4 @@ private fun JsonObjectBuilder.putPathProperty(required: Boolean) {
             }
         )
     })
-}
-
-private fun WorkspaceFileEntry.toJson() = buildJsonObject {
-    put("path", path)
-    put("name", name)
-    put("isDirectory", isDirectory)
-    put("sizeBytes", sizeBytes)
-    put("updatedAt", updatedAt)
 }

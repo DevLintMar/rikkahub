@@ -288,6 +288,27 @@ class WorkspaceRepository(
         }
     }
 
+    /**
+     * 流式执行命令: 与 [executeCommand] 等价, 额外把命令输出逐行回调给 [onLine]。
+     * 回调在收集线程(非协程)上执行, 不能在其中调用 suspend 函数/emit;
+     * 调用方需自行桥接到协程(例如 Channel)。返回的 [WorkspaceCommandResult]
+     * 仍是完整/截断后的权威结果。
+     */
+    suspend fun executeCommandStreaming(
+        id: String,
+        command: String,
+        cwd: String = "",
+        timeoutMillis: Long = WorkspaceManager.DEFAULT_COMMAND_TIMEOUT_MS,
+        stdin: ByteArray? = null,
+        onLine: ((String) -> Unit)? = null,
+    ): WorkspaceCommandResult {
+        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        return runInterruptible(Dispatchers.IO) {
+            manager.ensureWorkspace(workspace.root)
+            manager.executeCommandStreaming(workspace.root, command, cwd, timeoutMillis, stdin, onLine)
+        }
+    }
+
     suspend fun delete(id: String): Boolean {
         val workspace = dao.getById(id) ?: return false
         dao.deleteById(id)

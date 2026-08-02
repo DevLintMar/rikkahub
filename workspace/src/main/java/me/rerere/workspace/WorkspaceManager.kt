@@ -205,6 +205,41 @@ class WorkspaceManager(
         )
     }
 
+    /**
+     * 流式执行命令: 与 [executeCommand] 等价, 额外把命令输出逐行回调给 [onLine]。
+     * 回调在收集线程(非协程)上执行, 只用于实时展示; 返回的 [WorkspaceCommandResult]
+     * 仍是完整/截断后的权威结果。
+     */
+    fun executeCommandStreaming(
+        root: String,
+        command: String,
+        cwd: String = "",
+        timeoutMillis: Long = DEFAULT_COMMAND_TIMEOUT_MS,
+        stdin: ByteArray? = null,
+        onLine: ((String) -> Unit)? = null,
+    ): WorkspaceCommandResult {
+        require(command.isNotBlank()) { "Command is required" }
+        val workingDir = fileSystem.resolve(filesDir(root), cwd)
+        require(workingDir.exists()) { "Working directory does not exist: $cwd" }
+        require(workingDir.isDirectory) { "Working path is not a directory: $cwd" }
+
+        return shellRunner.execute(
+            WorkspaceShellContext(
+                root = root,
+                command = command,
+                cwd = cwd,
+                filesDir = filesDir(root),
+                linuxDir = linuxDir(root),
+                tempDir = tempDir(root),
+                workingDir = workingDir,
+                timeoutMillis = timeoutMillis,
+                stdin = stdin,
+                bindMounts = bindMounts,
+                onLine = onLine,
+            )
+        )
+    }
+
     private fun requireValidRoot(root: String) {
         require(root.matches(ROOT_NAME_REGEX)) {
             "Invalid workspace root name: $root"
