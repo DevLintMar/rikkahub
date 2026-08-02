@@ -117,7 +117,8 @@ fun execute(args: JsonElement): Flow<ToolOutput>
 | 工具 | payload 上限 | 说明 |
 |---|---|---|
 | `workspace_shell` | 依赖 workspace 层 128KB 上限 | stdout/stderr 任一被 workspace 层截断即自报 |
-| `scrape_web` / `file_read` | 截到 32KB | 超限自报 |
+| `scrape_web` | 截到 32KB | 超限自报 |
+| `workspace_read_file` | 由 `limit` 参数控制（§3.4） | 分段读 + `hasMore` 提示；无 `limit` 时整读受安全网约束 |
 | `conversation_search` / `read_conversation` | 天然有界（窗口 200 条 / 分页 ≤100 条） | 一般不自报；仅当整体超 app 层安全网时由安全网兜底 |
 
 **② 硬性安全网**：GenerationHandler 对工具 `Completed` 的文本输出做最后防线 `take(MAX_TOOL_RESULT_LENGTH = 100_000)`，超限追加 `…[truncated]` 标记。兜底对象：MCP 原始文本 / use_skill markdown 这类非信封大输出。信封工具已自限，极少触发。
@@ -144,7 +145,26 @@ fun execute(args: JsonElement): Flow<ToolOutput>
 | `exitCode` | shell 退出码 | 展示状态（非 0 → FAILED） |
 | `error` | 错误码（见 §3.3） | 展示状态（→ FAILED） |
 
+**字段命名决策**：信封字段保持 RikkaHub 现有 **camelCase** 约定（`exitCode`/`stdout`/`stderr`/`text`），只新增 `type` 字段；**不**对齐 Agora 的 snake_case（`exit_code`/`old_string` 等）（用户决策）。展示 resolver 解析 camelCase。
+
 **不套信封**：MCP 工具结果（服务器定义内容，原样）、`use_skill` 结果（原始 markdown）。展示走 `UNKNOWN` 兜底。
+
+### 3.4 `workspace_read_file` 新增 offset/limit 分段读（用户要求）
+
+现状：整文件读入内存，超 8MB（`MAX_READ_FILE_BYTES`）直接报错"用 shell head/tail/grep"。新增可选参数，使模型能分段读大文件（对齐 Agora `file_read` 的 offset/limit）：
+
+- `offset`（Int，默认 0）：字节偏移起点。
+- `limit`（Int，默认 0 = 读到文件尾）：本次最大读取字节数。
+
+成功结果信封新增分页字段（保持 camelCase）：
+```json
+{"type": "workspace_read_file", "path": "/workspace/big.log", "text": "<分段内容>", "offset": 0, "limit": 65536, "totalChars": 137241, "hasMore": true}
+```
+
+- `totalChars`：文件总字符数；`hasMore` = `offset + limit < totalChars`，提示模型可继续分段读。
+- `offset` 越界 / `path` 校验失败仍走错误信封。
+- 图片路径保持现状（整图返回，不分段）。
+- 参数描述里注明分段读用途，引导模型读大文件时用小 limit。
 
 ### 3.3 错误契约
 
@@ -278,7 +298,7 @@ data class ToolPresentation(
 | app | `data/ai/GenerationHandler.kt` | collect Flow；删 `maybeTruncateToolOutput`；异常改错误信封；100KB 安全网 |
 | app | `data/ai/tools/SearchTools.kt` | 信封 + 错误码 + `scrape_web` 自限 |
 | app | `data/ai/tools/ConversationTools.kt` | 信封 + 错误码 + 大结果自限 |
-| app | `data/ai/tools/WorkspaceTools.kt` | 信封 + 错误码 + `workspace_shell` 流式自限 |
+| app | `data/ai/tools/WorkspaceTools.kt` | 信封 + 错误码 + `workspace_shell` 流式自限 + `workspace_read_file` 加 `offset`/`limit` 分段读 |
 | app | `data/ai/tools/local/*.kt`（memory/clipboard/tts/calendar/ask_user/skill） | 信封 + 错误码（一次性工具） |
 | app | `service/ChatService.kt` | MCP 工具包装 adapter；失败文本简短化 |
 | app | `data/db/AppDatabase.kt` | version 26 + AutoMigration 25→26 |
