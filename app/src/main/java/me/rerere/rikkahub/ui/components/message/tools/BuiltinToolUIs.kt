@@ -317,8 +317,8 @@ object ClipboardToolUI : ToolUIRenderer {
         val text = content.getStringContent("text")
         val action = context.arguments.getStringContent("action")
         ToolDetailContainer {
-            if (action == ACTION_READ) {
-                if (text.isNullOrBlank()) {
+            when (action) {
+                ACTION_READ -> if (text.isNullOrBlank()) {
                     Text(
                         text = stringResource(R.string.tool_ui_clipboard_empty),
                         style = MaterialTheme.typography.bodySmall,
@@ -327,13 +327,15 @@ object ClipboardToolUI : ToolUIRenderer {
                 } else {
                     ToolTerminalOutput(text)
                 }
-            } else {
-                Text(
-                    text = stringResource(R.string.tool_ui_clipboard_written),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                text?.takeIf { it.isNotBlank() }?.let { ToolTerminalOutput(it) }
+                ACTION_WRITE -> {
+                    Text(
+                        text = stringResource(R.string.tool_ui_clipboard_written),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    text?.takeIf { it.isNotBlank() }?.let { ToolTerminalOutput(it) }
+                }
+                else -> DefaultToolPreview(context = context)
             }
         }
     }
@@ -655,7 +657,7 @@ object CalendarQueryToolUI : ToolUIRenderer {
                 )
             } else {
                 events.forEach { ev ->
-                    val title = ev.getStringContent("title") ?: stringResource(R.string.tool_ui_untitled)
+                    val title = ev.getStringContent("title")?.takeIf { it.isNotBlank() } ?: stringResource(R.string.tool_ui_untitled)
                     val start = ev.getStringContent("start")
                     val allDay = (ev.jsonObjectOrNull?.get("all_day") as? JsonPrimitive)?.contentOrNull == "true"
                     val calendar = ev.getStringContent("calendar")

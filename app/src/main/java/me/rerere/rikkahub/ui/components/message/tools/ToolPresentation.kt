@@ -2,6 +2,7 @@ package me.rerere.rikkahub.ui.components.message.tools
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -97,7 +98,9 @@ object ToolPresentationResolver {
             ToolKind.WEB_SEARCH, ToolKind.CONVERSATION_SEARCH -> args?.string("query")
                 ?: envelope?.string("query")
             ToolKind.WEB_FETCH -> args?.string("url") ?: envelope?.string("url")
-            ToolKind.CONVERSATION_LIST -> envelope?.string("conversation_id")
+            ToolKind.CONVERSATION_LIST -> (envelope?.get("conversations") as? JsonArray)
+                ?.firstOrNull()?.let { (it as? JsonObject)?.get("title") as? JsonPrimitive }
+                ?.contentOrNull
             ToolKind.CONVERSATION_READ -> envelope?.string("title")
                 ?: envelope?.string("conversation_id")
             ToolKind.SHELL_EXECUTE -> args?.string("command")

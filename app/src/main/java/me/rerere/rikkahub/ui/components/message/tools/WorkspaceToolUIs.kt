@@ -381,7 +381,7 @@ object GlobToolUI : ToolUIRenderer {
                     val size = f.long("sizeBytes")
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
+                        verticalAlignment = Alignment.Top,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text(
