@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -30,6 +31,7 @@ import kotlinx.serialization.json.JsonElement
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.CodeSquare
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.ui.components.richtext.HighlightCodeBlock
 import me.rerere.rikkahub.utils.JsonInstantPretty
 
 /** 详情内容容器（content-only：滚动由 ToolDetailSheet 统一提供） */
@@ -166,8 +168,12 @@ internal fun ToolJsonSection(
     }
 }
 
-/** 原始 JSON 文本框（对齐最早 rikkahub 的 json/text 直出形式：等宽、可选中） */
+/** 原始 JSON 代码块（对齐最早 rikkahub：语法高亮 + 复制 + 下载，HighlightCodeBlock） */
 @Composable
 internal fun ToolJsonRawText(json: JsonElement) {
-    ToolTerminalOutput(JsonInstantPretty.encodeToString(json))
+    HighlightCodeBlock(
+        code = JsonInstantPretty.encodeToString(json),
+        language = "json",
+        style = TextStyle(fontSize = 10.sp, lineHeight = 12.sp),
+    )
 }

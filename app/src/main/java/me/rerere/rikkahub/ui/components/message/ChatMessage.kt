@@ -355,7 +355,7 @@ private fun MessagePartsBlock(
                     val aggregateHeader: (@Composable () -> Unit)? =
                         if (isReasoningOnlyBlock || isSingleToolBlock) null else {
                             @Composable {
-                                val callingColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                val callingColor = MaterialTheme.colorScheme.secondary
                                 val runningTool = block.steps.asReversed().firstOrNull { step ->
                                     step is ThinkingStep.ToolStep &&
                                         !step.tool.isPending &&  // 等待用户输入(ask_user/审批)不算"正在调用"
@@ -398,7 +398,7 @@ private fun MessagePartsBlock(
                                         Text(
                                             text = thinkingSummary,
                                             style = MaterialTheme.typography.titleSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                            color = MaterialTheme.colorScheme.secondary,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                         )
