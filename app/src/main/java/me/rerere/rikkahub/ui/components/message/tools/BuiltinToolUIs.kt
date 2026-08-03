@@ -530,7 +530,6 @@ object RecentChatsToolUI : ToolUIRenderer {
                         Text(
                             text = c.getStringContent("title") ?: stringResource(R.string.tool_ui_untitled),
                             style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
