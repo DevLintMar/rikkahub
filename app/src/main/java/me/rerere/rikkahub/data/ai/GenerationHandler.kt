@@ -270,7 +270,8 @@ class GenerationHandler(
                                         }
                                     )
                                 )
-                            )
+                            ),
+                            toolState = ToolState.FAILED,
                         )
                     }
 
