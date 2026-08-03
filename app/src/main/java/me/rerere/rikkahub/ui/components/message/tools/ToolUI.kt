@@ -2,17 +2,12 @@ package me.rerere.rikkahub.ui.components.message.tools
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastForEach
@@ -58,14 +53,6 @@ interface ToolUIRenderer {
     @Composable
     fun title(context: ToolUIContext): String =
         stringResource(R.string.chat_message_tool_call_generic, context.tool.toolName)
-
-    /** 步骤展开时是否显示内联摘要 */
-    fun hasSummary(context: ToolUIContext): Boolean = false
-
-    /** 步骤展开时的内联摘要 */
-    @Composable
-    fun Summary(context: ToolUIContext) {
-    }
 
     /** 点击步骤后的详情, 渲染在 BottomSheet 内 */
     @Composable
@@ -115,30 +102,15 @@ internal fun JsonElement?.getStringContent(key: String): String? =
 
 /**
  * 默认工具详情（content-only）：入参与输出的 JSON 高亮展示。标题由 ToolDetailSheet 提供
- *
- * @param headerActions 标题栏右侧的附加操作区
  */
 @Composable
 fun DefaultToolPreview(
     context: ToolUIContext,
-    headerActions: (@Composable () -> Unit)? = null,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = stringResource(R.string.chat_message_tool_call_title),
-                style = MaterialTheme.typography.headlineSmall,
-                textAlign = TextAlign.Center
-            )
-            headerActions?.invoke()
-        }
         ToolJsonSection(
             label = stringResource(R.string.chat_message_tool_call_label, context.tool.toolName),
             json = context.arguments,
