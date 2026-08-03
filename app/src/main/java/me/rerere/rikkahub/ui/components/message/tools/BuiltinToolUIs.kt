@@ -592,11 +592,9 @@ object ConversationSearchToolUI : ToolUIRenderer {
                             val text = m.getStringContent("text").orEmpty()
                             if (text.isNotBlank()) {
                                 Text(
-                                    text = text.take(120),
+                                    text = text,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
                                 )
                             }
                         }
