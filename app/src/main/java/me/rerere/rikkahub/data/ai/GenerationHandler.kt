@@ -280,7 +280,8 @@ class GenerationHandler(
                         executedTools += tool.copy(
                             output = listOf(
                                 UIMessagePart.Text(answer)
-                            )
+                            ),
+                            toolState = ToolState.SUCCEEDED,
                         )
                     }
 
