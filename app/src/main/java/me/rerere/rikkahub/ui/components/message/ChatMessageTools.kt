@@ -45,6 +45,7 @@ import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Tick01
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.message.tools.ToolDetailSheet
+import me.rerere.rikkahub.ui.components.message.tools.ToolJsonBody
 import me.rerere.rikkahub.ui.components.message.tools.ToolPresentationResolver
 import me.rerere.rikkahub.ui.components.message.tools.ToolUIContext
 import me.rerere.rikkahub.ui.components.message.tools.ToolUIRegistry
@@ -196,6 +197,7 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
         ToolDetailSheet(
             title = renderer.title(context),
             onDismiss = { showResult = false },
+            jsonBody = { ToolJsonBody(context) },
         ) {
             renderer.Preview(context = context, onDismissRequest = { showResult = false })
         }

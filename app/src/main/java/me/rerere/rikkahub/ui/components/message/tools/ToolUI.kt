@@ -25,7 +25,6 @@ import me.rerere.hugeicons.stroke.Tools
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.richtext.HighlightCodeBlock
 import me.rerere.rikkahub.ui.components.richtext.ZoomableAsyncImage
-import me.rerere.rikkahub.ui.components.ui.FormItem
 import me.rerere.rikkahub.utils.JsonInstant
 import me.rerere.rikkahub.utils.jsonPrimitiveOrNull
 
@@ -138,18 +137,18 @@ fun DefaultToolPreview(
             )
             headerActions?.invoke()
         }
-        FormItem(
-            label = {
-                Text(stringResource(R.string.chat_message_tool_call_label, context.tool.toolName))
-            }
+        ToolJsonSection(
+            label = stringResource(R.string.chat_message_tool_call_label, context.tool.toolName),
+            json = context.arguments,
         ) {
             JsonTreeView(context.arguments)
         }
         if (context.tool.output.isNotEmpty()) {
-            FormItem(
-                label = {
-                    Text(stringResource(R.string.chat_message_tool_call_result))
-                }
+            ToolJsonSection(
+                label = stringResource(R.string.chat_message_tool_call_result),
+                json = context.tool.output.filterIsInstance<UIMessagePart.Text>()
+                    .joinToString("\n") { it.text }
+                    .let { runCatching { JsonInstant.parseToJsonElement(it) }.getOrNull() },
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     context.tool.output.fastForEach { part ->
