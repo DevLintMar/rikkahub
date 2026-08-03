@@ -800,7 +800,7 @@ object CalendarQueryToolUI : ToolUIRenderer {
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
         val content = context.content
-        if (content == null) {
+        if (content == null || content.getStringContent("error") != null) {
             DefaultToolPreview(context = context)
             return
         }
@@ -865,7 +865,7 @@ object CalendarCreateToolUI : ToolUIRenderer {
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
         val content = context.content
-        if (content == null) {
+        if (content == null || content.getStringContent("error") != null) {
             DefaultToolPreview(context = context)
             return
         }
