@@ -242,7 +242,6 @@
   <string name="chat_message_tool_call_generic">Called tool %1$s</string>
   <string name="chat_message_tool_call_label">Called tool %1$s</string>
   <string name="chat_message_tool_call_result">Call result</string>
-  <string name="chat_message_tool_call_title">Tool Call</string>
   <string name="chat_message_tool_clipboard_read">Read clipboard</string>
   <string name="chat_message_tool_clipboard_write">Write clipboard</string>
   <string name="chat_message_tool_create_memory">Created memory</string>
@@ -1287,6 +1286,8 @@
   <string name="tool_ui_read_conv_messages">%1$d messages</string>
   <string name="tool_ui_read_conv_role_assistant">Assistant</string>
   <string name="tool_ui_read_conv_role_user">User</string>
+  <string name="tool_ui_read_conv_empty">No messages</string>
+  <string name="tool_ui_read_conv_more">More messages not shown</string>
   <string name="tool_ui_read_file">Read: %s</string>
   <string name="tool_ui_read_file_default">Read file</string>
   <string name="tool_ui_write_file">Write: %s</string>
@@ -1318,11 +1319,9 @@
   <string name="tool_ui_file">file</string>
   <string name="tool_ui_file_unknown">(unknown file)</string>
   <string name="tool_ui_glob">Glob: %s</string>
-  <string name="tool_ui_glob_count">%d files</string>
   <string name="tool_ui_glob_default">Glob files</string>
   <string name="tool_ui_glob_empty">No files matched</string>
   <string name="tool_ui_grep">Grep: %s</string>
-  <string name="tool_ui_grep_count">%d matches</string>
   <string name="tool_ui_grep_default">Grep files</string>
   <string name="tool_ui_grep_empty">No matches</string>
   <string name="tool_ui_conv_search_empty">No conversations found</string>

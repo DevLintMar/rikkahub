@@ -895,9 +895,10 @@ object ReadConversationToolUI : ToolUIRenderer {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 total?.let { ToolPill(stringResource(R.string.tool_ui_read_conv_messages, it)) }
             }
+            val hasMore = content.getStringContent("has_more") == "true"
             if (messages.isEmpty()) {
                 Text(
-                    text = stringResource(R.string.tool_ui_conv_search_empty),
+                    text = stringResource(R.string.tool_ui_read_conv_empty),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -917,6 +918,13 @@ object ReadConversationToolUI : ToolUIRenderer {
                         )
                         ToolTerminalOutput(text)
                     }
+                }
+                if (hasMore) {
+                    Text(
+                        text = stringResource(R.string.tool_ui_read_conv_more),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }

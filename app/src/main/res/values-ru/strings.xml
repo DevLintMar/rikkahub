@@ -236,7 +236,6 @@
   <string name="chat_message_tool_call_generic">Вызван инструмент %1$s</string>
   <string name="chat_message_tool_call_label">Вызван инструмент %1$s</string>
   <string name="chat_message_tool_call_result">Результат вызова</string>
-  <string name="chat_message_tool_call_title">Вызов инструмента</string>
   <string name="chat_message_tool_clipboard_read">Читать буфер обмена</string>
   <string name="chat_message_tool_clipboard_write">Записать в буфер обмена</string>
   <string name="chat_message_tool_create_memory">Создана заметка</string>

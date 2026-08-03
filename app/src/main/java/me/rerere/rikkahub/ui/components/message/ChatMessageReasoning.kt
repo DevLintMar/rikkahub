@@ -40,6 +40,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import java.util.Locale
 import me.rerere.ai.provider.Model
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
@@ -231,8 +232,9 @@ fun ChainOfThoughtScope.ChatMessageReasoningStep(
                 ReasoningTitle(title = thinkingTitle!!)
             } else {
                 Text(
-                    text = stringResource(
-                        R.string.deep_thinking_seconds,
+                    text = String.format(
+                        Locale.ROOT,
+                        stringResource(R.string.deep_thinking_seconds),
                         state.duration.toDouble(DurationUnit.SECONDS).toFloat()
                     ),
                     style = MaterialTheme.typography.titleSmall.copy(fontFamily = chatFontFamily),

@@ -1,4 +1,3 @@
-/** 详情页的平铺 JSON 树。日志页可展开 JSON 树见 ui/components/ui/JsonTree.kt（交互模式不同，两组件并存不合并）。 */
 package me.rerere.rikkahub.ui.components.message.tools
 
 import androidx.compose.foundation.layout.Box
@@ -27,6 +26,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
+/** 详情页的平铺 JSON 树。日志页可展开 JSON 树见 ui/components/ui/JsonTree.kt（交互模式不同，两组件并存不合并）。 */
 /** 平铺 JSON 树渲染上限：深度/条目超限即省略号截断，防止 MCP 大响应全量组合拖垮 UI。 */
 private const val JSON_TREE_MAX_DEPTH = 12
 private const val JSON_TREE_MAX_ITEMS = 2000

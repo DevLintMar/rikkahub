@@ -385,8 +385,9 @@ private fun MessagePartsBlock(
                                         R.plurals.tool_called_count, toolCount, toolCount,
                                     )
                                     val thinkingSummary = if (hasReasoning) {
-                                        stringResource(
-                                            R.string.chain_of_thought_aggregate,
+                                        String.format(
+                                            Locale.ROOT,
+                                            stringResource(R.string.chain_of_thought_aggregate),
                                             thoughtMs / 1000.0,
                                             toolText,
                                         )
