@@ -63,6 +63,7 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     loading: Boolean = false,
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
+    interaction: ChainBlockInteractionState? = null,
 ) {
     // ask_user 是交互式问答流程, 不走注册式渲染框架
     if (tool.toolName == ASK_USER_TOOL_NAME) {
@@ -179,7 +180,12 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
         } else {
             null
         },
-        onClick = if (hasClickable) { { showResult = true } } else null,
+        onClick = if (hasClickable) {
+            {
+                showResult = true
+                interaction?.let { it.detailOpen = true }
+            }
+        } else null,
         content = null, // 列表行不内联展开, 详情全进 BottomSheet
     )
 
@@ -196,10 +202,16 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     if (showResult) {
         ToolDetailSheet(
             title = renderer.title(context),
-            onDismiss = { showResult = false },
+            onDismiss = {
+                showResult = false
+                interaction?.let { it.detailOpen = false }
+            },
             jsonBody = { ToolJsonBody(context) },
         ) {
-            renderer.Preview(context = context, onDismissRequest = { showResult = false })
+            renderer.Preview(context = context, onDismissRequest = {
+                showResult = false
+                interaction?.let { it.detailOpen = false }
+            })
         }
     }
 }
@@ -256,10 +268,11 @@ private fun ChainOfThoughtScope.AskUserToolStep(
         },
         label = {
             Text(
-                text = if (questions.size <= 1) firstQuestion else stringResource(
-                    R.string.chat_message_tool_ask_questions,
-                    questions.size
-                ),
+                text = if (!isPending && questions.size <= 1) {
+                    firstQuestion
+                } else {
+                    stringResource(R.string.chat_message_tool_ask_questions, questions.size)
+                },
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.secondary,
                 modifier = Modifier.shimmer(isLoading = loading),

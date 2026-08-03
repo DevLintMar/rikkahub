@@ -347,6 +347,10 @@ private fun MessagePartsBlock(
                     val isReasoningOnlyBlock = block.steps.fastAll { it is ThinkingStep.ReasoningStep }
                     // 独立工具调用（无思考且仅一个工具）不折叠成聚合头，直接平铺该工具，高度与独立思考相当
                     val isSingleToolBlock = block.steps.size == 1 && block.steps[0] is ThinkingStep.ToolStep
+                    // 块级用户交互状态：工具详情打开 / 思考被用户展开 → 抑制执行结束自动收起
+                    val interaction = remember { ChainBlockInteractionState() }
+                    val hasPendingTool = block.steps.any { it is ThinkingStep.ToolStep && it.tool.isPending }
+                    val suppressCollapse = hasPendingTool || interaction.detailOpen || interaction.expandedThoughtCount > 0
                     val (thoughtMs, toolCount) = remember(block.steps) { block.steps.thinkingAggregate() }
                     val aggregateHeader: (@Composable () -> Unit)? =
                         if (isReasoningOnlyBlock || isSingleToolBlock) null else {
@@ -406,6 +410,7 @@ private fun MessagePartsBlock(
                         steps = block.steps,
                         collapsedAdaptiveWidth = isReasoningOnlyBlock,
                         autoExpand = loading && !isReasoningOnlyBlock,
+                        suppressAutoCollapse = suppressCollapse,
                         cardColors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = settings.displaySetting.bubbleOpacity),
                         ),
@@ -419,6 +424,7 @@ private fun MessagePartsBlock(
                                         model = model,
                                         assistant = assistant,
                                         collapsedAdaptiveWidth = isReasoningOnlyBlock,
+                                        interaction = interaction,
                                     )
                                 }
                             }
@@ -430,6 +436,7 @@ private fun MessagePartsBlock(
                                         loading = loading && !step.tool.isExecuted,
                                         onToolApproval = onToolApproval,
                                         onToolAnswer = onToolAnswer,
+                                        interaction = interaction,
                                     )
                                 }
                             }

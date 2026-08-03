@@ -1,8 +1,23 @@
 package me.rerere.rikkahub.ui.components.message
 
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.util.fastForEachIndexed
 import kotlin.time.Clock
 import me.rerere.ai.ui.UIMessagePart
+
+/**
+ * 聚合思考块内的用户交互状态（用于抑制执行结束后的自动收起）：
+ * - [detailOpen]：是否有工具详情 BottomSheet 打开
+ * - [expandedThoughtCount]：处于用户展开态(Expanded)的思考步骤数，>0 表示有用户展开的思考内容
+ */
+@Stable
+class ChainBlockInteractionState {
+    var detailOpen by mutableStateOf(false)
+    var expandedThoughtCount by mutableStateOf(0)
+}
 
 /**
  * 思考步骤类型，用于分组 Reasoning 和 Tool

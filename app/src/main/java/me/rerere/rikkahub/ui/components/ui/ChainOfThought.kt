@@ -66,6 +66,8 @@ private val LocalCardColor = staticCompositionLocalOf { Color.White }
  * @param collapsedAdaptiveWidth 是否在折叠态下使用内容自适应宽度
  * @param header 聚合折叠头；非 null 时启用聚合模式，折叠态仅显示该头部（展开显示全部步骤）。
  *   为 null 时保持旧的“显示 N 条更多”折叠控制。
+ * @param autoExpand 执行期间是否强制展开；true→false 切换时若 [suppressAutoCollapse] 为 true 则保持展开
+ * @param suppressAutoCollapse 执行结束(autoExpand true→false)时抑制自动收起（如等待用户输入/详情打开/思考被展开）
  * @param content 每个步骤的具体 UI，由 [ChainOfThoughtScope] 提供步骤构建能力
  */
 @Composable
@@ -79,13 +81,17 @@ fun <T> ChainOfThought(
     collapsedAdaptiveWidth: Boolean = false,
     header: (@Composable () -> Unit)? = null,
     autoExpand: Boolean = false,
+    suppressAutoCollapse: Boolean = false,
     content: @Composable ChainOfThoughtScope.(T) -> Unit
 ) {
     var expanded by remember { mutableStateOf(autoExpand) }
     var lastAutoExpand by remember { mutableStateOf(autoExpand) }
     if (autoExpand != lastAutoExpand) {
         lastAutoExpand = autoExpand
-        expanded = autoExpand   // 执行开始(true)强制展开；执行完(false)自动收起
+        when {
+            autoExpand -> expanded = true                    // 执行开始：强制展开
+            !suppressAutoCollapse -> expanded = false        // 执行完：默认自动收起，被抑制时保持展开
+        }
     }
     val aggregateMode = header != null
     val canCollapse = aggregateMode || steps.size > collapsedVisibleCount

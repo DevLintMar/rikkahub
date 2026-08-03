@@ -22,6 +22,7 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -198,8 +199,18 @@ fun ChainOfThoughtScope.ChatMessageReasoningStep(
     assistant: Assistant?,
     fadeHeight: Float = 64f,
     collapsedAdaptiveWidth: Boolean = false,
+    interaction: ChainBlockInteractionState? = null,
 ) {
     val (state, loading) = rememberReasoningState(reasoning)
+    // 上报用户展开的思考步骤：Expanded 计数随状态增减，块据此抑制执行结束自动收起
+    // （用 DisposableEffect 保证块销毁/状态切换时计数正确回落）
+    DisposableEffect(state.expandState) {
+        val expanded = state.expandState == ReasoningCardState.Expanded
+        if (interaction != null && expanded) interaction.expandedThoughtCount++
+        onDispose {
+            if (interaction != null && expanded) interaction.expandedThoughtCount--
+        }
+    }
     val thinkingTitle = reasoning.reasoning.extractThinkingTitle()
     val showThinkingTitle = loading && thinkingTitle != null
     val chatFontFamily = LocalTextStyle.current.fontFamily
