@@ -345,12 +345,16 @@ private fun MessagePartsBlock(
             is MessagePartBlock.ThinkingBlock -> {
                 if (block.steps.isNotEmpty()) {
                     val isReasoningOnlyBlock = block.steps.fastAll { it is ThinkingStep.ReasoningStep }
+                    // 独立工具调用（无思考且仅一个工具）不折叠成聚合头，直接平铺该工具，高度与独立思考相当
+                    val isSingleToolBlock = block.steps.size == 1 && block.steps[0] is ThinkingStep.ToolStep
                     val (thoughtMs, toolCount) = remember(block.steps) { block.steps.thinkingAggregate() }
                     val aggregateHeader: (@Composable () -> Unit)? =
-                        if (isReasoningOnlyBlock) null else {
+                        if (isReasoningOnlyBlock || isSingleToolBlock) null else {
                             @Composable {
+                                val callingColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                                 val runningTool = block.steps.asReversed().firstOrNull { step ->
                                     step is ThinkingStep.ToolStep &&
+                                        !step.tool.isPending &&  // 等待用户输入(ask_user/审批)不算"正在调用"
                                         (step.tool.toolState == ToolState.RUNNING ||
                                             step.tool.toolState == ToolState.CALLING)
                                 } as? ThinkingStep.ToolStep
@@ -359,14 +363,14 @@ private fun MessagePartsBlock(
                                         Text(
                                             text = stringResource(R.string.chain_of_thought_calling),
                                             style = MaterialTheme.typography.titleSmall,
-                                            color = MaterialTheme.colorScheme.onSurface,
+                                            color = callingColor,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                         )
                                         Text(
                                             text = runningTool.tool.toolName,
                                             style = MaterialTheme.typography.titleSmall,
-                                            color = MaterialTheme.colorScheme.onSurface,
+                                            color = callingColor,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                         )
