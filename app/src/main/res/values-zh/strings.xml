@@ -1302,9 +1302,11 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="tool_ui_file">文件</string>
   <string name="tool_ui_file_unknown">（未知文件）</string>
   <string name="tool_ui_glob">Glob：%s</string>
+  <string name="tool_ui_glob_count">%d 个文件</string>
   <string name="tool_ui_glob_default">Glob 文件</string>
   <string name="tool_ui_glob_empty">没有匹配的文件</string>
   <string name="tool_ui_grep">Grep：%s</string>
+  <string name="tool_ui_grep_count">%d 条匹配</string>
   <string name="tool_ui_grep_default">Grep 文件</string>
   <string name="tool_ui_grep_empty">没有匹配</string>
   <string name="tool_ui_conv_search_empty">没有找到会话</string>

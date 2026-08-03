@@ -53,6 +53,14 @@ interface ToolUIRenderer {
     fun title(context: ToolUIContext): String =
         stringResource(R.string.chat_message_tool_call_generic, context.tool.toolName)
 
+    /** 步骤是否显示内联摘要（最早 rikkahub 展示模式：标题下方内联展示详细内容） */
+    fun hasSummary(context: ToolUIContext): Boolean = false
+
+    /** 步骤内联摘要内容（如 shell 输出、历史对话列表、文件内容首部等） */
+    @Composable
+    fun Summary(context: ToolUIContext) {
+    }
+
     /** 点击步骤后的详情, 渲染在 BottomSheet 内 */
     @Composable
     fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {

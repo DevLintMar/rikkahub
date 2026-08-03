@@ -6,8 +6,12 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
@@ -47,6 +51,7 @@ import me.rerere.rikkahub.ui.components.message.tools.ToolDetailSheet
 import me.rerere.rikkahub.ui.components.message.tools.ToolJsonBody
 import me.rerere.rikkahub.ui.components.message.tools.ToolUIContext
 import me.rerere.rikkahub.ui.components.message.tools.ToolUIRegistry
+import me.rerere.rikkahub.ui.components.richtext.ZoomableAsyncImage
 import me.rerere.rikkahub.ui.components.ui.ChainOfThoughtScope
 import me.rerere.rikkahub.ui.components.ui.DotLoading
 import me.rerere.rikkahub.ui.modifier.shimmer
@@ -92,10 +97,13 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     var showDenyDialog by remember { mutableStateOf(false) }
     val isPending = tool.approvalState is ToolApprovalState.Pending
     val isDenied = tool.approvalState is ToolApprovalState.Denied
-    val hasClickable = context.content != null || isPending || images.isNotEmpty()
+    val hasExtraContent = renderer.hasSummary(context) || isDenied || images.isNotEmpty()
+    var expanded by remember { mutableStateOf(true) }
 
-    // 聚合列表行: 非受控、不可内联展开; 图标 + 显示名 + 一行概览, 点击进详情 BottomSheet
-    ChainOfThoughtStep(
+    // 回归最早展示模式: 受控步骤, 内联展开渲染器摘要(如 shell 输出/对话列表), 点击进详情 BottomSheet
+    ControlledChainOfThoughtStep(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
         icon = {
             if (loading) {
                 DotLoading(size = 10.dp)
@@ -158,13 +166,46 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
         } else {
             null
         },
-        onClick = if (hasClickable) {
+        onClick = if (context.content != null || isPending || images.isNotEmpty()) {
             {
                 showResult = true
                 interaction?.let { it.detailOpen = true }
             }
         } else null,
-        content = null, // 列表行不内联展开, 详情全进 BottomSheet
+        content = if (hasExtraContent) {
+            {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    renderer.Summary(context)
+                    if (images.isNotEmpty()) {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.wrapContentWidth(),
+                        ) {
+                            items(images) { image ->
+                                ZoomableAsyncImage(
+                                    model = image.url,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .height(64.dp)
+                                        .wrapContentWidth(),
+                                )
+                            }
+                        }
+                    }
+                    if (isDenied) {
+                        val reason = (tool.approvalState as ToolApprovalState.Denied).reason
+                        Text(
+                            text = stringResource(R.string.chat_message_tool_denied) +
+                                if (reason.isNotBlank()) ": $reason" else "",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            }
+        } else {
+            null
+        },
     )
 
     if (showDenyDialog && onToolApproval != null) {

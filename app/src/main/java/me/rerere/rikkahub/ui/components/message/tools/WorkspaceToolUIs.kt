@@ -1,9 +1,12 @@
 package me.rerere.rikkahub.ui.components.message.tools
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -13,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -29,6 +33,7 @@ import kotlinx.serialization.json.longOrNull
 import me.rerere.ai.ui.DiffMetadata
 import me.rerere.ai.ui.metadataAs
 import me.rerere.common.http.jsonObjectOrNull
+import me.rerere.highlight.HighlightText
 import androidx.compose.ui.res.stringResource
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ComputerTerminal01
@@ -43,6 +48,7 @@ import me.rerere.rikkahub.ui.components.richtext.DiffRemovedColor
 import me.rerere.rikkahub.ui.components.richtext.DiffView
 import me.rerere.rikkahub.ui.components.richtext.HighlightCodeBlock
 import me.rerere.rikkahub.ui.components.richtext.parseDiffStats
+import me.rerere.rikkahub.ui.modifier.shimmer
 import me.rerere.rikkahub.utils.generateUnifiedDiff
 import me.rerere.rikkahub.utils.jsonPrimitiveOrNull
 
@@ -72,6 +78,33 @@ object EditFileToolUI : ToolUIRenderer {
         val oldText = context.arguments.getStringContent("old_text") ?: return null
         val newText = context.arguments.getStringContent("new_text") ?: return null
         return generateUnifiedDiff(oldText, newText, path)
+    }
+
+    override fun hasSummary(context: ToolUIContext): Boolean = diffOf(context) != null
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val diff = remember(context) { diffOf(context) } ?: return
+        val stats = remember(diff) { parseDiffStats(diff) }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = "+${stats.additions}",
+                style = MaterialTheme.typography.labelSmall,
+                color = DiffAddedColor,
+            )
+            Text(
+                text = "-${stats.deletions}",
+                style = MaterialTheme.typography.labelSmall,
+                color = DiffRemovedColor,
+            )
+        }
+        DiffView(
+            diff = diff,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 
     @Composable
@@ -135,6 +168,18 @@ object ReadFileToolUI : ToolUIRenderer {
     private fun textOf(context: ToolUIContext): String? =
         context.content.getStringContent("text")
 
+    override fun hasSummary(context: ToolUIContext): Boolean = textOf(context) != null
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val text = remember(context) { textOf(context) } ?: return
+        FileContentSummary(
+            text = text,
+            path = context.arguments.getStringContent("path"),
+            loading = context.loading,
+        )
+    }
+
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
         val text = remember(context) { textOf(context) }
@@ -163,6 +208,18 @@ object WriteFileToolUI : ToolUIRenderer {
     private fun textOf(context: ToolUIContext): String? =
         context.arguments.getStringContent("text")
 
+    override fun hasSummary(context: ToolUIContext): Boolean = textOf(context) != null
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val text = remember(context) { textOf(context) } ?: return
+        FileContentSummary(
+            text = text,
+            path = context.arguments.getStringContent("path"),
+            loading = context.loading,
+        )
+    }
+
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
         val text = remember(context) { textOf(context) }
@@ -171,6 +228,34 @@ object WriteFileToolUI : ToolUIRenderer {
             return
         }
         FileContentPreview(path = context.arguments.getStringContent("path"), code = text)
+    }
+}
+
+private const val FILE_SUMMARY_MAX_LINES = 10
+
+/** 内联摘要: 按扩展名语法高亮展示文件内容首部若干行 */
+@Composable
+private fun FileContentSummary(text: String, path: String?, loading: Boolean) {
+    val preview = remember(text) {
+        text.lineSequence().take(FILE_SUMMARY_MAX_LINES).joinToString("\n")
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.small)
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .shimmer(isLoading = loading),
+    ) {
+        HighlightText(
+            code = preview,
+            language = languageOf(path),
+            fontSize = 11.sp,
+            lineHeight = 14.sp,
+            maxLines = FILE_SUMMARY_MAX_LINES,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
@@ -201,6 +286,7 @@ private fun FileContentPreview(path: String?, code: String) {
  */
 object ShellToolUI : ToolUIRenderer {
     private const val TITLE_MAX_CHARS = 40
+    private const val SUMMARY_MAX_LINES = 8
 
     override val toolName: String = "workspace_shell"
 
@@ -212,6 +298,41 @@ object ShellToolUI : ToolUIRenderer {
         val preview = command.replace("\n", " ").trim()
         val truncated = if (preview.length > TITLE_MAX_CHARS) preview.take(TITLE_MAX_CHARS) + "…" else preview
         return stringResource(R.string.tool_ui_shell, truncated)
+    }
+
+    override fun hasSummary(context: ToolUIContext): Boolean = context.content != null
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val content = context.content ?: return
+        val combined = remember(content) {
+            listOf(content.getStringContent("stdout"), content.getStringContent("stderr"))
+                .filterNot { it.isNullOrBlank() }
+                .joinToString("\n")
+                .trim()
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            ShellExitStatus(content, MaterialTheme.typography.labelSmall)
+            if (combined.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.small)
+                        .background(MaterialTheme.colorScheme.surfaceContainer)
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                        .shimmer(isLoading = context.loading),
+                ) {
+                    Text(
+                        text = combined.lineSequence().take(SUMMARY_MAX_LINES).joinToString("\n"),
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                        fontSize = 11.sp,
+                        lineHeight = 14.sp,
+                        maxLines = SUMMARY_MAX_LINES,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
     }
 
     @Composable
@@ -353,6 +474,20 @@ object GlobToolUI : ToolUIRenderer {
         }
     }
 
+    override fun hasSummary(context: ToolUIContext): Boolean = context.content != null
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val files = files(context)
+        if (files.isNotEmpty()) {
+            Text(
+                text = stringResource(R.string.tool_ui_glob_count, files.size),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            )
+        }
+    }
+
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
         val content = context.content
@@ -432,6 +567,20 @@ object GrepToolUI : ToolUIRenderer {
             stringResource(R.string.tool_ui_grep, pattern)
         } else {
             stringResource(R.string.tool_ui_grep_default)
+        }
+    }
+
+    override fun hasSummary(context: ToolUIContext): Boolean = context.content != null
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val matches = matches(context)
+        if (matches.isNotEmpty()) {
+            Text(
+                text = stringResource(R.string.tool_ui_grep_count, matches.size),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            )
         }
     }
 
