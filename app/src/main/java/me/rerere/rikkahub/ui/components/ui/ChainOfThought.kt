@@ -78,9 +78,15 @@ fun <T> ChainOfThought(
     collapsedVisibleCount: Int = 2,
     collapsedAdaptiveWidth: Boolean = false,
     header: (@Composable () -> Unit)? = null,
+    autoExpand: Boolean = false,
     content: @Composable ChainOfThoughtScope.(T) -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    var expanded by remember { mutableStateOf(autoExpand) }
+    var lastAutoExpand by remember { mutableStateOf(autoExpand) }
+    if (autoExpand != lastAutoExpand) {
+        lastAutoExpand = autoExpand
+        expanded = autoExpand   // 执行开始(true)强制展开；执行完(false)自动收起
+    }
     val aggregateMode = header != null
     val canCollapse = aggregateMode || steps.size > collapsedVisibleCount
     val shouldFillCollapseControlWidth = expanded || !collapsedAdaptiveWidth

@@ -401,6 +401,7 @@ private fun MessagePartsBlock(
                         modifier = Modifier.animateContentSize(),
                         steps = block.steps,
                         collapsedAdaptiveWidth = isReasoningOnlyBlock,
+                        autoExpand = loading && !isReasoningOnlyBlock,
                         cardColors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = settings.displaySetting.bubbleOpacity),
                         ),
