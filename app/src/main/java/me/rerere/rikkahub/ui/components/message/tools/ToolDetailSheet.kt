@@ -127,6 +127,11 @@ internal fun ToolDetailSheet(
 
     LaunchedEffect(Unit) { animateTo(PARTIAL); snapJob?.join(); rawFraction = PARTIAL }
 
+    // 页面 JSON 开关切换时回到顶部，避免深滚夹在中间
+    LaunchedEffect(showJson) {
+        scrollState.scrollTo(0)
+    }
+
     LaunchedEffect(rawFraction) {
         if (dismissing || snapJob?.isActive == true) return@LaunchedEffect
         val pos = rawFraction

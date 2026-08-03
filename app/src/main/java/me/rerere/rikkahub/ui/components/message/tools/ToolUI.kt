@@ -10,7 +10,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.util.fastForEach
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.contentOrNull
 import me.rerere.ai.ui.UIMessagePart
@@ -59,11 +58,15 @@ interface ToolUIRenderer {
     fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
         DefaultToolPreview(context = context)
     }
+
+    /** 是否为内置工具渲染器（内置渲染器提供页面级 JSON 大开关；MCP/未知工具不提供） */
+    val isBuiltIn: Boolean get() = true
 }
 
 /** 未注册工具使用的默认渲染器, 全部行为来自 [ToolUIRenderer] 的默认实现 */
 private object DefaultToolUIRenderer : ToolUIRenderer {
     override val toolName: String get() = ""
+    override val isBuiltIn: Boolean get() = false
 }
 
 /**
@@ -101,7 +104,8 @@ internal fun JsonElement?.getStringContent(key: String): String? =
     this?.jsonObjectOrNull?.get(key)?.jsonPrimitiveOrNull?.contentOrNull
 
 /**
- * 默认工具详情（content-only）：入参与输出的 JSON 高亮展示。标题由 ToolDetailSheet 提供
+ * 默认工具详情（content-only）：参数/结果的 JSON 树渲染展示。
+ * 参数与 JSON 结果提供分区级小开关（渲染视图 ↔ 原始 JSON 文本框）；非 JSON 结果直接文本框、不提供开关。
  */
 @Composable
 fun DefaultToolPreview(
@@ -118,36 +122,30 @@ fun DefaultToolPreview(
             JsonTreeView(context.arguments)
         }
         if (context.tool.output.isNotEmpty()) {
+            val textParts = context.tool.output.filterIsInstance<UIMessagePart.Text>()
+            val imageParts = context.tool.output.filterIsInstance<UIMessagePart.Image>()
+            val joinedText = textParts.joinToString("\n") { it.text }
+            val resultJson = runCatching { JsonInstant.parseToJsonElement(joinedText) }.getOrNull()
             ToolJsonSection(
                 label = stringResource(R.string.chat_message_tool_call_result),
-                json = context.tool.output.filterIsInstance<UIMessagePart.Text>()
-                    .joinToString("\n") { it.text }
-                    .let { runCatching { JsonInstant.parseToJsonElement(it) }.getOrNull() },
+                json = resultJson, // 非 JSON → json=null → 不提供小开关，直接渲染文本框
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    context.tool.output.fastForEach { part ->
-                        when (part) {
-                            is UIMessagePart.Text -> {
-                                val parsed = runCatching { JsonInstant.parseToJsonElement(part.text) }.getOrNull()
-                                if (parsed != null) {
-                                    JsonTreeView(parsed)
-                                } else {
-                                    HighlightCodeBlock(
-                                        code = part.text,
-                                        language = "plaintext",
-                                        style = TextStyle(fontSize = 10.sp, lineHeight = 12.sp),
-                                    )
-                                }
-                            }
-
-                            is UIMessagePart.Image -> ZoomableAsyncImage(
-                                model = part.url,
-                                contentDescription = null,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-
-                            else -> {}
-                        }
+                    if (resultJson != null) {
+                        JsonTreeView(resultJson)
+                    } else if (joinedText.isNotBlank()) {
+                        HighlightCodeBlock(
+                            code = joinedText,
+                            language = "plaintext",
+                            style = TextStyle(fontSize = 10.sp, lineHeight = 12.sp),
+                        )
+                    }
+                    imageParts.forEach { part ->
+                        ZoomableAsyncImage(
+                            model = part.url,
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                 }
             }

@@ -184,7 +184,11 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
                 showResult = false
                 interaction?.let { it.detailOpen = false }
             },
-            jsonBody = { ToolJsonBody(context) },
+            jsonBody = if (renderer.isBuiltIn) {
+                { ToolJsonBody(context) }
+            } else {
+                null
+            },
         ) {
             renderer.Preview(context = context, onDismissRequest = {
                 showResult = false

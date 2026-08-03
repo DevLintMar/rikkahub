@@ -30,6 +30,7 @@ import kotlinx.serialization.json.JsonElement
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.CodeSquare
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.utils.JsonInstantPretty
 
 /** 详情内容容器（content-only：滚动由 ToolDetailSheet 统一提供） */
 @Composable
@@ -117,15 +118,17 @@ internal fun ToolJsonBody(context: ToolUIContext) {
 }
 
 /**
- * 工具详情分区：label 右侧一个小开关（CodeSquare），切换 新样式(semantic) / JSON样式(JsonTreeView)。
+ * 工具详情分区：label 右侧一个小开关（CodeSquare），切换 渲染视图(semanticContent) / 原始 json/text 文本框。
+ * [json] 非 null 时开关才把内容切到原始 JSON 文本框；为 null（如结果非 JSON）时默认不提供开关，直接渲染语义内容。
  */
 @Composable
 internal fun ToolJsonSection(
     label: String,
     json: JsonElement?,
     semanticContent: @Composable () -> Unit,
+    showToggle: Boolean = json != null,
 ) {
-    var showJson by remember { mutableStateOf(false) }
+    var showRaw by remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -137,25 +140,33 @@ internal fun ToolJsonSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
             )
-            IconButton(onClick = { showJson = !showJson }, modifier = Modifier.size(28.dp)) {
-                Icon(
-                    imageVector = HugeIcons.CodeSquare,
-                    contentDescription = stringResource(
-                        if (showJson) R.string.tool_ui_view_style else R.string.tool_ui_view_json,
-                    ),
-                    modifier = Modifier.size(16.dp),
-                    tint = if (showJson) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                )
+            if (showToggle) {
+                IconButton(onClick = { showRaw = !showRaw }, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        imageVector = HugeIcons.CodeSquare,
+                        contentDescription = stringResource(
+                            if (showRaw) R.string.tool_ui_view_style else R.string.tool_ui_view_json,
+                        ),
+                        modifier = Modifier.size(16.dp),
+                        tint = if (showRaw) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                }
             }
         }
-        if (showJson && json != null) {
-            JsonTreeView(json)
+        if (showRaw && json != null) {
+            ToolJsonRawText(json)
         } else {
             semanticContent()
         }
     }
+}
+
+/** 原始 JSON 文本框（对齐最早 rikkahub 的 json/text 直出形式：等宽、可选中） */
+@Composable
+internal fun ToolJsonRawText(json: JsonElement) {
+    ToolTerminalOutput(JsonInstantPretty.encodeToString(json))
 }
