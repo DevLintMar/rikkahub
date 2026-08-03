@@ -1323,6 +1323,9 @@
   <string name="tool_ui_replay">Replay</string>
   <string name="tool_ui_scrape_truncated">… truncated, %1$d characters in total</string>
   <string name="tool_ui_delete_memory">Delete memory</string>
+  <string name="tool_ui_delete_memory_title">Delete memory?</string>
+  <string name="tool_ui_delete_memory_message">This memory will be permanently deleted. Continue?</string>
+  <string name="tool_ui_delete_memory_confirm">Delete</string>
   <string name="tool_ui_file">file</string>
   <string name="tool_ui_file_unknown">(unknown file)</string>
   <string name="tool_ui_glob">Glob: %s</string>

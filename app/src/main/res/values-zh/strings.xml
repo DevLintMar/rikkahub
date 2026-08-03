@@ -1306,6 +1306,9 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="tool_ui_arguments">参数</string>
   <string name="tool_ui_scrape_truncated">…已截断，共 %1$d 字符</string>
   <string name="tool_ui_delete_memory">删除记忆</string>
+  <string name="tool_ui_delete_memory_title">删除记忆？</string>
+  <string name="tool_ui_delete_memory_message">该记忆将被永久删除，是否继续？</string>
+  <string name="tool_ui_delete_memory_confirm">删除</string>
   <string name="tool_ui_file">文件</string>
   <string name="tool_ui_file_unknown">（未知文件）</string>
   <string name="tool_ui_glob">Glob：%s</string>
