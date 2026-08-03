@@ -77,10 +77,6 @@ import me.rerere.rikkahub.utils.JsonInstantPretty
 import me.rerere.rikkahub.utils.jsonPrimitiveOrNull
 import me.rerere.rikkahub.utils.openUrl
 import org.koin.compose.koinInject
-import java.time.LocalDateTime
-import java.time.OffsetDateTime
-import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
 
 /**
  * 记忆工具: 按 action 区分标题/图标, 摘要显示记忆内容, 详情附带删除按钮
@@ -587,12 +583,67 @@ object GetScreenTimeToolUI : ToolUIRenderer {
 
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
-        val apps = apps(context)
-        if (apps.isEmpty()) {
+        val content = context.content
+        if (content == null) {
             DefaultToolPreview(context = context)
             return
         }
-        ScreenTimePreview(content = context.content!!, apps = apps)
+        val apps = apps(context)
+        // 错误响应（无权限/非法时间/非法范围）无 apps, 回退默认 JSON 详情
+        if (content.jsonObjectOrNull?.get("error") != null) {
+            DefaultToolPreview(context = context)
+            return
+        }
+        ToolDetailContainer {
+            val totalMinutes = content.getStringContent("total_minutes")?.toIntOrNull()
+            if (totalMinutes != null) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    ToolPill(stringResource(R.string.tool_ui_screen_total, totalMinutes))
+                }
+            }
+            if (apps.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.tool_ui_screen_empty),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                val maxAppMs = apps.maxOfOrNull { it.appMs() }?.takeIf { it > 0 } ?: 1L
+                apps.forEach { app ->
+                    val name = app.getStringContent("app_name") ?: app.getStringContent("package") ?: "?"
+                    val minutes = app.getStringContent("total_minutes")?.toIntOrNull()
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                text = name,
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (minutes != null) {
+                                Text(
+                                    text = stringResource(R.string.tool_ui_minutes, minutes),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        LinearProgressIndicator(
+                            progress = { (app.appMs().toFloat() / maxAppMs).coerceIn(0f, 1f) },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -635,6 +686,59 @@ object CalendarQueryToolUI : ToolUIRenderer {
             }
         }
     }
+
+    @Composable
+    override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
+        val content = context.content
+        if (content == null) {
+            DefaultToolPreview(context = context)
+            return
+        }
+        val events = events(context)
+        ToolDetailContainer {
+            if (events.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.tool_ui_calendar_empty),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                events.forEach { ev ->
+                    val title = ev.getStringContent("title") ?: stringResource(R.string.tool_ui_untitled)
+                    val start = ev.getStringContent("start")
+                    val allDay = (ev.jsonObjectOrNull?.get("all_day") as? JsonPrimitive)?.contentOrNull == "true"
+                    val calendar = ev.getStringContent("calendar")
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = title,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (allDay) ToolPill(stringResource(R.string.tool_ui_all_day))
+                        }
+                        start?.let {
+                            Text(
+                                text = it,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        calendar?.takeIf { it.isNotBlank() }?.let {
+                            Text(
+                                text = it,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 object CalendarCreateToolUI : ToolUIRenderer {
@@ -647,74 +751,27 @@ object CalendarCreateToolUI : ToolUIRenderer {
         val eventTitle = context.arguments.getStringContent("title") ?: ""
         return stringResource(R.string.chat_message_tool_calendar_create, eventTitle)
     }
-}
 
-@Composable
-private fun ScreenTimePreview(content: JsonElement, apps: List<JsonElement>) {
-    val totalMinutes = content.jsonObjectOrNull?.get("total_minutes")
-        ?.jsonPrimitiveOrNull?.longOrNull ?: 0
-    val maxAppMs = apps.maxOfOrNull { it.appMs() }?.takeIf { it > 0 } ?: 1L
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxHeight(0.8f)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(
-                        text = stringResource(R.string.tool_ui_screen_time_total),
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        text = formatMinutes(totalMinutes),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                val begin = content.getStringContent("start")
-                val finish = content.getStringContent("end")
-                if (begin != null && finish != null) {
-                    Text(
-                        text = "${formatRangeTime(begin)} → ${formatRangeTime(finish)}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                    )
-                }
-            }
+    @Composable
+    override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
+        val content = context.content
+        if (content == null) {
+            DefaultToolPreview(context = context)
+            return
         }
-        items(apps) { app ->
-            val name = app.getStringContent("app_name")
-                ?: app.getStringContent("package") ?: return@items
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(
-                        text = name,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        text = formatMinutes(app.appMinutes()),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                    )
-                }
-                LinearProgressIndicator(
-                    progress = { (app.appMs().toFloat() / maxAppMs).coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+        val title = content.getStringContent("title") ?: stringResource(R.string.tool_ui_untitled)
+        val start = content.getStringContent("start")
+        val end = content.getStringContent("end")
+        val eventId = content.getStringContent("event_id")
+        ToolDetailContainer {
+            Text(
+                text = stringResource(R.string.tool_ui_event_created, title),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            start?.let { Text(stringResource(R.string.tool_ui_event_start, it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            end?.let { Text(stringResource(R.string.tool_ui_event_end, it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            eventId?.let { ToolPill(stringResource(R.string.tool_ui_event_id, it)) }
         }
     }
 }
@@ -726,23 +783,6 @@ private fun JsonElement.appMs(): Long =
 /** 读取单个应用条目的前台时长 (分钟) */
 private fun JsonElement.appMinutes(): Long =
     jsonObjectOrNull?.get("total_minutes")?.jsonPrimitiveOrNull?.longOrNull ?: (appMs() / 60000)
-
-private val SCREEN_TIME_RANGE_FORMATTER: DateTimeFormatter =
-    DateTimeFormatter.ofPattern("MM-dd HH:mm")
-
-/**
- * 将工具返回的 ISO 时间字符串格式化为 "MM-dd HH:mm", 解析失败时原样返回.
- *
- * 工具用 ZonedDateTime.toString() 输出, 区域 ID 时会带 "[Asia/Shanghai]" 后缀,
- * 故优先用 ZonedDateTime.parse, 再回退到 offset / 本地日期时间.
- */
-private fun formatRangeTime(iso: String): String = runCatching {
-    ZonedDateTime.parse(iso).format(SCREEN_TIME_RANGE_FORMATTER)
-}.recoverCatching {
-    OffsetDateTime.parse(iso).format(SCREEN_TIME_RANGE_FORMATTER)
-}.recoverCatching {
-    LocalDateTime.parse(iso).format(SCREEN_TIME_RANGE_FORMATTER)
-}.getOrDefault(iso)
 
 /** 将分钟数格式化为 "Xh Ym" / "Xh" / "Ym" */
 private fun formatMinutes(minutes: Long): String {

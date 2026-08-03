@@ -1335,6 +1335,15 @@
   <string name="tool_ui_match_count">%d matches</string>
   <string name="tool_ui_recent_chats_empty">No conversations</string>
   <string name="tool_ui_untitled">Untitled</string>
+  <string name="tool_ui_all_day">all day</string>
+  <string name="tool_ui_calendar_empty">No events</string>
+  <string name="tool_ui_event_created">Created: %1$s</string>
+  <string name="tool_ui_event_end">End: %1$s</string>
+  <string name="tool_ui_event_id">id %1$s</string>
+  <string name="tool_ui_event_start">Start: %1$s</string>
+  <string name="tool_ui_minutes">%1$d min</string>
+  <string name="tool_ui_screen_empty">No screen time</string>
+  <string name="tool_ui_screen_total">Total %1$d min</string>
   <string name="workspace_page_name_duplicate">Name already exists</string>
   <string name="setting_mcp_page_name_invalid">Name can only contain English letters and numbers</string>
   <string name="log_page_record_requests">Record requests</string>
