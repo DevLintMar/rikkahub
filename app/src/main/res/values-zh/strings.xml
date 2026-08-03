@@ -1301,6 +1301,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="tool_ui_shell_exit">exit %s</string>
   <string name="tool_ui_speaking">朗读: %s</string>
   <string name="tool_ui_replay">重播</string>
+  <string name="tool_ui_view_json">查看 JSON</string>
+  <string name="tool_ui_view_style">查看样式</string>
   <string name="tool_ui_scrape_truncated">…已截断，共 %1$d 字符</string>
   <string name="tool_ui_delete_memory">删除记忆</string>
   <string name="tool_ui_file">文件</string>

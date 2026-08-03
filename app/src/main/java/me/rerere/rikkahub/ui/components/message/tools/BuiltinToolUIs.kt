@@ -4,13 +4,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -136,7 +134,7 @@ object MemoryToolUI : ToolUIRenderer {
         val memoryId = (envelope as? JsonObject)?.get("id")?.jsonPrimitiveOrNull?.intOrNull
         val content = envelope.getStringContent("content")
         val canDelete = action(context) in listOf(ACTION_CREATE, ACTION_EDIT) && memoryId != null
-        Column(modifier = Modifier.fillMaxHeight(0.8f)) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             ToolDetailContainer {
                 when (action(context)) {
                     ACTION_CREATE, ACTION_EDIT -> {
@@ -395,32 +393,26 @@ object TextToSpeechToolUI : ToolUIRenderer {
         val text = context.content.getStringContent("text")
             ?: context.arguments.getStringContent("text")
             ?: ""
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxHeight(0.8f)
-                .padding(16.dp),
+        Column(
+            modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            item {
-                Text(
-                    text = text,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                FilledTonalIconButton(
+                    onClick = { scope.launch { eventBus.emit(AppEvent.Speak(text)) } },
                 ) {
-                    FilledTonalIconButton(
-                        onClick = { scope.launch { eventBus.emit(AppEvent.Speak(text)) } },
-                    ) {
-                        Icon(
-                            imageVector = HugeIcons.Refresh01,
-                            contentDescription = stringResource(R.string.tool_ui_replay),
-                        )
-                    }
+                    Icon(
+                        imageVector = HugeIcons.Refresh01,
+                        contentDescription = stringResource(R.string.tool_ui_replay),
+                    )
                 }
             }
         }
@@ -923,43 +915,37 @@ private fun SearchWebPreview(
         ?.filter { it.isNotBlank() }
         ?: emptyList()
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxHeight(0.8f)
-            .padding(16.dp),
+    Column(
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        item {
-            Text(stringResource(R.string.chat_message_tool_search_prefix, query))
-        }
+        Text(stringResource(R.string.chat_message_tool_search_prefix, query))
 
         if (images.isNotEmpty()) {
-            item {
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    items(images) { imageUrl ->
-                        AsyncImage(
-                            model = imageUrl,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .height(120.dp)
-                                .width(160.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable { context.openUrl(imageUrl) },
-                        )
-                    }
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                items(images) { imageUrl ->
+                    AsyncImage(
+                        model = imageUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .height(120.dp)
+                            .width(160.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { context.openUrl(imageUrl) },
+                    )
                 }
             }
         }
 
         if (items.isNotEmpty()) {
-            items(items) { item ->
-                val url = item.getStringContent("url") ?: return@items
-                val title = item.getStringContent("title") ?: return@items
-                val text = item.getStringContent("text") ?: return@items
+            items.forEach { item ->
+                val url = item.getStringContent("url") ?: return@forEach
+                val title = item.getStringContent("title") ?: return@forEach
+                val text = item.getStringContent("text") ?: return@forEach
 
                 Card(
                     onClick = { context.openUrl(url) },
@@ -997,13 +983,11 @@ private fun SearchWebPreview(
                 }
             }
         } else {
-            item {
-                HighlightText(
-                    code = JsonInstantPretty.encodeToString(content),
-                    language = "json",
-                    fontSize = 12.sp
-                )
-            }
+            HighlightText(
+                code = JsonInstantPretty.encodeToString(content),
+                language = "json",
+                fontSize = 12.sp
+            )
         }
     }
 }
@@ -1017,43 +1001,37 @@ private fun ScrapeWebPreview(content: JsonElement) {
     val totalChars = content.jsonObjectOrNull
         ?.get("totalChars")?.jsonPrimitiveOrNull?.longOrNull ?: 0L
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxHeight(0.8f)
-            .padding(16.dp),
+    Column(
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        item {
-            Text(
-                text = stringResource(
-                    R.string.chat_message_tool_scrape_prefix,
-                    url ?: ""
-                )
+        Text(
+            text = stringResource(
+                R.string.chat_message_tool_scrape_prefix,
+                url ?: ""
             )
-        }
+        )
 
-        item {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                if (!text.isNullOrBlank()) {
-                    Card {
-                        MarkdownBlock(
-                            content = text,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(8.dp)
-                        )
-                    }
-                }
-                if (truncated) {
-                    Text(
-                        text = stringResource(R.string.tool_ui_scrape_truncated, totalChars),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f),
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            if (!text.isNullOrBlank()) {
+                Card {
+                    MarkdownBlock(
+                        content = text,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp)
                     )
                 }
+            }
+            if (truncated) {
+                Text(
+                    text = stringResource(R.string.tool_ui_scrape_truncated, totalChars),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f),
+                )
             }
         }
     }

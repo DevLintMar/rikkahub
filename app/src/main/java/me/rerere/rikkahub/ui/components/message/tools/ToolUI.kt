@@ -3,11 +3,7 @@ package me.rerere.rikkahub.ui.components.message.tools
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -117,7 +113,7 @@ internal fun JsonElement?.getStringContent(key: String): String? =
     this?.jsonObjectOrNull?.get(key)?.jsonPrimitiveOrNull?.contentOrNull
 
 /**
- * 默认工具详情: 入参与输出的 JSON 高亮展示
+ * 默认工具详情（content-only）：入参与输出的 JSON 高亮展示。标题由 ToolDetailSheet 提供
  *
  * @param headerActions 标题栏右侧的附加操作区
  */
@@ -127,10 +123,7 @@ fun DefaultToolPreview(
     headerActions: (@Composable () -> Unit)? = null,
 ) {
     Column(
-        modifier = Modifier
-            .fillMaxHeight(0.8f)
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState()),
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(

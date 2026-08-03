@@ -270,7 +270,20 @@ git commit -m "feat(ui): AI执行中聚合思考块自动展开，完成后自�
 
 **关键差异 vs Agora 源码**：去掉 Agora 专属 `DialogWindowEdgeToEdge`/`noOpBringIntoView`/`ChatType`/`MonoFamily`/`mergeAdjacentSegments`；用 MaterialTheme 排版 + `FontFamily.Monospace`；`content` 槽为 `@Composable ColumnScope.() -> Unit`（见下）。抓握/拖动/嵌套滚动/弹回 FSM 逻辑照搬。
 
-- [ ] **Step 1: 创建 ToolDetailSheet.kt**
+- [ ] **Step 1: 先加 Sheet 需要的两个开关字符串（Task 5 用到的 `tool_ui_arguments` 在 Task 5 加）**
+
+`values/strings.xml`：
+```xml
+  <string name="tool_ui_view_json">View JSON</string>
+  <string name="tool_ui_view_style">View style</string>
+```
+`values-zh/strings.xml`：
+```xml
+  <string name="tool_ui_view_json">查看 JSON</string>
+  <string name="tool_ui_view_style">查看样式</string>
+```
+
+- [ ] **Step 2: 创建 ToolDetailSheet.kt**
 
 ```kotlin
 package me.rerere.rikkahub.ui.components.message.tools
@@ -531,7 +544,7 @@ internal fun ToolDetailSheet(
 }
 ```
 
-- [ ] **Step 2: ToolDetailCommon.kt — ToolDetailContainer 去高度/滚动**
+- [ ] **Step 3: ToolDetailCommon.kt — ToolDetailContainer 去高度/滚动**
 
 ```kotlin
 /** 详情内容容器（content-only：滚动由 ToolDetailSheet 统一提供） */
@@ -545,7 +558,7 @@ internal fun ToolDetailContainer(content: @Composable ColumnScope.() -> Unit) {
 ```
 （删除 `fillMaxHeight`/`rememberScrollState`/`verticalScroll` import 中不再使用的。）
 
-- [ ] **Step 3: ToolUI.kt — DefaultToolPreview 去高度/滚动/自带标题**
+- [ ] **Step 4: ToolUI.kt — DefaultToolPreview 去高度/滚动/自带标题**
 
 ```kotlin
 /** 默认工具详情（content-only）：参数 + 结果 JSON 树。标题由 ToolDetailSheet 提供 */
@@ -577,7 +590,7 @@ fun DefaultToolPreview(
 ```
 仅改外层 `Column` 修饰符（`fillMaxHeight(0.8f).padding(16.dp).verticalScroll(...)` → `fillMaxWidth()`）；内部保持不变。
 
-- [ ] **Step 4: ChatMessageTools.kt — ModalBottomSheet → ToolDetailSheet**
+- [ ] **Step 5: ChatMessageTools.kt — ModalBottomSheet → ToolDetailSheet**
 
 现 L197-211 的 `if (showResult) { ModalBottomSheet(...) { renderer.Preview(...) } }` 改为：
 
@@ -594,7 +607,7 @@ fun DefaultToolPreview(
 
 删除不再使用的 `ModalBottomSheet`/`rememberBottomSheetState`/`SheetValue` import。
 
-- [ ] **Step 5: 其余 Preview content-only 化（逐个精确编辑）**
+- [ ] **Step 6: 其余 Preview content-only 化（逐个精确编辑）**
 
 对每个 `fillMaxHeight(0.8f)` + 自带滚动的 Preview，去掉外层高度/滚动（content-only，由 Sheet 滚动）。逐项：
 
@@ -608,9 +621,9 @@ fun DefaultToolPreview(
 | WorkspaceToolUIs.kt | `FileContentPreview` | 外层（L275-281）→ `Column(Modifier.fillMaxWidth(), spacedBy(8.dp))` |
 | WorkspaceToolUIs.kt | `ShellToolUI.Preview` | 外层（L362-368）→ `Column(Modifier.fillMaxWidth(), spacedBy(8.dp))` |
 
-（其余 Preview 已用 `ToolDetailContainer`，Step 2 后自动 content-only。）
+（其余 Preview 已用 `ToolDetailContainer`，Step 3 后自动 content-only。）
 
-- [ ] **Step 6: CI + 提交**
+- [ ] **Step 7: CI + 提交**
 
 ```bash
 git push origin master
@@ -631,18 +644,14 @@ git commit -m "feat(ui): 工具详情 BottomSheet 移植 Agora 半屏→近全�
 
 **设计：** item 8（工具标题 + 切 JSON 开关）→ Sheet 标题栏右侧加一个 `HugeIcons.CodeSquare` IconButton，切换整页为 JSON 视图（`ToolJsonBody`）。item 7（参数/结果右侧各一个开关）→ 共享 `ToolJsonSection(label, json, semanticContent)`：分区标题右置小开关，新样式/JSON 样式切换。
 
-- [ ] **Step 1: 字符串（values + values-zh）**
+- [ ] **Step 1: 字符串（values + values-zh）**（`tool_ui_view_json`/`tool_ui_view_style` 已在 Task 4 Step 1 添加）
 
 ```xml
   <!-- values/strings.xml -->
-  <string name="tool_ui_view_json">View JSON</string>
-  <string name="tool_ui_view_style">View style</string>
   <string name="tool_ui_arguments">Arguments</string>
 ```
 ```xml
   <!-- values-zh/strings.xml -->
-  <string name="tool_ui_view_json">查看 JSON</string>
-  <string name="tool_ui_view_style">查看样式</string>
   <string name="tool_ui_arguments">参数</string>
 ```
 

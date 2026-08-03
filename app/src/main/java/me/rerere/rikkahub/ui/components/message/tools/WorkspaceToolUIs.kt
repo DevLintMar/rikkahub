@@ -5,15 +5,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -125,10 +122,7 @@ object EditFileToolUI : ToolUIRenderer {
         }
         val stats = remember(diff) { parseDiffStats(diff) }
         Column(
-            modifier = Modifier
-                .fillMaxHeight(0.8f)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
+            modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(
@@ -273,10 +267,7 @@ private fun FileContentSummary(text: String, path: String?, loading: Boolean) {
 @Composable
 private fun FileContentPreview(path: String?, code: String) {
     Column(
-        modifier = Modifier
-            .fillMaxHeight(0.8f)
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState()),
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
@@ -360,10 +351,7 @@ object ShellToolUI : ToolUIRenderer {
         val stdout = content.getStringContent("stdout").orEmpty()
         val stderr = content.getStringContent("stderr").orEmpty()
         Column(
-            modifier = Modifier
-                .fillMaxHeight(0.8f)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
+            modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(

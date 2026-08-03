@@ -15,12 +15,9 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.SheetValue
-import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -47,6 +44,7 @@ import me.rerere.hugeicons.stroke.BubbleChatQuestion
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Tick01
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.ui.components.message.tools.ToolDetailSheet
 import me.rerere.rikkahub.ui.components.message.tools.ToolPresentationResolver
 import me.rerere.rikkahub.ui.components.message.tools.ToolUIContext
 import me.rerere.rikkahub.ui.components.message.tools.ToolUIRegistry
@@ -195,19 +193,12 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     }
 
     if (showResult) {
-        ModalBottomSheet(
-            sheetState = rememberBottomSheetState(
-                initialValue = SheetValue.Hidden,
-                enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)
-            ),
-            onDismissRequest = { showResult = false },
-            content = {
-                renderer.Preview(
-                    context = context,
-                    onDismissRequest = { showResult = false },
-                )
-            },
-        )
+        ToolDetailSheet(
+            title = renderer.title(context),
+            onDismiss = { showResult = false },
+        ) {
+            renderer.Preview(context = context, onDismissRequest = { showResult = false })
+        }
     }
 }
 
