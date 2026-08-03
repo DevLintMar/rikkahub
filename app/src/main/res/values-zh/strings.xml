@@ -228,7 +228,7 @@
   <string name="cancel_edit">取消编辑</string>
   <string name="called_n_tools">调用了 %1$s</string>
   <!-- 修改：%1$d→%1$.1f，%2$d 个工具→%2$s 传已复数化短语 -->
-  <string name="chain_of_thought_aggregate">思考了 %1$.1f 秒 ，调用了 %2$s</string>
+  <string name="chain_of_thought_aggregate">思考了 %1$.1f 秒，调用了 %2$s</string>
   <string name="chain_of_thought_calling">正在调用工具…</string>
   <string name="chain_of_thought_collapse">收起</string>
   <string name="chain_of_thought_show_more_steps">再显示 %d 步</string>
