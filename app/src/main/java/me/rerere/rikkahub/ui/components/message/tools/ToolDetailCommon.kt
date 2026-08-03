@@ -120,13 +120,14 @@ internal fun ToolJsonBody(context: ToolUIContext) {
 /**
  * 工具详情分区：label 右侧一个小开关（CodeSquare），切换 渲染视图(semanticContent) / 原始 json/text 文本框。
  * [json] 非 null 时开关才把内容切到原始 JSON 文本框；为 null（如结果非 JSON）时默认不提供开关，直接渲染语义内容。
+ * 注意：[semanticContent] 必须是末位参数（尾随 lambda 绑定它）；具名参数 [showToggle] 位于其前。
  */
 @Composable
 internal fun ToolJsonSection(
     label: String,
     json: JsonElement?,
-    semanticContent: @Composable () -> Unit,
     showToggle: Boolean = json != null,
+    semanticContent: @Composable () -> Unit,
 ) {
     var showRaw by remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
