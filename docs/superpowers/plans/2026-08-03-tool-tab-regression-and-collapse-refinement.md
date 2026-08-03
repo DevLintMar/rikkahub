@@ -28,7 +28,8 @@
 |---|---|---|---|---|
 | 1 | 聚合折叠卡颜色/文案 + 独立单工具扁平化 + ask_user 不算"正在调用"（item 2,3,4,8,9-聚合） | ChatMessage.kt + values-zh/strings.xml | haiku | sonnet |
 | 2 | 自动折叠抑制 + ask_user 标题（item 5,9-标题） | ChainOfThought.kt + ChatMessageCot.kt + ChatMessage.kt + ChatMessageReasoning.kt + ChatMessageTools.kt | sonnet | opus |
-| 3 | 工具选项卡回归原样式 + ToolPresentation 死代码清理（item 1） | ChatMessageTools.kt + 删除 ToolPresentation.kt + 6 locale | haiku | sonnet |
+| 3 | 工具选项卡回归原样式（仅标题）+ ToolPresentation 死代码清理（item 1 前半） | ChatMessageTools.kt + 删除 ToolPresentation.kt + 6 locale | haiku | sonnet |
+| 3b | 恢复工具内联摘要（Summary）——shell 输出/对话列表等回归最早展示模式（item 1 修正） | ToolUI.kt + ChatMessageTools.kt + BuiltinToolUIs.kt + WorkspaceToolUIs.kt + Favicon.kt + strings | sonnet | opus |
 | 4 | 小转换器修复 + MCP 工具详情规范 + Sheet 滚动重置（item 6,7 + 收尾⑧） | ToolDetailCommon.kt + ToolUI.kt + ChatMessageTools.kt + ToolDetailSheet.kt | sonnet | sonnet |
 | 5 | 收尾文案/本地化/整洁（收尾①③⑤⑦⑨ + ⑥） | ChatMessage.kt + ChatMessageReasoning.kt + BuiltinToolUIs.kt + Favicon.kt + JsonTreeView.kt + JsonTree.kt + strings | haiku | sonnet |
 
@@ -552,6 +553,654 @@ import me.rerere.rikkahub.ui.components.message.tools.toolSummary
 
 `git add app/src/main/java/me/rerere/rikkahub/ui/components/message/ChatMessageTools.kt app/src/main/res/`
 `git commit -m "feat(ui): 工具选项卡回归原样式(仅标题)并删除 ToolPresentation/tool_summary 死代码"`
+
+---
+
+### Task 3b: 恢复工具选项卡内联摘要（Summary）——回归最早展示模式（item 1 修正）
+
+> **背景（用户修正）**：item 1 不是"仅标题"。最早 RikkaHub（fe99057 之前）的工具选项卡 = **标题 + 内联渲染器 `Summary` 详细内容**（如 shell 执行输出、历史对话列表），点击进详情 Sheet。`hasSummary`/`Summary` 接口与 14 个实现（8 内置 + 6 工作区）在 ab31e92 被当作死代码删除——但它们是最早展示模式的核心。Task 3 已把选项卡改回仅标题（正确），本任务把内联 Summary 内容恢复。
+
+**Files:**
+- Modify: `app/src/main/java/me/rerere/rikkahub/ui/components/message/tools/ToolUI.kt`（接口重加 hasSummary/Summary）
+- Modify: `app/src/main/java/me/rerere/rikkahub/ui/components/message/ChatMessageTools.kt`（改回 ControlledChainOfThoughtStep + 内联 content）
+- Modify: `app/src/main/java/me/rerere/rikkahub/ui/components/message/tools/BuiltinToolUIs.kt`（恢复 8 个 Summary）
+- Modify: `app/src/main/java/me/rerere/rikkahub/ui/components/message/tools/WorkspaceToolUIs.kt`（恢复 6 个 Summary + FileContentSummary/常量）
+- Modify: `app/src/main/java/me/rerere/rikkahub/ui/components/ui/Favicon.kt`（恢复 FaviconRow）
+- Modify: `app/src/main/res/values/strings.xml` + `values-zh/strings.xml`（重加 tool_ui_glob_count/tool_ui_grep_count）
+
+**Interfaces:**
+- Consumes: Task 3 的 label 仅标题、Task 2 的 `interaction` 参数、Task 4 的 `isBuiltIn`/`ToolJsonSection` 均保留。
+- Produces: `ToolUIRenderer.hasSummary(context)`/`Summary(context)`；`ChatMessageToolStep` 恢复内联 Summary（受控步骤常显）。恢复的 helper：`FaviconRow`、`FileContentSummary`、`SUMMARY_MAX_LINES`、`formatMinutes`、`appMinutes`、`SUMMARY_MAX_APPS`；重加串 `tool_ui_glob_count`/`tool_ui_grep_count`。
+
+**设计决策（忠实原始）**：`ControlledChainOfThoughtStep(expanded = remember { mutableStateOf(true) }, onClick = 开 Sheet)` —— 内联 Summary 常显、点击进 Sheet、无折叠箭头（onClick 优先）。块级聚合折叠（item 5）仍控制整体收起；MCP/未知工具无 Summary → 仅标题（原始如此）。
+
+- [ ] **Step 1: ToolUI.kt — 接口重加 hasSummary/Summary**
+
+在 `ToolUIRenderer` 接口的 `title` 之后、`Preview` 之前插入：
+
+```kotlin
+    /** 步骤是否显示内联摘要（最早 rikkahub 展示模式：标题下方内联展示详细内容） */
+    fun hasSummary(context: ToolUIContext): Boolean = false
+
+    /** 步骤内联摘要内容（如 shell 输出、历史对话列表、文件内容首部等） */
+    @Composable
+    fun Summary(context: ToolUIContext) {
+    }
+```
+
+- [ ] **Step 2: ChatMessageTools.kt — 改回受控步骤 + 内联 Summary**
+
+把 `ChatMessageToolStep` 的 `val hasClickable = ...` 之后、`ChainOfThoughtStep(...)` 调用整块（L95-168）替换为：
+
+```kotlin
+    val isPending = tool.approvalState is ToolApprovalState.Pending
+    val isDenied = tool.approvalState is ToolApprovalState.Denied
+    val hasExtraContent = renderer.hasSummary(context) || isDenied || images.isNotEmpty()
+    var expanded by remember { mutableStateOf(true) }
+
+    // 回归最早展示模式: 受控步骤, 内联展开渲染器摘要(如 shell 输出/对话列表), 点击进详情 BottomSheet
+    ControlledChainOfThoughtStep(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+        icon = {
+            if (loading) {
+                DotLoading(size = 10.dp)
+            } else {
+                Icon(
+                    imageVector = renderer.icon(context),
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = LocalContentColor.current.copy(alpha = 0.7f)
+                )
+            }
+        },
+        label = {
+            Text(
+                text = renderer.title(context),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.shimmer(isLoading = loading),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        extra = if (isPending && onToolApproval != null) {
+            {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilledTonalIconButton(
+                        onClick = { showDenyDialog = true },
+                        modifier = Modifier.size(28.dp),
+                    ) {
+                        Icon(
+                            imageVector = HugeIcons.Cancel01,
+                            contentDescription = stringResource(R.string.chat_message_tool_deny),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                    FilledTonalIconButton(
+                        onClick = { onToolApproval(tool.toolCallId, true, "") },
+                        modifier = Modifier.size(28.dp),
+                    ) {
+                        Icon(
+                            imageVector = HugeIcons.Tick01,
+                            contentDescription = stringResource(R.string.chat_message_tool_approve),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+            }
+        } else if (isDenied) {
+            {
+                val reason = (tool.approvalState as ToolApprovalState.Denied).reason
+                Text(
+                    text = stringResource(R.string.chat_message_tool_denied) +
+                        if (reason.isNotBlank()) ": $reason" else "",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        } else {
+            null
+        },
+        onClick = if (context.content != null || isPending || images.isNotEmpty()) {
+            {
+                showResult = true
+                interaction?.let { it.detailOpen = true }
+            }
+        } else null,
+        content = if (hasExtraContent) {
+            {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    renderer.Summary(context)
+                    if (images.isNotEmpty()) {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.wrapContentWidth(),
+                        ) {
+                            items(images) { image ->
+                                ZoomableAsyncImage(
+                                    model = image.url,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .height(64.dp)
+                                        .wrapContentWidth(),
+                                )
+                            }
+                        }
+                    }
+                    if (isDenied) {
+                        val reason = (tool.approvalState as ToolApprovalState.Denied).reason
+                        Text(
+                            text = stringResource(R.string.chat_message_tool_denied) +
+                                if (reason.isNotBlank()) ": $reason" else "",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            }
+        } else {
+            null
+        },
+    )
+```
+
+新增 imports（逐一确认后加）：
+
+```kotlin
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.wrapContentWidth
+import me.rerere.rikkahub.ui.components.richtext.ZoomableAsyncImage
+```
+
+（`Column`/`Arrangement`/`Text`/`TextOverflow`/`shimmer` 等已存在。）
+
+- [ ] **Step 3: BuiltinToolUIs.kt — 恢复 8 个 Summary**
+
+以下 8 个渲染器各加 `override fun hasSummary` + `@Composable override fun Summary`（放在各自 `title` 之后、`Preview` 之前）。实现按 ab31e92~1 原版，适配当前 helper/数据（`context.content`/`context.arguments`/`context.loading` 均可直接使用）：
+
+**(3a) MemoryToolUI**（create/edit 时显示记忆内容首部）：
+
+```kotlin
+    override fun hasSummary(context: ToolUIContext): Boolean =
+        action(context) in listOf(ACTION_CREATE, ACTION_EDIT) &&
+            context.content.getStringContent("content") != null
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        context.content.getStringContent("content")?.let { memoryContent ->
+            Text(
+                text = memoryContent,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.shimmer(isLoading = context.loading),
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+```
+
+**(3b) SearchWebToolUI**（favicon 行 + 结果数，需 FaviconRow）：
+
+```kotlin
+    override fun hasSummary(context: ToolUIContext): Boolean = items(context).isNotEmpty()
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val items = items(context)
+        if (items.isNotEmpty()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                FaviconRow(
+                    urls = items.mapNotNull { it.getStringContent("url") },
+                    size = 18.dp,
+                )
+                Text(
+                    text = stringResource(R.string.chat_message_tool_search_results_count, items.size),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                )
+            }
+        }
+    }
+```
+
+新增 import：`me.rerere.rikkahub.ui.components.ui.FaviconRow`（`Favicon` 可能已有 import，按需）。字符串 `chat_message_tool_search_results_count` 仍存在于 6 locale（恢复使用）。
+
+**(3c) ScrapeWebToolUI**（URL）：
+
+```kotlin
+    override fun hasSummary(context: ToolUIContext): Boolean =
+        context.arguments.getStringContent("url") != null
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        Text(
+            text = context.arguments.getStringContent("url") ?: "",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+        )
+    }
+```
+
+**(3d) RecentChatsToolUI**（历史对话标题列表）：
+
+```kotlin
+    override fun hasSummary(context: ToolUIContext): Boolean = chats(context).isNotEmpty()
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val titles = chats(context).mapNotNull { it.getStringContent("title") }
+        if (titles.isEmpty()) return
+        Text(
+            text = titles.joinToString(", "),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
+            modifier = Modifier.shimmer(isLoading = context.loading),
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+```
+
+**(3e) ConversationSearchToolUI**（命中数）：
+
+```kotlin
+    override fun hasSummary(context: ToolUIContext): Boolean = results(context).isNotEmpty()
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val results = results(context)
+        if (results.isEmpty()) return
+        Text(
+            text = stringResource(R.string.chat_message_tool_search_results_count, results.size),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+        )
+    }
+```
+
+**(3f) GetScreenTimeToolUI**（权限提示或总时长 + 前 3 应用）：
+
+```kotlin
+    override fun hasSummary(context: ToolUIContext): Boolean =
+        isNoPermission(context) || apps(context).isNotEmpty()
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        if (isNoPermission(context)) {
+            Text(
+                text = stringResource(R.string.assistant_page_local_tools_screen_time_permission_required),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+            return
+        }
+        val apps = apps(context)
+        if (apps.isEmpty()) return
+        val totalMinutes = context.content?.jsonObjectOrNull?.get("total_minutes")
+            ?.jsonPrimitiveOrNull?.longOrNull ?: 0
+        Column(
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier.shimmer(isLoading = context.loading),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.tool_ui_screen_time_total),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = formatMinutes(totalMinutes),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+            apps.take(SUMMARY_MAX_APPS).forEach { app ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = app.getStringContent("app_name")
+                            ?: app.getStringContent("package") ?: "",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        text = formatMinutes(app.appMinutes()),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                    )
+                }
+            }
+        }
+    }
+```
+
+配套恢复（文件底部，`appMs()` 旁）：`SUMMARY_MAX_APPS = 3`（GetScreenTimeToolUI 内私有 const）、`JsonElement.appMinutes()`、`formatMinutes(Long)`：
+
+```kotlin
+/** 读取单个应用条目的前台时长 (分钟)；优先 total_minutes，回退 total_ms/60000 */
+private fun JsonElement.appMinutes(): Long =
+    jsonObjectOrNull?.get("total_minutes")?.jsonPrimitiveOrNull?.longOrNull ?: (appMs() / 60000)
+
+/** 将分钟数格式化为 "Xh Ym" / "Xh" / "Ym" */
+private fun formatMinutes(minutes: Long): String {
+    val h = minutes / 60
+    val m = minutes % 60
+    return when {
+        h > 0 && m > 0 -> "${h}h ${m}m"
+        h > 0 -> "${h}h"
+        else -> "${m}m"
+    }
+}
+```
+
+以及 `isNoPermission` helper（GetScreenTimeToolUI 内）：
+
+```kotlin
+    private fun isNoPermission(context: ToolUIContext): Boolean =
+        context.content.getStringContent("error") == "NO_PERMISSION"
+```
+
+**(3g) CalendarQueryToolUI**（事件数 + 前 3 标题）：
+
+```kotlin
+    override fun hasSummary(context: ToolUIContext): Boolean = events(context).isNotEmpty()
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val events = events(context)
+        if (events.isEmpty()) return
+        Column(
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier.shimmer(isLoading = context.loading),
+        ) {
+            Text(
+                text = stringResource(R.string.chat_message_tool_search_results_count, events.size),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+            )
+            events.take(3).forEach { event ->
+                val title = event.getStringContent("title") ?: return@forEach
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+```
+
+- [ ] **Step 4: WorkspaceToolUIs.kt — 恢复 6 个 Summary + FileContentSummary**
+
+**(4a) EditFileToolUI**（diff 统计 + DiffView）：
+
+```kotlin
+    override fun hasSummary(context: ToolUIContext): Boolean = diffOf(context) != null
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val diff = remember(context) { diffOf(context) } ?: return
+        val stats = remember(diff) { parseDiffStats(diff) }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = "+${stats.additions}",
+                style = MaterialTheme.typography.labelSmall,
+                color = DiffAddedColor,
+            )
+            Text(
+                text = "-${stats.deletions}",
+                style = MaterialTheme.typography.labelSmall,
+                color = DiffRemovedColor,
+            )
+        }
+        DiffView(
+            diff = diff,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+```
+
+（`diffOf`/`parseDiffStats`/`DiffView`/`DiffAddedColor`/`DiffRemovedColor` 均已存在。）
+
+**(4b) ReadFileToolUI**：
+
+```kotlin
+    override fun hasSummary(context: ToolUIContext): Boolean = textOf(context) != null
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val text = remember(context) { textOf(context) } ?: return
+        FileContentSummary(
+            text = text,
+            path = context.arguments.getStringContent("path"),
+            loading = context.loading,
+        )
+    }
+```
+
+**(4c) WriteFileToolUI**：同上（`textOf` 取入参 text）。
+
+**(4d) ShellToolUI**（退出状态 + stdout/stderr 首部）：
+
+```kotlin
+    private const val SUMMARY_MAX_LINES = 8
+
+    override fun hasSummary(context: ToolUIContext): Boolean = context.content != null
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val content = context.content ?: return
+        val combined = remember(content) {
+            listOf(content.getStringContent("stdout"), content.getStringContent("stderr"))
+                .filterNot { it.isNullOrBlank() }
+                .joinToString("\n")
+                .trim()
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            ShellExitStatus(content, MaterialTheme.typography.labelSmall)
+            if (combined.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.small)
+                        .background(MaterialTheme.colorScheme.surfaceContainer)
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                        .shimmer(isLoading = context.loading),
+                ) {
+                    Text(
+                        text = combined.lineSequence().take(SUMMARY_MAX_LINES).joinToString("\n"),
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                        fontSize = 11.sp,
+                        lineHeight = 14.sp,
+                        maxLines = SUMMARY_MAX_LINES,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+```
+
+（`ShellExitStatus` 存在；`SUMMARY_MAX_LINES` const 加在 ShellToolUI 内 `TITLE_MAX_CHARS` 旁。`FontFamily`/`clip`/`background`/`Box` 等 import 按需确认，`FontFamily.Monospace` 已在文件内使用过。）
+
+**(4e) GlobToolUI**：
+
+```kotlin
+    override fun hasSummary(context: ToolUIContext): Boolean = context.content != null
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val files = files(context)
+        if (files.isNotEmpty()) {
+            Text(
+                text = stringResource(R.string.tool_ui_glob_count, files.size),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            )
+        }
+    }
+```
+
+**(4f) GrepToolUI**：
+
+```kotlin
+    override fun hasSummary(context: ToolUIContext): Boolean = context.content != null
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val matches = matches(context)
+        if (matches.isNotEmpty()) {
+            Text(
+                text = stringResource(R.string.tool_ui_grep_count, matches.size),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            )
+        }
+    }
+```
+
+**恢复 FileContentSummary**（放在 `FileContentPreview` 之前，ReadFile/WriteFile 共用）：
+
+```kotlin
+private const val FILE_SUMMARY_MAX_LINES = 10
+
+/** 内联摘要: 按扩展名语法高亮展示文件内容首部若干行 */
+@Composable
+private fun FileContentSummary(text: String, path: String?, loading: Boolean) {
+    val preview = remember(text) {
+        text.lineSequence().take(FILE_SUMMARY_MAX_LINES).joinToString("\n")
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.small)
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .shimmer(isLoading = loading),
+    ) {
+        HighlightText(
+            code = preview,
+            language = languageOf(path),
+            fontSize = 11.sp,
+            lineHeight = 14.sp,
+            maxLines = FILE_SUMMARY_MAX_LINES,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+```
+
+（`HighlightText` 已 import；`languageOf` 已存在。若 `FILE_SUMMARY_MAX_LINES` 与 `SUMMARY_MAX_LINES` 都在文件级/对象级有定义，避免重名。）
+
+- [ ] **Step 5: Favicon.kt — 恢复 FaviconRow**
+
+把 `Favicon` 函数之后追加（含其独用 imports 恢复）：
+
+```kotlin
+@Composable
+fun FaviconRow(
+    urls: List<String>,
+    modifier: Modifier = Modifier,
+    size: Dp = 20.dp
+) {
+    val displayUrls = remember(urls) {
+        urls.distinctBy { it.toHttpUrlOrNull()?.host }
+    }.take(3)
+    Layout(
+        modifier = modifier,
+        content = {
+            displayUrls.forEachIndexed { index, url ->
+                Favicon(
+                    url = url,
+                    modifier = Modifier
+                        .shadow(1.dp, CircleShape)
+                        .zIndex(index.toFloat())
+                        .size(size),
+                    shape = CircleShape,
+                )
+            }
+        }
+    ) { measurables, constraints ->
+        val placeables = measurables.map { measurable ->
+            measurable.measure(constraints)
+        }
+        val faviconSize = size.roundToPx()
+        val overlap = 4.dp.roundToPx()
+        val step = faviconSize - overlap
+
+        val width = if (placeables.isEmpty()) {
+            0
+        } else {
+            faviconSize + (placeables.size - 1) * step
+        }
+        val height = if (placeables.isEmpty()) 0 else placeables.maxOfOrNull { it.height } ?: 0
+
+        layout(width, height) {
+            var xPosition = 0
+            placeables.forEach { placeable ->
+                placeable.placeRelative(x = xPosition, y = 0)
+                xPosition += step
+            }
+        }
+    }
+}
+```
+
+恢复 imports（仅 FaviconRow 独用，`Favicon` 已用 `size`/`RoundedCornerShape`）：`androidx.compose.foundation.shape.CircleShape`、`androidx.compose.ui.draw.shadow`、`androidx.compose.ui.layout.Layout`、`androidx.compose.ui.unit.Dp`、`androidx.compose.ui.zIndex`。
+
+- [ ] **Step 6: strings — 重加 tool_ui_glob_count / tool_ui_grep_count**
+
+values/strings.xml：
+
+```xml
+<string name="tool_ui_glob_count">%d files</string>
+<string name="tool_ui_grep_count">%d matches</string>
+```
+
+values-zh/strings.xml：
+
+```xml
+<string name="tool_ui_glob_count">%d 个文件</string>
+<string name="tool_ui_grep_count">%d 条匹配</string>
+```
+
+（值核对自 ab31e92~1 原始文件，逐字恢复。）
+
+- [ ] **Step 7: 自审 + 提交**
+
+自审要点：
+- `renderer.hasSummary(context)`/`renderer.Summary(context)` 编译可解析（接口已加）；`context.loading` 用于 shimmer。
+- 每个 Summary 的访问器（`items`/`chats`/`results`/`events`/`apps`/`files`/`matches`/`textOf`/`diffOf`）在当前渲染器中存在（已核对：SearchWeb `items`、RecentChats `chats`、ConversationSearch `results`、CalendarQuery `events`、GetScreenTime `apps`、Glob `files`、Grep `matches`、ReadFile/WriteFile `textOf`、EditFile `diffOf` 均在）。
+- GetScreenTime 的 `total_minutes`/`appMs()` 数据访问兼容当前信封。
+- 图片 LazyRow 的 import 齐全；无重复 import。
+- grep 确认 `hasSummary`/`Summary` 无重名冲突。
+
+`git add app/src/main/java/me/rerere/rikkahub/ui/components/message/tools/ToolUI.kt app/src/main/java/me/rerere/rikkahub/ui/components/message/ChatMessageTools.kt app/src/main/java/me/rerere/rikkahub/ui/components/message/tools/BuiltinToolUIs.kt app/src/main/java/me/rerere/rikkahub/ui/components/message/tools/WorkspaceToolUIs.kt app/src/main/java/me/rerere/rikkahub/ui/components/ui/Favicon.kt app/src/main/res/`
+`git commit -m "feat(ui): 恢复工具内联摘要(Summary)——shell输出/对话列表等回归最早展示模式"`
 
 ---
 
