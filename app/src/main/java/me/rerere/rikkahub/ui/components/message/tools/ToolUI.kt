@@ -31,7 +31,6 @@ import me.rerere.rikkahub.ui.components.richtext.HighlightCodeBlock
 import me.rerere.rikkahub.ui.components.richtext.ZoomableAsyncImage
 import me.rerere.rikkahub.ui.components.ui.FormItem
 import me.rerere.rikkahub.utils.JsonInstant
-import me.rerere.rikkahub.utils.JsonInstantPretty
 import me.rerere.rikkahub.utils.jsonPrimitiveOrNull
 
 /**
@@ -151,11 +150,7 @@ fun DefaultToolPreview(
                 Text(stringResource(R.string.chat_message_tool_call_label, context.tool.toolName))
             }
         ) {
-            HighlightCodeBlock(
-                code = JsonInstantPretty.encodeToString(context.arguments),
-                language = "json",
-                style = TextStyle(fontSize = 10.sp, lineHeight = 12.sp)
-            )
+            JsonTreeView(context.arguments)
         }
         if (context.tool.output.isNotEmpty()) {
             FormItem(
@@ -166,15 +161,18 @@ fun DefaultToolPreview(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     context.tool.output.fastForEach { part ->
                         when (part) {
-                            is UIMessagePart.Text -> HighlightCodeBlock(
-                                code = runCatching {
-                                    JsonInstantPretty.encodeToString(
-                                        JsonInstant.parseToJsonElement(part.text)
+                            is UIMessagePart.Text -> {
+                                val parsed = runCatching { JsonInstant.parseToJsonElement(part.text) }.getOrNull()
+                                if (parsed != null) {
+                                    JsonTreeView(parsed)
+                                } else {
+                                    HighlightCodeBlock(
+                                        code = part.text,
+                                        language = "plaintext",
+                                        style = TextStyle(fontSize = 10.sp, lineHeight = 12.sp),
                                     )
-                                }.getOrElse { part.text },
-                                language = "json",
-                                style = TextStyle(fontSize = 10.sp, lineHeight = 12.sp)
-                            )
+                                }
+                            }
 
                             is UIMessagePart.Image -> ZoomableAsyncImage(
                                 model = part.url,
