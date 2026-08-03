@@ -126,10 +126,15 @@ object MemoryToolUI : ToolUIRenderer {
 
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
+        val envelope = context.content
+        if (envelope == null || envelope.getStringContent("error") != null) {
+            DefaultToolPreview(context = context)
+            return
+        }
         val memoryRepo: MemoryRepository = koinInject()
         val scope = rememberCoroutineScope()
-        val memoryId = (context.content as? JsonObject)?.get("id")?.jsonPrimitiveOrNull?.intOrNull
-        val content = context.content?.getStringContent("content")
+        val memoryId = (envelope as? JsonObject)?.get("id")?.jsonPrimitiveOrNull?.intOrNull
+        val content = envelope.getStringContent("content")
         val canDelete = action(context) in listOf(ACTION_CREATE, ACTION_EDIT) && memoryId != null
         Column(modifier = Modifier.fillMaxHeight(0.8f)) {
             ToolDetailContainer {
