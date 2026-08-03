@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
@@ -46,6 +47,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.buildAnnotatedString
@@ -270,12 +272,17 @@ private fun ChainOfThoughtHeaderRow(content: @Composable () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Icon(
-            imageVector = HugeIcons.AiBrain02,
-            contentDescription = null,
-            modifier = Modifier.size(16.dp),
-            tint = MaterialTheme.colorScheme.onSurface,
-        )
+        Box(
+            modifier = Modifier.size(20.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = HugeIcons.AiBrain02,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = LocalContentColor.current.copy(alpha = 0.7f),   // item 4 一并处理（见 Task 2）
+            )
+        }
         content()
     }
 }
@@ -365,16 +372,24 @@ private fun MessagePartsBlock(
                                         )
                                     }
                                 } else {
-                                    val thinkingSummary = stringResource(
-                                        R.string.chain_of_thought_aggregate,
-                                        (thoughtMs / 1000).toInt(),
-                                        toolCount,
+                                    val hasReasoning = block.steps.any { it is ThinkingStep.ReasoningStep }
+                                    val toolText = pluralStringResource(
+                                        R.plurals.tool_called_count, toolCount, toolCount,
                                     )
+                                    val thinkingSummary = if (hasReasoning) {
+                                        stringResource(
+                                            R.string.chain_of_thought_aggregate,
+                                            thoughtMs / 1000.0,
+                                            toolText,
+                                        )
+                                    } else {
+                                        stringResource(R.string.called_n_tools, toolText)
+                                    }
                                     ChainOfThoughtHeaderRow {
                                         Text(
                                             text = thinkingSummary,
                                             style = MaterialTheme.typography.titleSmall,
-                                            color = MaterialTheme.colorScheme.onSurface,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f), // item 3（Task 2 一并）
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                         )

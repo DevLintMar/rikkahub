@@ -113,7 +113,7 @@ fun <T> ChainOfThought(
                             .fillMaxWidth()
                             .clip(MaterialTheme.shapes.small)
                             .clickable { expanded = !expanded }
-                            .padding(vertical = 3.dp),
+                            .padding(vertical = 5.5.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         header()
@@ -351,7 +351,7 @@ private class ChainOfThoughtScopeImpl : ChainOfThoughtScope {
                             Modifier
                         }
                     )
-                    .padding(vertical = 8.dp),
+                    .padding(vertical = 5.5.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

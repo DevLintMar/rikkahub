@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <plurals name="tool_called_count">
+        <item quantity="one">%d 个工具</item>
+        <item quantity="other">%d 个工具</item>
+    </plurals>
+</resources>
