@@ -37,7 +37,6 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.ai.ui.ToolApprovalState
-import me.rerere.ai.ui.ToolState
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.BubbleChatQuestion
@@ -46,10 +45,8 @@ import me.rerere.hugeicons.stroke.Tick01
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.message.tools.ToolDetailSheet
 import me.rerere.rikkahub.ui.components.message.tools.ToolJsonBody
-import me.rerere.rikkahub.ui.components.message.tools.ToolPresentationResolver
 import me.rerere.rikkahub.ui.components.message.tools.ToolUIContext
 import me.rerere.rikkahub.ui.components.message.tools.ToolUIRegistry
-import me.rerere.rikkahub.ui.components.message.tools.toolSummary
 import me.rerere.rikkahub.ui.components.ui.ChainOfThoughtScope
 import me.rerere.rikkahub.ui.components.ui.DotLoading
 import me.rerere.rikkahub.ui.modifier.shimmer
@@ -89,7 +86,6 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
         )
     }
 
-    val presentation = remember(tool) { ToolPresentationResolver.resolve(tool) }
     val images = tool.output.filterIsInstance<UIMessagePart.Image>()
 
     var showResult by remember { mutableStateOf(false) }
@@ -113,32 +109,14 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
             }
         },
         label = {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = renderer.title(context),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier.shimmer(isLoading = loading),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (loading || tool.toolState != ToolState.SUCCEEDED || tool.output.isNotEmpty()) {
-                    val live = tool.liveOutput
-                    val summaryText = if (loading && live != null) {
-                        live.lineSequence().lastOrNull()?.take(80)
-                            ?: toolSummary(presentation)
-                    } else {
-                        toolSummary(presentation)
-                    }
-                    Text(
-                        text = summaryText,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
+            Text(
+                text = renderer.title(context),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.shimmer(isLoading = loading),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         },
         extra = if (isPending && onToolApproval != null) {
             {
