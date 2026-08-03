@@ -122,7 +122,7 @@ fun <T> ChainOfThought(
                             imageVector = if (expanded) HugeIcons.ArrowUp01 else HugeIcons.ArrowDown01,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 } else if (canCollapse) {

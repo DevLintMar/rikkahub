@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -211,7 +212,7 @@ fun ChainOfThoughtScope.ChatMessageReasoningStep(
                 imageVector = HugeIcons.Idea01,
                 contentDescription = null,
                 modifier = Modifier.size(16.dp),
-                tint = MaterialTheme.colorScheme.secondary,
+                tint = LocalContentColor.current.copy(alpha = 0.7f),
             )
         },
         label = {
@@ -224,7 +225,7 @@ fun ChainOfThoughtScope.ChatMessageReasoningStep(
                         state.duration.toDouble(DurationUnit.SECONDS).toFloat()
                     ),
                     style = MaterialTheme.typography.titleSmall.copy(fontFamily = chatFontFamily),
-                    color = MaterialTheme.colorScheme.secondary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                     modifier = Modifier.shimmer(isLoading = loading),
                 )
             }

@@ -265,7 +265,7 @@ fun ChatMessage(
     }
 }
 
-/** 聚合思考块头部共用行：[AiBrain02] + 左侧内容（完成态或执行中态）。紧凑比例参考 Agora，黑色 onSurface。 */
+/** 聚合思考块头部共用行：[AiBrain02] + 左侧内容（完成态或执行中态）。紧凑比例参考 Agora；图标/文本色与工具列表行一致。 */
 @Composable
 private fun ChainOfThoughtHeaderRow(content: @Composable () -> Unit) {
     Row(
@@ -280,7 +280,7 @@ private fun ChainOfThoughtHeaderRow(content: @Composable () -> Unit) {
                 imageVector = HugeIcons.AiBrain02,
                 contentDescription = null,
                 modifier = Modifier.size(16.dp),
-                tint = LocalContentColor.current.copy(alpha = 0.7f),   // item 4 一并处理（见 Task 2）
+                tint = LocalContentColor.current.copy(alpha = 0.7f),
             )
         }
         content()
@@ -389,7 +389,7 @@ private fun MessagePartsBlock(
                                         Text(
                                             text = thinkingSummary,
                                             style = MaterialTheme.typography.titleSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f), // item 3（Task 2 一并）
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                         )
