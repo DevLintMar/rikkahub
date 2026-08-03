@@ -1243,30 +1243,28 @@ git commit -m "fix(ui): 渲染微调(glob pill 对齐/memory 嵌套/calendar ifB
 
 - [ ] **Step 1: JsonTreeView 大响应硬化**
 
-`JsonTreeObjectView`/`JsonTreeArrayView` 加深度/元素上限（MCP 几千元素全量组合）：
+`JsonTreeObjectView`/`JsonTreeArrayView` 加深度/元素上限（MCP 几千元素全量组合）。**用共享 `IntArray(1)` 持有剩余计数**沿递归传递（真上限：嵌套调用实时回流；写 IntArray 不触发重组）：
 
 ```kotlin
 private const val JSON_TREE_MAX_DEPTH = 12
 private const val JSON_TREE_MAX_ITEMS = 2000
-private var jsonTreeItemCounter = 0   // 需注意：Compose 重组合计需用 remember 或由调用方注入计数
 
 @Composable
-private fun JsonTreeObjectView(obj: JsonObject, depth: Int, remaining: Int) {
-    if (depth > JSON_TREE_MAX_DEPTH || remaining <= 0) {
+private fun JsonTreeObjectView(obj: JsonObject, depth: Int, remaining: IntArray) {
+    if (depth > JSON_TREE_MAX_DEPTH || remaining[0] <= 0) {
         Text("…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
-    var left = remaining
     Column(modifier = Modifier.fillMaxWidth()) {
         obj.entries.forEach { (key, value) ->
-            if (left <= 0) return@forEach
-            left--
-            /* 原有渲染，递归调用传 depth+1, left */
+            if (remaining[0] <= 0) return@forEach
+            remaining[0]--
+            /* 原有渲染；嵌套递归调用传 depth+1 与同一 remaining */
         }
     }
 }
 ```
-> 实现提示：将计数作为参数沿递归传递（`remaining`），避免全局可变状态与重组冲突。`JsonTreeArrayView` 同样处理。超限尾部显示省略。
+调用方 `JsonTreeView(json)` 构造 `val remaining = remember { intArrayOf(JSON_TREE_MAX_ITEMS) }` 并传给两个视图（`JsonTreeArrayView` 同样处理）。超限尾部显示省略。`remember { intArrayOf(...) }` 的持有者在 `JsonTreeView` 顶层；递归子视图只读写，不重建。
 
 - [ ] **Step 2: 聚合头 filterIsInstance → asReversed().firstOrNull**
 

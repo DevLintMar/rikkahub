@@ -127,7 +127,8 @@ object ToolPresentationResolver {
         }
         ToolKind.SHELL_EXECUTE -> null
         ToolKind.FILE_READ, ToolKind.FILE_WRITE, ToolKind.FILE_EDIT -> envelope?.get("sizeBytes")
-            ?.let { (it as? JsonPrimitive)?.contentOrNull?.toLongOrNull()?.toInt() }
+            ?.let { (it as? JsonPrimitive)?.contentOrNull?.toLongOrNull() }
+            ?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt()
         ToolKind.SCREEN_TIME -> envelope?.arraySize("apps")
         ToolKind.CALENDAR_QUERY -> envelope?.arraySize("events")
         ToolKind.FILE_GLOB -> envelope?.arraySize("files")   // workspace_glob 信封发 "files"（非 "matches"）

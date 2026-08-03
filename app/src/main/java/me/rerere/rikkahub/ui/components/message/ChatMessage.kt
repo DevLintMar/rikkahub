@@ -349,11 +349,11 @@ private fun MessagePartsBlock(
                     val aggregateHeader: (@Composable () -> Unit)? =
                         if (isReasoningOnlyBlock) null else {
                             @Composable {
-                                val runningTool = block.steps.filterIsInstance<ThinkingStep.ToolStep>()
-                                    .lastOrNull {
-                                        it.tool.toolState == ToolState.RUNNING ||
-                                            it.tool.toolState == ToolState.CALLING
-                                    }
+                                val runningTool = block.steps.asReversed().firstOrNull { step ->
+                                    step is ThinkingStep.ToolStep &&
+                                        (step.tool.toolState == ToolState.RUNNING ||
+                                            step.tool.toolState == ToolState.CALLING)
+                                } as? ThinkingStep.ToolStep
                                 if (runningTool != null) {
                                     ChainOfThoughtHeaderRow {
                                         Text(

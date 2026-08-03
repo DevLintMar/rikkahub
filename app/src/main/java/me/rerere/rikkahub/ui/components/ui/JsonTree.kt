@@ -1,3 +1,4 @@
+/** 日志页可展开 JSON 树。详情页的平铺 JSON 树见 ui/components/message/tools/JsonTreeView.kt（交互模式不同，两组件并存不合并）。 */
 package me.rerere.rikkahub.ui.components.ui
 
 import androidx.compose.animation.AnimatedVisibility

@@ -1,3 +1,4 @@
+/** 详情页的平铺 JSON 树。日志页可展开 JSON 树见 ui/components/ui/JsonTree.kt（交互模式不同，两组件并存不合并）。 */
 package me.rerere.rikkahub.ui.components.message.tools
 
 import androidx.compose.foundation.layout.Box
@@ -13,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -25,14 +27,20 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
+/** 平铺 JSON 树渲染上限：深度/条目超限即省略号截断，防止 MCP 大响应全量组合拖垮 UI。 */
+private const val JSON_TREE_MAX_DEPTH = 12
+private const val JSON_TREE_MAX_ITEMS = 2000
+
 /** Agora JsonNodeView 对齐：JSON 树形视图（键 chips + 内联值 + 嵌套缩进 + 可选中）。 */
 @Composable
 internal fun JsonTreeView(json: JsonElement) {
+    // 共享 IntArray(1) 持有剩余条目计数，沿递归实时回流（写数组不触发重组）
+    val remaining = remember { intArrayOf(JSON_TREE_MAX_ITEMS) }
     SelectionContainer {
         Column(modifier = Modifier.fillMaxWidth()) {
             when (json) {
-                is JsonObject -> JsonTreeObjectView(json, 0)
-                is JsonArray -> JsonTreeArrayView(json, 0)
+                is JsonObject -> JsonTreeObjectView(json, 0, remaining)
+                is JsonArray -> JsonTreeArrayView(json, 0, remaining)
                 is JsonPrimitive -> JsonTreePrimitiveView(json, Modifier.fillMaxWidth())
                 is JsonNull -> Text(
                     text = "—",
@@ -65,9 +73,19 @@ private fun JsonTreeKeyChip(label: String, color: Color) {
 }
 
 @Composable
-private fun JsonTreeObjectView(obj: JsonObject, depth: Int) {
+private fun JsonTreeObjectView(obj: JsonObject, depth: Int, remaining: IntArray) {
+    if (depth > JSON_TREE_MAX_DEPTH || remaining[0] <= 0) {
+        Text(
+            text = "…",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return
+    }
     Column(modifier = Modifier.fillMaxWidth()) {
         obj.entries.forEach { (key, value) ->
+            if (remaining[0] <= 0) return@forEach
+            remaining[0]--
             val blockString = isBlockString(value)
             Column(modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
@@ -100,10 +118,10 @@ private fun JsonTreeObjectView(obj: JsonObject, depth: Int) {
                 when (value) {
                     is JsonObject -> Box(
                         modifier = Modifier.padding(start = ((depth + 1) * 16).dp).padding(top = 2.dp),
-                    ) { JsonTreeObjectView(value, depth + 1) }
+                    ) { JsonTreeObjectView(value, depth + 1, remaining) }
                     is JsonArray -> Box(
                         modifier = Modifier.padding(start = ((depth + 1) * 16).dp).padding(top = 2.dp),
-                    ) { JsonTreeArrayView(value, depth + 1) }
+                    ) { JsonTreeArrayView(value, depth + 1, remaining) }
                     else -> {}
                 }
             }
@@ -112,9 +130,19 @@ private fun JsonTreeObjectView(obj: JsonObject, depth: Int) {
 }
 
 @Composable
-private fun JsonTreeArrayView(arr: JsonArray, depth: Int) {
+private fun JsonTreeArrayView(arr: JsonArray, depth: Int, remaining: IntArray) {
+    if (depth > JSON_TREE_MAX_DEPTH || remaining[0] <= 0) {
+        Text(
+            text = "…",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return
+    }
     Column(modifier = Modifier.fillMaxWidth()) {
         arr.forEachIndexed { i, item ->
+            if (remaining[0] <= 0) return@forEachIndexed
+            remaining[0]--
             Row(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
                 verticalAlignment = Alignment.Top,
@@ -128,8 +156,8 @@ private fun JsonTreeArrayView(arr: JsonArray, depth: Int) {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    is JsonObject -> Box(Modifier.weight(1f)) { JsonTreeObjectView(item, depth) }
-                    is JsonArray -> Box(Modifier.weight(1f)) { JsonTreeArrayView(item, depth) }
+                    is JsonObject -> Box(Modifier.weight(1f)) { JsonTreeObjectView(item, depth, remaining) }
+                    is JsonArray -> Box(Modifier.weight(1f)) { JsonTreeArrayView(item, depth, remaining) }
                 }
             }
         }
