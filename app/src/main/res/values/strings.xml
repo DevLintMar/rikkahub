@@ -1337,10 +1337,14 @@
   <string name="tool_ui_untitled">Untitled</string>
   <string name="tool_ui_all_day">all day</string>
   <string name="tool_ui_calendar_empty">No events</string>
+  <string name="tool_ui_clipboard_empty">Clipboard is empty</string>
+  <string name="tool_ui_clipboard_written">Copied to clipboard</string>
   <string name="tool_ui_event_created">Created: %1$s</string>
   <string name="tool_ui_event_end">End: %1$s</string>
   <string name="tool_ui_event_id">id %1$s</string>
   <string name="tool_ui_event_start">Start: %1$s</string>
+  <string name="tool_ui_memory_deleted">Memory deleted</string>
+  <string name="tool_ui_memory_id">id %1$d</string>
   <string name="tool_ui_minutes">%1$d min</string>
   <string name="tool_ui_screen_empty">No screen time</string>
   <string name="tool_ui_screen_total">Total %1$d min</string>
@@ -1355,6 +1359,7 @@
   <string name="assistant_page_local_tools_screen_time_permission_required">Please grant the Usage access permission in settings to use screen time</string>
   <string name="chat_message_tool_screen_time">Read screen time</string>
   <string name="tool_ui_screen_time_total">Total screen time</string>
+  <string name="tool_ui_time_default">Time</string>
   <string name="assistant_page_local_tools_calendar_title">Calendar</string>
   <string name="assistant_page_local_tools_calendar_desc">Let the AI query and create calendar events</string>
 

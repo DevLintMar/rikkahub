@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -48,6 +49,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import me.rerere.ai.ui.UIMessagePart
 import me.rerere.common.http.jsonObjectOrNull
 import me.rerere.highlight.HighlightText
 import me.rerere.hugeicons.HugeIcons
@@ -127,28 +129,54 @@ object MemoryToolUI : ToolUIRenderer {
         val memoryRepo: MemoryRepository = koinInject()
         val scope = rememberCoroutineScope()
         val memoryId = (context.content as? JsonObject)?.get("id")?.jsonPrimitiveOrNull?.intOrNull
-        DefaultToolPreview(
-            context = context,
-            headerActions = if (action(context) in listOf(ACTION_CREATE, ACTION_EDIT) && memoryId != null) {
-                {
+        val content = context.content?.getStringContent("content")
+        val canDelete = action(context) in listOf(ACTION_CREATE, ACTION_EDIT) && memoryId != null
+        Column(modifier = Modifier.fillMaxHeight(0.8f)) {
+            ToolDetailContainer {
+                when (action(context)) {
+                    ACTION_CREATE, ACTION_EDIT -> {
+                        if (!content.isNullOrBlank()) {
+                            Text(
+                                text = content,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                        if (memoryId != null) {
+                            ToolPill(stringResource(R.string.tool_ui_memory_id, memoryId))
+                        }
+                    }
+                    ACTION_DELETE -> Text(
+                        text = stringResource(R.string.tool_ui_memory_deleted),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    else -> DefaultToolPreview(context = context)
+                }
+            }
+            if (canDelete) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.End,
+                ) {
                     IconButton(
                         onClick = {
                             scope.launch {
-                                memoryRepo.deleteMemory(memoryId)
+                                memoryRepo.deleteMemory(memoryId!!)
                                 onDismissRequest()
                             }
                         }
                     ) {
                         Icon(
                             imageVector = HugeIcons.Delete01,
-                            contentDescription = stringResource(R.string.tool_ui_delete_memory)
+                            contentDescription = stringResource(R.string.tool_ui_delete_memory),
                         )
                     }
                 }
-            } else {
-                null
-            },
-        )
+            }
+        }
     }
 }
 
@@ -249,6 +277,43 @@ object GetTimeInfoToolUI : ToolUIRenderer {
     @Composable
     override fun title(context: ToolUIContext): String =
         stringResource(R.string.chat_message_tool_get_time)
+
+    @Composable
+    override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
+        val content = context.content
+        if (content == null) {
+            DefaultToolPreview(context = context)
+            return
+        }
+        val date = content.getStringContent("date")
+        val time = content.getStringContent("time")
+        val weekday = content.getStringContent("weekday")
+        val timezone = content.getStringContent("timezone")
+        val utcOffset = content.getStringContent("utc_offset")
+        ToolDetailContainer {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = date ?: stringResource(R.string.tool_ui_time_default),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                weekday?.takeIf { it.isNotBlank() }?.let { ToolPill(it) }
+            }
+            if (time != null) {
+                Text(
+                    text = time,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            if (timezone != null || utcOffset != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    timezone?.takeIf { it.isNotBlank() }?.let { ToolPill(it) }
+                    utcOffset?.takeIf { it.isNotBlank() }?.let { ToolPill(it) }
+                }
+            }
+        }
+    }
 }
 
 /**
@@ -269,6 +334,37 @@ object ClipboardToolUI : ToolUIRenderer {
             ACTION_WRITE -> stringResource(R.string.chat_message_tool_clipboard_write)
             else -> stringResource(R.string.chat_message_tool_call_generic, toolName)
         }
+
+    @Composable
+    override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
+        val content = context.content
+        if (content == null) {
+            DefaultToolPreview(context = context)
+            return
+        }
+        val text = content.getStringContent("text")
+        val action = context.arguments.getStringContent("action")
+        ToolDetailContainer {
+            if (action == ACTION_READ) {
+                if (text.isNullOrBlank()) {
+                    Text(
+                        text = stringResource(R.string.tool_ui_clipboard_empty),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    ToolTerminalOutput(text)
+                }
+            } else {
+                Text(
+                    text = stringResource(R.string.tool_ui_clipboard_written),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                text?.takeIf { it.isNotBlank() }?.let { ToolTerminalOutput(it) }
+            }
+        }
+    }
 }
 
 /**
@@ -339,6 +435,20 @@ object UseSkillToolUI : ToolUIRenderer {
         val skillName = context.arguments.getStringContent("name") ?: ""
         val path = context.arguments.getStringContent("path")
         return if (path != null) "Skill: $skillName / $path" else "Skill: $skillName"
+    }
+
+    @Composable
+    override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
+        val output = context.tool.output.filterIsInstance<UIMessagePart.Text>()
+            .joinToString("\n") { it.text }
+            .trim()
+        if (output.isBlank()) {
+            DefaultToolPreview(context = context)
+            return
+        }
+        ToolDetailContainer {
+            ToolTerminalOutput(output)
+        }
     }
 }
 
