@@ -36,6 +36,7 @@ private const val JSON_TREE_MAX_ITEMS = 2000
 internal fun JsonTreeView(json: JsonElement) {
     // 共享 IntArray(1) 持有剩余条目计数，沿递归实时回流（写数组不触发重组）
     val remaining = remember { intArrayOf(JSON_TREE_MAX_ITEMS) }
+    remaining[0] = JSON_TREE_MAX_ITEMS // 每次组合重置预算，避免跨重组累计耗尽
     SelectionContainer {
         Column(modifier = Modifier.fillMaxWidth()) {
             when (json) {
