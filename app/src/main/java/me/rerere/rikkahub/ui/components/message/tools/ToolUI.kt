@@ -124,7 +124,7 @@ fun DefaultToolPreview(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         ToolJsonSection(
-            label = stringResource(R.string.chat_message_tool_call_label, context.tool.toolName),
+            label = stringResource(R.string.tool_ui_arguments),
             json = context.arguments,
         ) {
             JsonTreeView(context.arguments)

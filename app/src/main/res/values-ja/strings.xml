@@ -234,7 +234,6 @@
   <string name="chat_message_tool_approve">承認</string>
   <string name="chat_message_tool_ask_questions">%d 件の質問</string>
   <string name="chat_message_tool_call_generic">ツール %1$s を呼び出しました</string>
-  <string name="chat_message_tool_call_label">ツール %1$s を呼び出しました</string>
   <string name="chat_message_tool_call_result">呼び出し結果</string>
   <string name="chat_message_tool_clipboard_read">クリップボードを読み取り</string>
   <string name="chat_message_tool_clipboard_write">クリップボードに書き込み</string>

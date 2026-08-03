@@ -234,7 +234,6 @@
   <string name="chat_message_tool_approve">Одобрить</string>
   <string name="chat_message_tool_ask_questions">Задать %d вопросов</string>
   <string name="chat_message_tool_call_generic">Вызван инструмент %1$s</string>
-  <string name="chat_message_tool_call_label">Вызван инструмент %1$s</string>
   <string name="chat_message_tool_call_result">Результат вызова</string>
   <string name="chat_message_tool_clipboard_read">Читать буфер обмена</string>
   <string name="chat_message_tool_clipboard_write">Записать в буфер обмена</string>
