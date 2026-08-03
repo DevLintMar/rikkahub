@@ -901,21 +901,243 @@ git commit -m "feat(ui): get_time_info/clipboard/use_skill/memory 详情视图"
 
 ---
 
-### Task 5: 字符串 sweep + 全量静态 review + 最终 CI
+### Task 5: `DefaultToolPreview` JSON → `JsonTreeView` 树形兜底（对齐 Agora `JsonNodeView`）
+
+> 用户 2026-08-02 拍板：无专门视图的工具（MCP/未注册）兜底也用 Agora 式 JSON 树，不要一坨 JSON。
+
+**Files:**
+- Create: `app/src/main/java/me/rerere/rikkahub/ui/components/message/tools/JsonTreeView.kt`
+- Modify: `app/src/main/java/me/rerere/rikkahub/ui/components/message/tools/ToolUI.kt`（`DefaultToolPreview` 的 JSON 渲染换树形）
+
+**Interfaces:**
+- Produces: `@Composable internal fun JsonTreeView(json: JsonElement)`（Task 6 兜底引用）。
+- Design 参照: `references/Agora/app/src/main/java/com/newoether/agora/ui/chat/message/MessageItemJson.kt` 的 `JsonNodeView`。
+
+- [ ] **Step 1: 创建 `JsonTreeView.kt`**（镜像 Agora `JsonNodeView`：键 chips + 内联值 + 长/多行字符串单独一行 + 嵌套缩进 + 可选中）：
+
+```kotlin
+package me.rerere.rikkahub.ui.components.message.tools
+
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+
+/** Agora JsonNodeView 对齐：JSON 树形视图（键 chips + 内联值 + 嵌套缩进 + 可选中）。 */
+@Composable
+internal fun JsonTreeView(json: JsonElement) {
+    SelectionContainer {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            when (json) {
+                is JsonObject -> JsonTreeObjectView(json, 0)
+                is JsonArray -> JsonTreeArrayView(json, 0)
+                is JsonPrimitive -> JsonTreePrimitiveView(json, Modifier.fillMaxWidth())
+                is JsonNull -> Text(
+                    text = "—",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/** 长(>40)或含换行的字符串值单独一行展示，避免被压成窄列。 */
+private fun isBlockString(value: JsonElement): Boolean =
+    value is JsonPrimitive && value.isString &&
+        (value.content.length > 40 || value.content.contains('\n'))
+
+@Composable
+private fun JsonTreeKeyChip(label: String, color: Color) {
+    Surface(
+        shape = RoundedCornerShape(4.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+        )
+    }
+}
+
+@Composable
+private fun JsonTreeObjectView(obj: JsonObject, depth: Int) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        obj.entries.forEach { (key, value) ->
+            val blockString = isBlockString(value)
+            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                    JsonTreeKeyChip(key, MaterialTheme.colorScheme.primary)
+                    if (!blockString) {
+                        Spacer(Modifier.width(8.dp))
+                        when (value) {
+                            is JsonPrimitive -> JsonTreePrimitiveView(value, Modifier.weight(1f))
+                            is JsonNull -> Text(
+                                text = "—",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            is JsonObject -> Text(
+                                text = "{…}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            is JsonArray -> Text(
+                                text = "[…]",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+                if (blockString && value is JsonPrimitive) {
+                    JsonTreePrimitiveView(value, Modifier.fillMaxWidth().padding(top = 2.dp))
+                }
+                when (value) {
+                    is JsonObject -> Box(
+                        modifier = Modifier.padding(start = ((depth + 1) * 16).dp).padding(top = 2.dp),
+                    ) { JsonTreeObjectView(value, depth + 1) }
+                    is JsonArray -> Box(
+                        modifier = Modifier.padding(start = ((depth + 1) * 16).dp).padding(top = 2.dp),
+                    ) { JsonTreeArrayView(value, depth + 1) }
+                    else -> {}
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun JsonTreeArrayView(arr: JsonArray, depth: Int) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        arr.forEachIndexed { i, item ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                JsonTreeKeyChip((i + 1).toString(), MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.width(8.dp))
+                when (item) {
+                    is JsonPrimitive -> JsonTreePrimitiveView(item, Modifier.weight(1f))
+                    is JsonNull -> Text(
+                        text = "—",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    is JsonObject -> Box(Modifier.weight(1f)) { JsonTreeObjectView(item, depth) }
+                    is JsonArray -> Box(Modifier.weight(1f)) { JsonTreeArrayView(item, depth) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun JsonTreePrimitiveView(primitive: JsonPrimitive, modifier: Modifier = Modifier) {
+    val color = when {
+        primitive.isString -> MaterialTheme.colorScheme.onSurface
+        else -> MaterialTheme.colorScheme.tertiary
+    }
+    Text(
+        text = primitive.content,
+        style = MaterialTheme.typography.bodySmall.copy(
+            fontFamily = FontFamily.Monospace,
+            fontSize = 12.sp,
+        ),
+        color = color,
+        maxLines = if (primitive.isString) 4 else 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier,
+    )
+}
+```
+
+- [ ] **Step 2: 改 `DefaultToolPreview`**（`ToolUI.kt`）——Arguments 与输出 Text 部件的 JSON 渲染从 `HighlightCodeBlock` 整块 pretty-JSON 换成 `JsonTreeView`：
+  - Arguments（L152-156）：`HighlightCodeBlock(code = JsonInstantPretty.encodeToString(context.arguments), language = "json", ...)` → `JsonTreeView(context.arguments)`
+  - 输出 Text 部件（L167-175）：`runCatching { JsonInstantPretty.encodeToString(JsonInstant.parseToJsonElement(part.text)) }.getOrElse { part.text }` → 改为：
+    ```kotlin
+    is UIMessagePart.Text -> {
+        val parsed = runCatching { JsonInstant.parseToJsonElement(part.text) }.getOrNull()
+        if (parsed != null) {
+            JsonTreeView(parsed)
+        } else {
+            HighlightCodeBlock(
+                code = part.text,
+                language = "plaintext",
+                style = TextStyle(fontSize = 10.sp, lineHeight = 12.sp),
+            )
+        }
+    }
+    ```
+  - `Image` 部件（L177-181）不变。
+
+- [ ] **Step 3: 静态自检** — `JsonTreeView.kt` 只依赖 compose/material3/kotlinx.serialization（无项目内部依赖）；`Modifier.weight(1f)` 在 `Row` 的 RowScope 内（`JsonTreeObjectView`/`JsonTreeArrayView` 的 Row lambda）；`SelectionContainer` 包整棵 Column；`primitive.isString`/`primitive.content` 是 `JsonPrimitive` 成员；`is JsonNull` 分支存在。
+- [ ] **Step 4: Commit**
+
+```bash
+git add app/src/main/java/me/rerere/rikkahub/ui/components/message/tools/JsonTreeView.kt app/src/main/java/me/rerere/rikkahub/ui/components/message/tools/ToolUI.kt
+git commit -m "feat(ui): DefaultToolPreview JSON 树形兜底（JsonTreeView 对齐 Agora JsonNodeView）"
+```
+
+---
+
+### Task 6: 日历错误信封兜底修复 + 字符串 sweep + 全量静态 review + 最终 CI
 
 **Files:**
 - Review only（各任务产物）。
 - 若 review 发现遗漏：修 `BuiltinToolUIs.kt`/`WorkspaceToolUIs.kt`/strings。
 
-**Interfaces:** 无新接口——纯验证。
+**Interfaces:** 无新接口——纯验证 + 一个小的错误兜底修复。
 
-- [ ] **Step 1: 全量静态 review**
+- [ ] **Step 1: 日历错误信封兜底修复**（Task 3 review Important，plan-mandated 修正）
+
+`CalendarQueryToolUI.Preview`/`CalendarCreateToolUI.Preview` 对错误信封（`NO_PERMISSION`/`INVALID_*`/`NO_CALENDAR`/`INSERT_FAILED`，带 `error` key 无 `events`/`event_id`）会显示"No events"/"Created: Untitled"——**把失败的插入误报成成功**。给两个 Preview 加 `error != null → DefaultToolPreview` 兜底（镜像 `GetScreenTimeToolUI.Preview` 的 L593 模式）：
+
+```kotlin
+// CalendarQueryToolUI.Preview 开头
+val content = context.content
+if (content == null || content.getStringContent("error") != null) {
+    DefaultToolPreview(context = context)
+    return
+}
+// CalendarCreateToolUI.Preview 开头同理
+val content = context.content
+if (content == null || content.getStringContent("error") != null) {
+    DefaultToolPreview(context = context)
+    return
+}
+```
+
+- [ ] **Step 2: 全量静态 review**
 - 每个工具点进详情：`workspace_glob`（索引文件列表）、`workspace_grep`（按路径分组行号匹配）、`recent_chats`（会话列表）、`conversation_search`（结果卡片 + match_count + 消息片段）、`get_screen_time`（app 列表 + 总时长）、`calendar_query`（事件列表）、`calendar_create`（创建确认）、`get_time_info`（日期 + 时间 + 时区）、`clipboard_tool`（剪贴板文本）、`use_skill`（skill 输出）、`memory_tool`（记忆内容 + 删除按钮）。
 - 信封 key 逐一对照 producer（`WorkspaceTools.kt`/`ConversationTools.kt`/`ScreenTimeTool.kt`/`CalendarTool.kt`/`TimeInfoTool.kt`/`ClipboardTool.kt`/`MemoryTools.kt`/`SkillsTools.kt`）。
 - 字符串双写完整、无重复 key、字母序。
-- MCP/未注册工具仍走 `DefaultToolPreview`（JSON 兜底，符合 Agora 行为——计划内保留）。
+- MCP/未注册工具走 `DefaultToolPreview` → `JsonTreeView`（Task 5）树形 JSON 兜底，符合 Agora 行为。
 
-- [ ] **Step 2: 最终 CI**
+- [ ] **Step 3: 最终 CI**
 
 ```bash
 git push origin master
@@ -925,20 +1147,20 @@ gh run watch <RUN_ID> --repo DevLintMar/rikkahub --exit-status
 
 期望 `Gradle Build` 通过。若报错修完重新 push + 触发。
 
-- [ ] **Step 3: 手动验证清单**（装 debug APK）
+- [ ] **Step 4: 手动验证清单**（装 debug APK）
 1. 让 AI 调 `workspace_glob`/`workspace_grep` → 点进去分别是文件列表 / 行号匹配，不再是 JSON。
 2. `conversation_search`/`recent_chats`/`get_screen_time`/`calendar_query` → 语义列表。
 3. `get_time_info`/`clipboard_tool`/`use_skill`/`memory_tool` → 时间/文本/删除确认。
-4. MCP 工具 → 仍是 JSON（预期）。
+4. MCP 工具 → JSON 树形兜底（`JsonTreeView`，Task 5）。
 
-- [ ] **Step 4: Commit（若 review 有修复）**——按需。
+- [ ] **Step 5: Commit（若 review 有修复）**——按需。
 
 ---
 
 ## Self-Review 结论
 
-- **Spec 覆盖**：用户全量范围——glob/grep 新渲染器（Task 1）、9 个既有渲染器 Preview（Task 2-4）、字符串双写、MCP 保留 JSON（计划内）。
-- **类型一致性**：`ToolDetailContainer`/`ToolPill`/`ToolTerminalOutput`/`formatFileSize`（Task 1）被 Task 2-4 消费；envelope key 已逐个核实。
+- **Spec 覆盖**：用户全量范围——glob/grep 新渲染器（Task 1）、9 个既有渲染器 Preview（Task 2-4）、MCP/未知工具 JsonTreeView 树形兜底（Task 5，用户 2026-08-02 拍板）、日历错误信封兜底（Task 6）、字符串双写、最终 CI（Task 6）。
+- **类型一致性**：`ToolDetailContainer`/`ToolPill`/`ToolTerminalOutput`/`formatFileSize`（Task 1）被 Task 2-4 消费；`JsonTreeView`（Task 5）被 `DefaultToolPreview` 消费；envelope key 已逐个核实。
 - **无占位符**；每任务含具体代码或精确布局 + key。
-- **已知风险**：`HugeIcons.Folder02`/`SearchList` 图标名以 CI 为准；memory 删除按钮布局（Task 4 已注）；calendar_create event 字段以 producer 实际为准。
-- **MCP/未知工具 JSON 兜底是有意保留**（与 Agora `JsonOrPlainView` 对未知 kind 的处理一致），不属缺口。
+- **已知风险**：`HugeIcons.Folder02`/`SearchList` 图标名以 CI 为准（Task 1 已验证：Folder02 通过、SearchList 改 Search01）；memory 删除按钮布局（Task 4 已注）；calendar_create event 字段以 producer 实际为准（Task 3 已核）。
+- **MCP/未知工具兜底 = `JsonTreeView` 树形 JSON**（对齐 Agora `JsonNodeView`，用户拍板），不再是整块 JSON。
