@@ -32,6 +32,7 @@
 | 3b | 恢复工具内联摘要（Summary）——shell 输出/对话列表等回归最早展示模式（item 1 修正） | ToolUI.kt + ChatMessageTools.kt + BuiltinToolUIs.kt + WorkspaceToolUIs.kt + Favicon.kt + strings | sonnet | opus |
 | 4 | 小转换器修复 + MCP 工具详情规范 + Sheet 滚动重置（item 6,7 + 收尾⑧） | ToolDetailCommon.kt + ToolUI.kt + ChatMessageTools.kt + ToolDetailSheet.kt | sonnet | sonnet |
 | 5 | 收尾文案/本地化/整洁（收尾①③⑤⑦⑨ + ⑥） | ChatMessage.kt + ChatMessageReasoning.kt + BuiltinToolUIs.kt + Favicon.kt + JsonTreeView.kt + JsonTree.kt + strings | haiku | sonnet |
+| 6 | 链卡颜色统一 secondary + 原始 JSON 文本视图还原（HighlightCodeBlock 高亮/复制/下载）——用户新反馈 | ChatMessageReasoning.kt + ChatMessage.kt + ToolDetailCommon.kt | haiku | sonnet |
 
 **已被取代的收尾项（无需动作）**：收尾②（`tool_summary_empty_file` 本地化——Task 3 删除 ToolPresentation.kt 后全部 `tool_summary_*` 变死串）；收尾④（JsonArray import 统一——同在 ToolPresentation.kt）；收尾⑩（DefaultToolPreview 参数区开关 no-op——Task 4 修复小转换器后不再是 no-op）。
 
@@ -1546,6 +1547,84 @@ JsonTree.kt：把第 1 行 `/** 日志页可展开 JSON 树。详情页的平铺
 
 `git add app/src/main/java/me/rerere/rikkahub/ui/components/message/ChatMessage.kt app/src/main/java/me/rerere/rikkahub/ui/components/message/ChatMessageReasoning.kt app/src/main/java/me/rerere/rikkahub/ui/components/message/tools/BuiltinToolUIs.kt app/src/main/java/me/rerere/rikkahub/ui/components/ui/Favicon.kt app/src/main/java/me/rerere/rikkahub/ui/components/message/tools/JsonTreeView.kt app/src/main/java/me/rerere/rikkahub/ui/components/ui/JsonTree.kt app/src/main/res/`
 `git commit -m "polish(ui): 收尾①Locale.ROOT③⑨read_conversation文案⑦死代码移除⑤KDoc归位"`
+
+---
+
+### Task 6: 链卡颜色统一 + 原始 JSON 文本视图还原（用户新反馈）
+
+> **背景**：① 工具标题（`secondary`）与"思考 X 秒"/"思考 X 秒，调用了 Y 个工具"（`onSurfaceVariant 0.6`）仍有色差——把后者统一到前者的 `secondary`（含运行态"正在调用工具xxx"）。② 小转换器切到"纯 JSON 文本"时应还原 rikkahub 原始实现：`HighlightCodeBlock`（语法高亮 + 复制 + 下载按钮），而非当前 `ToolTerminalOutput` 纯等宽框（Task 4 加的）。
+
+**Files:**
+- Modify: `app/src/main/java/me/rerere/rikkahub/ui/components/message/ChatMessageReasoning.kt`（Issue 1：deep_thinking_seconds 颜色）
+- Modify: `app/src/main/java/me/rerere/rikkahub/ui/components/message/ChatMessage.kt`（Issue 1：聚合完成态 + 运行态颜色）
+- Modify: `app/src/main/java/me/rerere/rikkahub/ui/components/message/tools/ToolDetailCommon.kt`（Issue 2：ToolJsonRawText → HighlightCodeBlock）
+
+- [ ] **Step 1: Issue 1 — 链卡标签颜色统一为 secondary**
+
+ChatMessageReasoning.kt `ChatMessageReasoningStep` 的 `deep_thinking_seconds` Text（约 L241），把：
+
+```kotlin
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+```
+
+改为：
+
+```kotlin
+                    color = MaterialTheme.colorScheme.secondary,
+```
+
+ChatMessage.kt 聚合头运行态（约 L358），把：
+
+```kotlin
+                    val callingColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+```
+
+改为：
+
+```kotlin
+                    val callingColor = MaterialTheme.colorScheme.secondary
+```
+
+ChatMessage.kt 聚合头完成态摘要 Text（约 L401），把：
+
+```kotlin
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+```
+
+改为：
+
+```kotlin
+                                            color = MaterialTheme.colorScheme.secondary,
+```
+
+> 注：改后聚合头运行态/完成态、思考标签、工具标题全部统一为 `secondary`（"思考 X 秒"的 `extra` 时长本就是 secondary；ReasoningTitle 也是 secondary）。
+
+- [ ] **Step 2: Issue 2 — ToolJsonRawText 还原为 HighlightCodeBlock**
+
+ToolDetailCommon.kt 把 `ToolJsonRawText`（约 L97-100 附近，Task 4 新增）替换为：
+
+```kotlin
+/** 原始 JSON 代码块（对齐最早 rikkahub：语法高亮 + 复制 + 下载，HighlightCodeBlock） */
+@Composable
+internal fun ToolJsonRawText(json: JsonElement) {
+    HighlightCodeBlock(
+        code = JsonInstantPretty.encodeToString(json),
+        language = "json",
+        style = TextStyle(fontSize = 10.sp, lineHeight = 12.sp),
+    )
+}
+```
+
+新增 imports（确认不重复）：`me.rerere.rikkahub.ui.components.richtext.HighlightCodeBlock`、`androidx.compose.ui.text.TextStyle`。
+
+> 最早实现核对：21ea463（DefaultToolPreview 改 JsonTreeView 兜底）之前的原始代码即 `HighlightCodeBlock(JsonInstantPretty.encodeToString(...), language = "json", style = TextStyle(fontSize = 10.sp, lineHeight = 12.sp))`。`HighlightCodeBlock` 自带 复制（Copy01）与 下载（Download04→CreateDocument）操作栏与语法高亮。函数名 `ToolJsonRawText` 保留（ToolJsonSection 调用点不变）；`ToolTerminalOutput` 仍被 Shell/剪贴板/子代理等使用，保留。
+
+- [ ] **Step 3: 自审 + 提交**
+
+自审要点：`secondary` 改后链卡内无遗留 `onSurfaceVariant.copy(alpha = 0.6f)` 标签色（grep 确认）；`HighlightCodeBlock`/`TextStyle`/`sp` 已 import；`ToolJsonRawText` 唯一调用点（ToolJsonSection）无需改。
+
+`git add app/src/main/java/me/rerere/rikkahub/ui/components/message/ChatMessageReasoning.kt app/src/main/java/me/rerere/rikkahub/ui/components/message/ChatMessage.kt app/src/main/java/me/rerere/rikkahub/ui/components/message/tools/ToolDetailCommon.kt`
+`git commit -m "fix(ui): 链卡标签颜色统一secondary+原始JSON文本视图还原(HighlightCodeBlock高亮/复制/下载)"`
 
 ---
 
