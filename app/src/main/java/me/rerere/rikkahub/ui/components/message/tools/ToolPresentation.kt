@@ -107,7 +107,9 @@ object ToolPresentationResolver {
                 ?: envelope?.string("pattern")
             ToolKind.CLIPBOARD, ToolKind.TEXT_TO_SPEECH, ToolKind.SCREEN_TIME,
             ToolKind.CALENDAR_QUERY, ToolKind.CALENDAR_CREATE, ToolKind.TIME_INFO,
-            ToolKind.EVAL_JAVASCRIPT, ToolKind.RUN_WORKFLOW, ToolKind.SUB_AGENT -> envelope?.string("path")
+            ToolKind.EVAL_JAVASCRIPT, ToolKind.RUN_WORKFLOW -> envelope?.string("path")
+            ToolKind.SUB_AGENT -> envelope?.string("description")
+                ?: args?.string("description")
             ToolKind.UNKNOWN -> null
         }?.take(120)
     }

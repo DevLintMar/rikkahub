@@ -253,11 +253,13 @@
   <string name="chat_message_tool_deny_dialog_title">拒绝工具执行</string>
   <string name="chat_message_tool_edit_memory">更新了记忆</string>
   <string name="chat_message_tool_get_time">获取时间信息</string>
+  <string name="chat_message_tool_read_conversation">阅读对话</string>
   <string name="chat_message_tool_scrape_prefix">抓取网站：%1$s</string>
   <string name="chat_message_tool_scrape_web">抓取网页</string>
   <string name="chat_message_tool_search_prefix">搜索: %1$s</string>
   <string name="chat_message_tool_search_results_count">共 %1$d 条结果</string>
   <string name="chat_message_tool_search_web">搜索网页: %1$s</string>
+  <string name="chat_message_tool_sub_agent">子代理</string>
   <string name="chat_message_tool_submit">提交</string>
   <string name="chat_page_cancel">取消</string>
   <string name="chat_page_check_title_model_settings">检查标题模型设置</string>
@@ -1281,6 +1283,9 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="common_share">分享</string>
   <string name="tool_ui_edit_file">编辑：%s</string>
   <string name="tool_ui_edit_file_default">编辑文件</string>
+  <string name="tool_ui_read_conv_messages">%1$d 条消息</string>
+  <string name="tool_ui_read_conv_role_assistant">助手</string>
+  <string name="tool_ui_read_conv_role_user">用户</string>
   <string name="tool_ui_read_file">读取: %s</string>
   <string name="tool_ui_read_file_default">读取文件</string>
   <string name="tool_ui_write_file">写入: %s</string>
@@ -1300,6 +1305,9 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="tool_ui_shell_timeout">timeout</string>
   <string name="tool_ui_shell_exit">exit %s</string>
   <string name="tool_ui_speaking">朗读: %s</string>
+  <string name="tool_ui_sub_agent_completed">已完成</string>
+  <string name="tool_ui_sub_agent_failed">失败</string>
+  <string name="tool_ui_sub_agent_started">已在后台启动</string>
   <string name="tool_ui_replay">重播</string>
   <string name="tool_ui_view_json">查看 JSON</string>
   <string name="tool_ui_view_style">查看样式</string>

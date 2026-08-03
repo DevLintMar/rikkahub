@@ -253,11 +253,13 @@
   <string name="chat_message_tool_deny_dialog_title">Deny Tool Execution</string>
   <string name="chat_message_tool_edit_memory">Updated memory</string>
   <string name="chat_message_tool_get_time">Get time info</string>
+  <string name="chat_message_tool_read_conversation">Read conversation</string>
   <string name="chat_message_tool_scrape_prefix">Scrape website: %1$s</string>
   <string name="chat_message_tool_scrape_web">Scrape web page</string>
   <string name="chat_message_tool_search_prefix">Search: %1$s</string>
   <string name="chat_message_tool_search_results_count">%1$d results</string>
   <string name="chat_message_tool_search_web">Search web: %1$s</string>
+  <string name="chat_message_tool_sub_agent">Sub-agent</string>
   <string name="chat_message_tool_submit">Submit</string>
   <string name="chat_page_cancel">Cancel</string>
   <string name="chat_page_check_title_model_settings">Check title model settings</string>
@@ -1301,6 +1303,9 @@
   <string name="common_share">Share</string>
   <string name="tool_ui_edit_file">Edit: %s</string>
   <string name="tool_ui_edit_file_default">Edit file</string>
+  <string name="tool_ui_read_conv_messages">%1$d messages</string>
+  <string name="tool_ui_read_conv_role_assistant">Assistant</string>
+  <string name="tool_ui_read_conv_role_user">User</string>
   <string name="tool_ui_read_file">Read: %s</string>
   <string name="tool_ui_read_file_default">Read file</string>
   <string name="tool_ui_write_file">Write: %s</string>
@@ -1320,6 +1325,9 @@
   <string name="tool_ui_shell_timeout">timeout</string>
   <string name="tool_ui_shell_exit">exit %s</string>
   <string name="tool_ui_speaking">Speaking: %s</string>
+  <string name="tool_ui_sub_agent_completed">Completed</string>
+  <string name="tool_ui_sub_agent_failed">Failed</string>
+  <string name="tool_ui_sub_agent_started">Started in background</string>
   <string name="tool_ui_replay">Replay</string>
   <string name="tool_ui_scrape_truncated">… truncated, %1$d characters in total</string>
   <string name="tool_ui_delete_memory">Delete memory</string>

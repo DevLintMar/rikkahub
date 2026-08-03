@@ -57,12 +57,14 @@ import me.rerere.ai.ui.UIMessagePart
 import me.rerere.common.http.jsonObjectOrNull
 import me.rerere.highlight.HighlightText
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.ChatBot
 import me.rerere.hugeicons.stroke.Clipboard
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Eraser
 import me.rerere.hugeicons.stroke.GlobalSearch
 import me.rerere.hugeicons.stroke.MagicWand01
 import me.rerere.hugeicons.stroke.Message02
+import me.rerere.hugeicons.stroke.MessageDelay01
 import me.rerere.hugeicons.stroke.QuillWrite01
 import me.rerere.hugeicons.stroke.Refresh01
 import me.rerere.hugeicons.stroke.Search01
@@ -1055,6 +1057,111 @@ private fun ScrapeWebPreview(content: JsonElement) {
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f),
                 )
+            }
+        }
+    }
+}
+
+/** 阅读对话: 标题=阅读对话, 详情=标题+元信息+消息列表 */
+object ReadConversationToolUI : ToolUIRenderer {
+    override val toolName: String = "read_conversation"
+
+    override fun icon(context: ToolUIContext): ImageVector = HugeIcons.MessageDelay01
+
+    @Composable
+    override fun title(context: ToolUIContext): String =
+        stringResource(R.string.chat_message_tool_read_conversation)
+
+    @Composable
+    override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
+        val content = context.content
+        if (content == null || content.getStringContent("error") != null) {
+            DefaultToolPreview(context = context)
+            return
+        }
+        val title = content.getStringContent("title")
+            ?: context.arguments.getStringContent("conversation_id")
+            ?: stringResource(R.string.tool_ui_untitled)
+        val total = content.getStringContent("total_messages")?.toIntOrNull()
+        val messages = (content.jsonObjectOrNull?.get("messages") as? JsonArray) ?: emptyList()
+        ToolDetailContainer {
+            Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                total?.let { ToolPill(stringResource(R.string.tool_ui_read_conv_messages, it)) }
+            }
+            if (messages.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.tool_ui_conv_search_empty),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                messages.forEach { m ->
+                    val role = m.getStringContent("role")
+                    val text = m.getStringContent("text").orEmpty()
+                    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = when (role) {
+                                "user" -> stringResource(R.string.tool_ui_read_conv_role_user)
+                                "assistant" -> stringResource(R.string.tool_ui_read_conv_role_assistant)
+                                else -> role ?: ""
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        ToolTerminalOutput(text)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 子代理: 标题=子代理, 详情=描述+状态+结果/错误 */
+object SubAgentToolUI : ToolUIRenderer {
+    override val toolName: String = "sub_agent"
+
+    override fun icon(context: ToolUIContext): ImageVector = HugeIcons.ChatBot
+
+    @Composable
+    override fun title(context: ToolUIContext): String =
+        stringResource(R.string.chat_message_tool_sub_agent)
+
+    @Composable
+    override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
+        val content = context.content
+        if (content == null) {
+            DefaultToolPreview(context = context)
+            return
+        }
+        val description = content.getStringContent("description")
+            ?: context.arguments.getStringContent("description")
+        val status = content.getStringContent("status")
+        val mode = content.getStringContent("mode")
+        val result = content.getStringContent("result")
+        val error = content.getStringContent("error")
+        val taskId = content.getStringContent("task_id")
+        ToolDetailContainer {
+            description?.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                when (status) {
+                    "started" -> ToolPill(stringResource(R.string.tool_ui_sub_agent_started))
+                    "completed" -> ToolPill(stringResource(R.string.tool_ui_sub_agent_completed))
+                    "failed" -> ToolPill(stringResource(R.string.tool_ui_sub_agent_failed))
+                }
+                taskId?.takeIf { it.isNotBlank() }?.let { ToolPill(it) }
+            }
+            if (!error.isNullOrBlank()) {
+                Text(
+                    text = error,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            if (!result.isNullOrBlank()) {
+                ToolTerminalOutput(result)
             }
         }
     }
