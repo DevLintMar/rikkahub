@@ -169,7 +169,7 @@ private fun emptySummary(p: ToolPresentation, subject: String?): String = when (
     ToolKind.WEB_SEARCH -> stringResource(R.string.tool_summary_no_search_results, subject.orEmpty())
     ToolKind.CONVERSATION_SEARCH -> stringResource(R.string.tool_summary_no_conv_results, subject.orEmpty())
     ToolKind.CONVERSATION_LIST -> stringResource(R.string.tool_summary_no_conversations)
-    ToolKind.FILE_READ -> stringResource(R.string.tool_summary_empty_file, subject ?: "file")
+    ToolKind.FILE_READ -> stringResource(R.string.tool_summary_empty_file, subject ?: stringResource(R.string.tool_ui_file))
     ToolKind.SCREEN_TIME -> stringResource(R.string.tool_summary_no_screen_time)
     ToolKind.CALENDAR_QUERY -> stringResource(R.string.tool_summary_no_events)
     else -> stringResource(R.string.tool_summary_empty, subject ?: p.toolName)
