@@ -239,7 +239,7 @@
   <string name="chat_message_remove_favorite">Remove Favorite</string>
   <string name="chat_message_tool_approve">Approve</string>
   <string name="chat_message_tool_ask_questions">Ask %d questions</string>
-  <string name="chat_message_tool_ask_running">Asking the user</string>
+  <string name="chat_message_tool_ask_running">Asking the user...</string>
   <string name="chat_message_tool_call_generic">Called tool %1$s</string>
   <string name="chat_message_tool_call_result">Call result</string>
   <string name="chat_message_tool_clipboard_read">Read clipboard</string>

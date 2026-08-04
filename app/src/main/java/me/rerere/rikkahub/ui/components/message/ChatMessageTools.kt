@@ -291,9 +291,9 @@ private fun ChainOfThoughtScope.AskUserToolStep(
         },
         label = {
             Text(
-                text = if (isPending) {
+                text = if (loading) {
                     stringResource(R.string.chat_message_tool_ask_running)
-                } else if (questions.size <= 1) {
+                } else if (!isPending && questions.size <= 1) {
                     firstQuestion
                 } else {
                     stringResource(R.string.chat_message_tool_ask_questions, questions.size)
