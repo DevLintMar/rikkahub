@@ -97,7 +97,7 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     var showDenyDialog by remember { mutableStateOf(false) }
     val isPending = tool.approvalState is ToolApprovalState.Pending
     val isDenied = tool.approvalState is ToolApprovalState.Denied
-    val hasExtraContent = renderer.hasSummary(context) || isDenied || images.isNotEmpty()
+    val hasExtraContent = renderer.hasSummary(context) || images.isNotEmpty()
     var expanded by remember { mutableStateOf(true) }
 
     // 回归最早展示模式: 受控步骤, 内联展开渲染器摘要(如 shell 输出/对话列表), 点击进详情 BottomSheet
@@ -191,15 +191,6 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
                                 )
                             }
                         }
-                    }
-                    if (isDenied) {
-                        val reason = (tool.approvalState as ToolApprovalState.Denied).reason
-                        Text(
-                            text = stringResource(R.string.chat_message_tool_denied) +
-                                if (reason.isNotBlank()) ": $reason" else "",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
                     }
                 }
             }
