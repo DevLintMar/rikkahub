@@ -107,6 +107,9 @@ object EditFileToolUI : ToolUIRenderer {
         )
     }
 
+    // 与 Preview 的 DefaultToolPreview fallback 保持一致
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean = diffOf(context) != null
+
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
         val diff = remember(context) { diffOf(context) }
@@ -180,6 +183,9 @@ object ReadFileToolUI : ToolUIRenderer {
         )
     }
 
+    // 与 Preview 的 DefaultToolPreview fallback 保持一致
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean = textOf(context) != null
+
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
         val text = remember(context) { textOf(context) }
@@ -219,6 +225,9 @@ object WriteFileToolUI : ToolUIRenderer {
             loading = context.loading,
         )
     }
+
+    // 与 Preview 的 DefaultToolPreview fallback 保持一致
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean = textOf(context) != null
 
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
@@ -334,6 +343,9 @@ object ShellToolUI : ToolUIRenderer {
             }
         }
     }
+
+    // 与 Preview 的 DefaultToolPreview fallback 保持一致
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean = context.content != null
 
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
@@ -488,6 +500,10 @@ object GlobToolUI : ToolUIRenderer {
         }
     }
 
+    // 与 Preview 的 DefaultToolPreview fallback 保持一致
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean =
+        context.content != null && context.content.getStringContent("error") == null
+
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
         val content = context.content
@@ -583,6 +599,10 @@ object GrepToolUI : ToolUIRenderer {
             )
         }
     }
+
+    // 与 Preview 的 DefaultToolPreview fallback 保持一致
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean =
+        context.content != null && context.content.getStringContent("error") == null
 
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {

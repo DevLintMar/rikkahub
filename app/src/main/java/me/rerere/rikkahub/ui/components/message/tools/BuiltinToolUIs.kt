@@ -130,6 +130,10 @@ object MemoryToolUI : ToolUIRenderer {
         }
     }
 
+    // 与 Preview 的 DefaultToolPreview fallback 保持一致
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean =
+        context.content != null && context.content.getStringContent("error") == null
+
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
         val envelope = context.content
@@ -250,6 +254,9 @@ object SearchWebToolUI : ToolUIRenderer {
         }
     }
 
+    // 与 Preview 的 DefaultToolPreview fallback 保持一致
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean = context.content != null
+
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
         val content = context.content
@@ -285,6 +292,9 @@ object ScrapeWebToolUI : ToolUIRenderer {
         )
     }
 
+    // 与 Preview 的 DefaultToolPreview fallback 保持一致
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean = context.content != null
+
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
         val content = context.content
@@ -307,6 +317,9 @@ object GetTimeInfoToolUI : ToolUIRenderer {
     @Composable
     override fun title(context: ToolUIContext): String =
         stringResource(R.string.chat_message_tool_get_time)
+
+    // 与 Preview 的 DefaultToolPreview fallback 保持一致
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean = context.content != null
 
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
@@ -364,6 +377,9 @@ object ClipboardToolUI : ToolUIRenderer {
             ACTION_WRITE -> stringResource(R.string.chat_message_tool_clipboard_write)
             else -> stringResource(R.string.chat_message_tool_call_generic, toolName)
         }
+
+    // 与 Preview 的 DefaultToolPreview fallback 保持一致
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean = context.content != null
 
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
@@ -463,6 +479,13 @@ object UseSkillToolUI : ToolUIRenderer {
         return if (path != null) "Skill: $skillName / $path" else "Skill: $skillName"
     }
 
+    // 与 Preview 的 DefaultToolPreview fallback 保持一致
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean =
+        context.tool.output.filterIsInstance<UIMessagePart.Text>()
+            .joinToString("\n") { it.text }
+            .trim()
+            .isNotBlank()
+
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
         val output = context.tool.output.filterIsInstance<UIMessagePart.Text>()
@@ -508,6 +531,9 @@ object RecentChatsToolUI : ToolUIRenderer {
             overflow = TextOverflow.Ellipsis,
         )
     }
+
+    // 与 Preview 的 DefaultToolPreview fallback 保持一致
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean = context.content != null
 
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
@@ -576,6 +602,9 @@ object ConversationSearchToolUI : ToolUIRenderer {
             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
         )
     }
+
+    // 与 Preview 的 DefaultToolPreview fallback 保持一致
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean = context.content != null
 
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
@@ -714,6 +743,10 @@ object GetScreenTimeToolUI : ToolUIRenderer {
         }
     }
 
+    // 与 Preview 的 DefaultToolPreview fallback 保持一致
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean =
+        context.content != null && context.content.jsonObjectOrNull?.get("error") == null
+
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
         val content = context.content
@@ -820,6 +853,10 @@ object CalendarQueryToolUI : ToolUIRenderer {
         }
     }
 
+    // 与 Preview 的 DefaultToolPreview fallback 保持一致
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean =
+        context.content != null && context.content.getStringContent("error") == null
+
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
         val content = context.content
@@ -884,6 +921,10 @@ object CalendarCreateToolUI : ToolUIRenderer {
         val eventTitle = context.arguments.getStringContent("title") ?: ""
         return stringResource(R.string.chat_message_tool_calendar_create, eventTitle)
     }
+
+    // 与 Preview 的 DefaultToolPreview fallback 保持一致
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean =
+        context.content != null && context.content.getStringContent("error") == null
 
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
@@ -1073,6 +1114,10 @@ object ReadConversationToolUI : ToolUIRenderer {
     override fun title(context: ToolUIContext): String =
         stringResource(R.string.chat_message_tool_read_conversation)
 
+    // 与 Preview 的 DefaultToolPreview fallback 保持一致
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean =
+        context.content != null && context.content.getStringContent("error") == null
+
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
         val content = context.content
@@ -1144,6 +1189,9 @@ object SubAgentToolUI : ToolUIRenderer {
             else R.string.chat_message_tool_sub_agent
         )
     }
+
+    // 与 Preview 的 DefaultToolPreview fallback 保持一致
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean = context.content != null
 
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {

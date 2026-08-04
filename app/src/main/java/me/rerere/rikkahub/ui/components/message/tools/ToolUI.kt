@@ -69,6 +69,9 @@ interface ToolUIRenderer {
 
     /** 是否为内置工具渲染器（内置渲染器提供页面级 JSON 大开关；MCP/未知工具不提供） */
     val isBuiltIn: Boolean get() = true
+
+    /** 详情是否为语义化视图（区别于默认"参数+结果" JSON 展开）。false 时详情弹层标题栏不显示整页 JSON 开关（内容本身已是 JSON 展开） */
+    fun hasSemanticDetail(context: ToolUIContext): Boolean = true
 }
 
 /** 未注册工具使用的默认渲染器, 全部行为来自 [ToolUIRenderer] 的默认实现 */

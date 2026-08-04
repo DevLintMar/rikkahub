@@ -225,7 +225,7 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
                 showResult = false
                 interaction?.let { it.detailOpen = false }
             },
-            jsonBody = if (renderer.isBuiltIn) {
+            jsonBody = if (renderer.isBuiltIn && renderer.hasSemanticDetail(context)) {
                 { ToolJsonBody(context) }
             } else {
                 null
