@@ -133,6 +133,9 @@ data class ScrapedResultMetadata(
 sealed class SearchServiceOptions {
     abstract val id: Uuid
 
+    /** 多 key 分隔字符串（逗号/空格/换行），无 apiKey 的服务返回空串 */
+    open val apiKey: String get() = ""
+
     open val displayName: String
         get() = TYPES[this::class] ?: "Unknown"
 
@@ -171,14 +174,14 @@ sealed class SearchServiceOptions {
     @SerialName("zhipu")
     data class ZhipuOptions(
         override val id: Uuid = Uuid.random(),
-        val apiKey: String = "",
+        override val apiKey: String = "",
     ) : SearchServiceOptions()
 
     @Serializable
     @SerialName("tavily")
     data class TavilyOptions(
         override val id: Uuid = Uuid.random(),
-        val apiKey: String = "",
+        override val apiKey: String = "",
         val depth: String = "advanced",
     ) : SearchServiceOptions()
 
@@ -186,7 +189,7 @@ sealed class SearchServiceOptions {
     @SerialName("exa")
     data class ExaOptions(
         override val id: Uuid = Uuid.random(),
-        val apiKey: String = "",
+        override val apiKey: String = "",
     ) : SearchServiceOptions()
 
     @Serializable
@@ -204,7 +207,7 @@ sealed class SearchServiceOptions {
     @SerialName("linkup")
     data class LinkUpOptions(
         override val id: Uuid = Uuid.random(),
-        val apiKey: String = "",
+        override val apiKey: String = "",
         val depth: String = "standard",
     ) : SearchServiceOptions()
 
@@ -212,28 +215,28 @@ sealed class SearchServiceOptions {
     @SerialName("brave")
     data class BraveOptions(
         override val id: Uuid = Uuid.random(),
-        val apiKey: String = "",
+        override val apiKey: String = "",
     ) : SearchServiceOptions()
 
     @Serializable
     @SerialName("metaso")
     data class MetasoOptions(
         override val id: Uuid = Uuid.random(),
-        val apiKey: String = "",
+        override val apiKey: String = "",
     ) : SearchServiceOptions()
 
     @Serializable
     @SerialName("ollama")
     data class OllamaOptions(
         override val id: Uuid = Uuid.random(),
-        val apiKey: String = "",
+        override val apiKey: String = "",
     ) : SearchServiceOptions()
 
     @Serializable
     @SerialName("perplexity")
     data class PerplexityOptions(
         override val id: Uuid = Uuid.random(),
-        val apiKey: String = "",
+        override val apiKey: String = "",
         val maxTokens: Int? = null,
         val maxTokensPerPage: Int? = null,
     ) : SearchServiceOptions()
@@ -242,14 +245,14 @@ sealed class SearchServiceOptions {
     @SerialName("firecrawl")
     data class FirecrawlOptions(
         override val id: Uuid = Uuid.random(),
-        val apiKey: String = "",
+        override val apiKey: String = "",
     ) : SearchServiceOptions()
 
     @Serializable
     @SerialName("jina")
     data class JinaOptions(
         override val id: Uuid = Uuid.random(),
-        val apiKey: String = "",
+        override val apiKey: String = "",
         val searchUrl: String = "https://s.jina.ai/",
         val scrapeUrl: String = "https://r.jina.ai/",
     ) : SearchServiceOptions()
@@ -258,7 +261,7 @@ sealed class SearchServiceOptions {
     @SerialName("bocha")
     data class BochaOptions(
         override val id: Uuid = Uuid.random(),
-        val apiKey: String = "",
+        override val apiKey: String = "",
         val summary: Boolean = true,
     ) : SearchServiceOptions()
 
@@ -266,7 +269,7 @@ sealed class SearchServiceOptions {
     @SerialName("rikkahub")
     data class RikkaHubOptions(
         override val id: Uuid = Uuid.random(),
-        val apiKey: String = "",
+        override val apiKey: String = "",
         val depth: String = "standard",
     ) : SearchServiceOptions()
 
@@ -274,7 +277,7 @@ sealed class SearchServiceOptions {
     @SerialName("grok")
     data class GrokOptions(
         override val id: Uuid = Uuid.random(),
-        val apiKey: String = "",
+        override val apiKey: String = "",
         val model: String = "grok-4-1-fast-non-reasoning",
         val customUrl: String = "https://api.x.ai/v1/responses",
         val systemPrompt: String = "You are a helpful search assistant. Search the web to find accurate and up-to-date information for the user's query. Provide a comprehensive answer with citations.",
@@ -284,14 +287,14 @@ sealed class SearchServiceOptions {
     @SerialName("tinyfish")
     data class TinyfishOptions(
         override val id: Uuid = Uuid.random(),
-        val apiKey: String = "",
+        override val apiKey: String = "",
     ) : SearchServiceOptions()
 
     @Serializable
     @SerialName("serper")
     data class SerperOptions(
         override val id: Uuid = Uuid.random(),
-        val apiKey: String = "",
+        override val apiKey: String = "",
     ) : SearchServiceOptions()
 
     @Serializable
@@ -356,4 +359,61 @@ internal suspend fun Call.await(): Response {
             }
         })
     }
+}
+
+private val SEARCH_KEY_SPLIT_REGEX = "[\\s,]+".toRegex()
+
+/** 将逗号/空格/换行分隔的 API key 字符串拆分为去重列表 */
+fun splitApiKeys(keys: String): List<String> =
+    keys.split(SEARCH_KEY_SPLIT_REGEX).map { it.trim() }.filter { it.isNotBlank() }.distinct()
+
+/**
+ * 生成只含单个 key 的 options 副本（用于多 key 轮询重试）。
+ * 无 apiKey 字段的服务（BingLocal/SearXNG/CustomJs）原样返回。
+ */
+@Suppress("UNCHECKED_CAST")
+fun <T : SearchServiceOptions> T.withSingleKey(key: String): T = when (this) {
+    is SearchServiceOptions.ZhipuOptions -> copy(apiKey = key)
+    is SearchServiceOptions.TavilyOptions -> copy(apiKey = key)
+    is SearchServiceOptions.ExaOptions -> copy(apiKey = key)
+    is SearchServiceOptions.LinkUpOptions -> copy(apiKey = key)
+    is SearchServiceOptions.BraveOptions -> copy(apiKey = key)
+    is SearchServiceOptions.MetasoOptions -> copy(apiKey = key)
+    is SearchServiceOptions.OllamaOptions -> copy(apiKey = key)
+    is SearchServiceOptions.PerplexityOptions -> copy(apiKey = key)
+    is SearchServiceOptions.FirecrawlOptions -> copy(apiKey = key)
+    is SearchServiceOptions.JinaOptions -> copy(apiKey = key)
+    is SearchServiceOptions.BochaOptions -> copy(apiKey = key)
+    is SearchServiceOptions.RikkaHubOptions -> copy(apiKey = key)
+    is SearchServiceOptions.GrokOptions -> copy(apiKey = key)
+    is SearchServiceOptions.TinyfishOptions -> copy(apiKey = key)
+    is SearchServiceOptions.SerperOptions -> copy(apiKey = key)
+    else -> this
+} as T
+
+private fun Throwable.isQuotaExceeded(): Boolean {
+    val msg = message?.lowercase() ?: return false
+    return msg.contains("quota") || msg.contains("rate limit") || msg.contains("429") ||
+        msg.contains("402") || msg.contains("insufficient") || msg.contains("limit exceeded")
+}
+
+/**
+ * 多 key 自动重试：拆分 apiKey（逗号/空格/换行），随机顺序逐个尝试。
+ * 额度/限流类错误自动换下一个 key；非该类错误立即返回；全部失败返回最后错误。
+ */
+suspend fun <T : SearchServiceOptions, R> retryOnQuota(
+    options: T,
+    run: suspend (T) -> Result<R>,
+): Result<R> {
+    val keys = splitApiKeys(options.apiKey)
+    if (keys.size <= 1) return run(options)
+    var lastError: Throwable? = null
+    for (key in keys.shuffled()) {
+        val attempt = run(options.withSingleKey(key))
+        if (attempt.isSuccess) return attempt
+        val err = attempt.exceptionOrNull() ?: return attempt
+        lastError = err
+        if (!err.isQuotaExceeded()) return attempt
+    }
+    return Result.failure(lastError ?: IllegalStateException("All API keys failed"))
 }
