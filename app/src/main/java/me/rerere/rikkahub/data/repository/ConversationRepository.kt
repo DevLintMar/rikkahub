@@ -24,6 +24,7 @@ import me.rerere.rikkahub.data.db.entity.MessageNodeEntity
 import me.rerere.rikkahub.data.embedding.SemanticIndexManager
 import me.rerere.rikkahub.data.embedding.rrfFuseScored
 import me.rerere.rikkahub.data.files.FilesManager
+import kotlinx.datetime.date
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.utils.JsonInstant
@@ -58,6 +59,9 @@ class ConversationRepository(
             conversationEntityToConversation(entity, nodes)
         }
     }
+
+    suspend fun countConversationsOfAssistant(assistantId: Uuid): Int =
+        conversationDAO.countConversationsOfAssistant(assistantId.toString())
 
     fun getConversationsOfAssistant(assistantId: Uuid): Flow<List<Conversation>> {
         return conversationDAO
@@ -346,6 +350,12 @@ class ConversationRepository(
         val index: Int,        // 在 currentMessages(USER/ASSISTANT) 中的位置，与 read_conversation offset 对齐
         val role: String,
         val snippet: String,   // FTS snippet（[brackets] 着重标记）
+        val date: String,      // 匹配消息的日期（yyyy-MM-dd）
+    )
+
+    data class ConversationSearchPage(
+        val hits: List<ConversationSearchHit>,
+        val hasMore: Boolean,
     )
 
     data class RebuildResult(
@@ -361,10 +371,13 @@ class ConversationRepository(
     suspend fun searchConversationMessages(
         query: String,
         limit: Int = 15,
-    ): List<ConversationSearchHit> {
-        val fts = searchMessages(query, MessageSearchSort.RELEVANCE).take(limit)
+        offset: Int = 0,
+    ): ConversationSearchPage {
+        // 多取 1 条用于判断 offset+limit 之后是否还有（has_more）
+        val fetchLimit = offset + limit + 1
+        val fts = searchMessages(query, MessageSearchSort.RELEVANCE).take(fetchLimit)
         val semantic = if (semanticIndexManager.isConfigured()) {
-            semanticIndexManager.search(query, limit).map { hit ->
+            semanticIndexManager.search(query, fetchLimit).map { hit ->
                 MessageSearchResult(
                     nodeId = hit.nodeId,
                     messageId = hit.messageId,
@@ -377,7 +390,7 @@ class ConversationRepository(
         } else emptyList()
 
         val fused = rrfFuseScored(fts, semantic, k = 60)
-        return fused.mapNotNull { hit ->
+        val all = fused.mapNotNull { hit ->
             val conversation = getConversationById(Uuid.parse(hit.conversationId)) ?: return@mapNotNull null
             val branch = runCatching { conversation.currentMessages }
                 .getOrDefault(emptyList())
@@ -391,8 +404,14 @@ class ConversationRepository(
                 index = index,
                 role = message.role.name.lowercase(),
                 snippet = hit.snippet,
+                date = message.createdAt.date.toString(),
             )
-        }
+        }.sortedByDescending { it.date } // 按日期新 → 旧
+
+        return ConversationSearchPage(
+            hits = all.drop(offset).take(limit),
+            hasMore = offset + limit < all.size,
+        )
     }
 
     suspend fun rebuildAllIndexes(

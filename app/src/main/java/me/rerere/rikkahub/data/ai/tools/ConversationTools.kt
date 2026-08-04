@@ -33,6 +33,7 @@ fun createConversationTools(
             Use this when you need quick context about what the user has been discussing lately.
             Only titles and dates are returned; use `conversation_search` to look up the actual content.
             Use `offset` to page through older conversations beyond the first page.
+            `has_more` indicates whether more conversations exist after this page.
         """.trimIndent(),
         parameters = {
             InputSchema.Obj(
@@ -57,6 +58,7 @@ fun createConversationTools(
         execute = {
             val limit = (it.jsonObject["limit"]?.jsonPrimitive?.intOrNull ?: 10).coerceIn(1, 50)
             val offset = (it.jsonObject["offset"]?.jsonPrimitive?.intOrNull ?: 0).coerceAtLeast(0)
+            val total = conversationRepo.countConversationsOfAssistant(assistantId)
             val recent = conversationRepo.getRecentConversations(
                 assistantId = assistantId,
                 limit = limit,
@@ -64,6 +66,7 @@ fun createConversationTools(
             )
             val payload = buildJsonObject {
                 put("type", "recent_chats")
+                put("has_more", offset + limit < total)
                 putJsonArray("conversations") {
                     recent.forEach { conversation ->
                         add(buildJsonObject {
@@ -83,8 +86,9 @@ fun createConversationTools(
             Hybrid semantic + keyword search across the user's past conversations to recall specific information they mentioned before.
             Matches on meaning as well as exact keywords, so paraphrased queries can find relevant past messages.
             Run multiple searches with different phrasings if needed.
-            Returns each specific matched message, with the matched keywords marked in [brackets] in `snippet`.
-            Each result includes the conversation (`conversation_id`, `title`) and the message's `index` within it.
+            Returns each specific matched message, with the matched keywords marked in [brackets] in `snippet`, the conversation
+            (`conversation_id`, `title`), the message's `index` within it, and its `date` (yyyy-MM-dd).
+            Results are ordered by date, newest first. `offset` pages to older matches; `has_more` indicates whether more exist.
             Use `read_conversation` with the same `conversation_id` and an `offset` near `index` to read the surrounding context.
         """.trimIndent(),
         parameters = {
@@ -101,6 +105,13 @@ fun createConversationTools(
                             "Maximum number of matched messages to return (default: 15, max: 50)"
                         )
                     })
+                    put("offset", buildJsonObject {
+                        put("type", "integer")
+                        put(
+                            "description",
+                            "Number of matched messages to skip, to page to older ones (default: 0)"
+                        )
+                    })
                 },
                 required = listOf("query")
             )
@@ -109,18 +120,22 @@ fun createConversationTools(
             val query = it.jsonObject["query"]?.jsonPrimitive?.contentOrNull
                 ?: error("query is required")
             val limit = (it.jsonObject["limit"]?.jsonPrimitive?.intOrNull ?: 15).coerceIn(1, 50)
-            val hits = conversationRepo.searchConversationMessages(query, limit)
+            val offset = (it.jsonObject["offset"]?.jsonPrimitive?.intOrNull ?: 0).coerceAtLeast(0)
+            val page = conversationRepo.searchConversationMessages(query, limit, offset)
             val payload = buildJsonObject {
                 put("type", "conversation_search")
                 put("query", query)
+                put("offset", offset)
+                put("has_more", page.hasMore)
                 putJsonArray("results") {
-                    hits.forEach { h ->
+                    page.hits.forEach { h ->
                         add(buildJsonObject {
                             put("conversation_id", h.conversationId)
                             put("title", h.title.ifBlank { "Untitled" })
                             put("index", h.index)
                             put("role", h.role)
                             put("snippet", h.snippet)
+                            put("date", h.date)
                         })
                     }
                 }

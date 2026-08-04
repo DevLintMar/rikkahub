@@ -637,6 +637,7 @@ object ConversationSearchToolUI : ToolUIRenderer {
                     val title = r.getStringContent("title") ?: stringResource(R.string.tool_ui_untitled)
                     val index = (r.jsonObjectOrNull?.get("index") as? JsonPrimitive)?.contentOrNull?.toIntOrNull()
                     val role = r.getStringContent("role")
+                    val date = r.getStringContent("date")
                     val snippet = r.getStringContent("snippet").orEmpty()
                     Column(
                         modifier = Modifier.fillMaxWidth(),
@@ -657,6 +658,7 @@ object ConversationSearchToolUI : ToolUIRenderer {
                             )
                             index?.let { ToolPill("#$it") }
                             role?.takeIf { it.isNotBlank() }?.let { ToolPill(it) }
+                            date?.takeIf { it.isNotBlank() }?.let { ToolPill(it) }
                         }
                         if (snippet.isNotBlank()) {
                             Text(
