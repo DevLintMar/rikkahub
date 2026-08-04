@@ -247,7 +247,6 @@
   <string name="chat_message_tool_get_time">시간 정보 가져오기</string>
   <string name="chat_message_tool_scrape_prefix">웹사이트 긁어오기: %1$s</string>
   <string name="chat_message_tool_scrape_web">웹 페이지 긁어오기</string>
-  <string name="chat_message_tool_search_prefix">검색: %1$s</string>
   <string name="chat_message_tool_search_results_count">%1$d개 결과</string>
   <string name="chat_message_tool_search_web">웹 검색: %1$s</string>
   <string name="chat_message_tool_submit">제출</string>

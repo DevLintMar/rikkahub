@@ -231,10 +231,21 @@ object SearchWebToolUI : ToolUIRenderer {
     private fun items(context: ToolUIContext): List<JsonElement> =
         context.content?.jsonObjectOrNull?.get("items")?.jsonArray ?: emptyList()
 
-    override fun hasSummary(context: ToolUIContext): Boolean = items(context).isNotEmpty()
+    override fun hasSummary(context: ToolUIContext): Boolean =
+        context.content.getStringContent("answer") != null || items(context).isNotEmpty()
 
     @Composable
     override fun Summary(context: ToolUIContext) {
+        context.content.getStringContent("answer")?.let { answer ->
+            Text(
+                text = answer,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.shimmer(isLoading = context.loading),
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         val items = items(context)
         if (items.isNotEmpty()) {
             Row(
@@ -264,7 +275,7 @@ object SearchWebToolUI : ToolUIRenderer {
             DefaultToolPreview(context = context)
             return
         }
-        SearchWebPreview(arguments = context.arguments, content = content)
+        SearchWebPreview(content = content)
     }
 }
 
@@ -970,13 +981,9 @@ private fun formatMinutes(minutes: Long): String {
 }
 
 @Composable
-private fun SearchWebPreview(
-    arguments: JsonElement,
-    content: JsonElement,
-) {
+private fun SearchWebPreview(content: JsonElement) {
     val context = LocalContext.current
     val items = content.jsonObject["items"]?.jsonArray ?: emptyList()
-    val query = arguments.getStringContent("query") ?: ""
     val images = content.jsonObject["images"]?.jsonArray
         ?.mapNotNull { it.jsonPrimitive.contentOrNull }
         ?.filter { it.isNotBlank() }
@@ -986,7 +993,16 @@ private fun SearchWebPreview(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(stringResource(R.string.chat_message_tool_search_prefix, query))
+        content.getStringContent("answer")?.takeIf { it.isNotBlank() }?.let { answer ->
+            Card {
+                MarkdownBlock(
+                    content = answer,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp)
+                )
+            }
+        }
 
         if (images.isNotEmpty()) {
             LazyRow(

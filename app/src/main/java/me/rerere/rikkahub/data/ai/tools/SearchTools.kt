@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.data.ai.tools
 
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -85,6 +86,7 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                             buildJsonObject {
                                 put("type", JsonPrimitive("web_search"))
                                 query?.let { q -> put("query", JsonPrimitive(q)) }
+                                put("answer", results["answer"] ?: JsonNull)
                                 put("items", results["items"] ?: JsonArray(emptyList()))
                                 put("images", results["images"] ?: JsonArray(emptyList()))
                             }.toString()
