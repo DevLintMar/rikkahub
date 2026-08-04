@@ -97,6 +97,7 @@ fun HighlightCodeBlock(
         fontSize = 12.sp,
         lineHeight = 16.sp,
     ),
+    maxCodeLength: Int = 4096, // 与 HighlightText 默认上限一致；工具原始 JSON 文本视图会传更大值
 ) {
     val darkMode = LocalDarkMode.current
     val colorPalette = if (darkMode) AtomOneDarkPalette else AtomOneLightPalette
@@ -207,6 +208,7 @@ fun HighlightCodeBlock(
                                 autoWrap = autoWrap,
                                 showLineNumbers = showLineNumbers,
                                 scrollState = scrollState,
+                                maxCodeLength = maxCodeLength,
                             )
                         }
                     }
@@ -304,6 +306,7 @@ private fun CodeBlockDefault(
     autoWrap: Boolean,
     showLineNumbers: Boolean,
     scrollState: ScrollState,
+    maxCodeLength: Int,
 ) {
     Row(
         modifier = Modifier.then(
@@ -346,7 +349,8 @@ private fun CodeBlockDefault(
                 colors = colorPalette,
                 overflow = TextOverflow.Visible,
                 softWrap = autoWrap,
-                fontFamily = JetbrainsMono
+                fontFamily = JetbrainsMono,
+                maxCodeLength = maxCodeLength,
             )
         }
     }

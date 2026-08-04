@@ -39,6 +39,9 @@ import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.richtext.HighlightCodeBlock
 import me.rerere.rikkahub.utils.JsonInstantPretty
 
+/** 工具原始 JSON 文本视图的语法高亮长度上限（覆盖 web_search/scrape_web 大响应；超出回退纯文本） */
+internal const val TOOL_RAW_JSON_MAX_CODE_LENGTH = 512 * 1024
+
 /** 详情内容容器（content-only：滚动由 ToolDetailSheet 统一提供） */
 @Composable
 internal fun ToolDetailContainer(content: @Composable ColumnScope.() -> Unit) {
@@ -191,5 +194,6 @@ internal fun ToolJsonRawText(json: JsonElement) {
         code = JsonInstantPretty.encodeToString(json),
         language = "json",
         style = TextStyle(fontSize = 10.sp, lineHeight = 12.sp),
+        maxCodeLength = TOOL_RAW_JSON_MAX_CODE_LENGTH,
     )
 }

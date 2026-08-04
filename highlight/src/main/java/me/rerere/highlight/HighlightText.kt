@@ -43,6 +43,7 @@ fun HighlightText(
     softWrap: Boolean = true,
     maxLines: Int = Int.MAX_VALUE,
     minLines: Int = 1,
+    maxCodeLength: Int = MAX_CODE_LENGTH,
 ) {
     val highlighter = LocalHighlighter.current
     var tokens: List<HighlightToken> by remember { mutableStateOf(emptyList()) }
@@ -52,7 +53,7 @@ fun HighlightText(
     val updatedLanguage by rememberUpdatedState(language)
     LaunchedEffect(Unit) {
         snapshotFlow { updatedCode to updatedLanguage }.collect {
-            tokens = if (updatedCode.length <= MAX_CODE_LENGTH) {
+            tokens = if (updatedCode.length <= maxCodeLength) {
                 highlighter.highlight(updatedCode, updatedLanguage)
             } else {
                 listOf(

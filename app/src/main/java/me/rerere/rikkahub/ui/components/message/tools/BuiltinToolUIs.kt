@@ -1053,7 +1053,8 @@ private fun SearchWebPreview(
             HighlightText(
                 code = JsonInstantPretty.encodeToString(content),
                 language = "json",
-                fontSize = 12.sp
+                fontSize = 12.sp,
+                maxCodeLength = TOOL_RAW_JSON_MAX_CODE_LENGTH,
             )
         }
     }
