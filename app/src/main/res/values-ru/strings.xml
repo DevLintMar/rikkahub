@@ -800,10 +800,8 @@
   <string name="setting_page_request_logs">Журналы запросов</string>
   <string name="setting_page_request_logs_desc">Просмотр журналов HTTP-запросов</string>
   <string name="setting_page_search_add_provider">Добавить поставщика</string>
-  <string name="setting_page_search_common_options">Общие параметры</string>
   <string name="setting_page_search_config">Конфигурация</string>
   <string name="setting_page_search_delete_provider">Удалить поставщика</string>
-  <string name="setting_page_search_result_size">Размер результата</string>
   <string name="setting_page_search_service">Служба поиска</string>
   <string name="setting_page_search_service_desc">Настроить службу поиска</string>
   <string name="setting_page_search_test">Тест поиска</string>

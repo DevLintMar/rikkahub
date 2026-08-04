@@ -800,10 +800,8 @@
   <string name="setting_page_request_logs">リクエストログ</string>
   <string name="setting_page_request_logs_desc">HTTPリクエストログを表示</string>
   <string name="setting_page_search_add_provider">プロバイダー追加</string>
-  <string name="setting_page_search_common_options">共通オプション</string>
   <string name="setting_page_search_config">設定</string>
   <string name="setting_page_search_delete_provider">プロバイダー削除</string>
-  <string name="setting_page_search_result_size">結果数</string>
   <string name="setting_page_search_service">検索サービス</string>
   <string name="setting_page_search_service_desc">検索サービスを設定</string>
   <string name="setting_page_search_test">検索テスト</string>

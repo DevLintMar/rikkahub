@@ -800,10 +800,8 @@
   <string name="setting_page_request_logs">請求記錄</string>
   <string name="setting_page_request_logs_desc">檢視 HTTP 要求記錄</string>
   <string name="setting_page_search_add_provider">新增提供商</string>
-  <string name="setting_page_search_common_options">通用選項</string>
   <string name="setting_page_search_config">設定</string>
   <string name="setting_page_search_delete_provider">刪除提供商</string>
-  <string name="setting_page_search_result_size">結果數量</string>
   <string name="setting_page_search_service">搜尋服務</string>
   <string name="setting_page_search_service_desc">設定搜尋服務</string>
   <string name="setting_page_search_test">測試搜尋</string>

@@ -892,10 +892,8 @@
   <string name="setting_page_request_logs">Request Logs</string>
   <string name="setting_page_request_logs_desc">View HTTP request logs</string>
   <string name="setting_page_search_add_provider">Add Provider</string>
-  <string name="setting_page_search_common_options">Common Options</string>
   <string name="setting_page_search_config">Configuration</string>
   <string name="setting_page_search_delete_provider">Delete Provider</string>
-  <string name="setting_page_search_result_size">Result Size</string>
   <string name="setting_page_search_service">Search Service</string>
   <string name="setting_page_search_service_desc">Set up search service</string>
   <string name="setting_page_search_test">Test Search</string>

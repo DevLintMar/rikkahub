@@ -843,10 +843,8 @@
   <string name="setting_page_request_logs">请求日志</string>
   <string name="setting_page_request_logs_desc">查看 HTTP 请求日志</string>
   <string name="setting_page_search_add_provider">添加提供商</string>
-  <string name="setting_page_search_common_options">通用选项</string>
   <string name="setting_page_search_config">配置</string>
   <string name="setting_page_search_delete_provider">删除提供商</string>
-  <string name="setting_page_search_result_size">结果数量</string>
   <string name="setting_page_search_service">搜索服务</string>
   <string name="setting_page_search_service_desc">设置搜索服务</string>
   <string name="setting_page_search_test">测试搜索</string>
