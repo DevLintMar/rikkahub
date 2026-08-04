@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
@@ -137,8 +138,10 @@ fun DefaultToolPreview(
         if (context.tool.output.isNotEmpty()) {
             val textParts = context.tool.output.filterIsInstance<UIMessagePart.Text>()
             val imageParts = context.tool.output.filterIsInstance<UIMessagePart.Image>()
-            val joinedText = textParts.joinToString("\n") { it.text }
-            val resultJson = runCatching { JsonInstant.parseToJsonElement(joinedText) }.getOrNull()
+            val joinedText = remember(textParts) { textParts.joinToString("\n") { it.text } }
+            val resultJson = remember(joinedText) {
+                runCatching { JsonInstant.parseToJsonElement(joinedText) }.getOrNull()
+            }
             ToolJsonSection(
                 label = stringResource(R.string.chat_message_tool_call_result),
                 json = resultJson, // 非 JSON → json=null → 不提供小开关，直接渲染文本框
