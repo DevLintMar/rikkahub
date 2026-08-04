@@ -325,6 +325,7 @@
   <string name="deep_thinking">Deep Thinking</string>
   <string name="deep_thinking_seconds">Thought for %1$.1f seconds</string>
   <string name="delete">Delete</string>
+  <string name="delete_confirm_message">Are you sure you want to delete? This action cannot be undone.</string>
   <string name="edit">Edit</string>
   <string name="save">Save</string>
   <string name="editing">Editing</string>

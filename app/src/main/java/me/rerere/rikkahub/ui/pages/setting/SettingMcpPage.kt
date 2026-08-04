@@ -28,6 +28,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -228,7 +229,16 @@ fun SettingMcpPage(vm: SettingVM = koinViewModel()) {
         }
     }
     McpServerConfigModal(creationState)
-    McpServerConfigModal(editState)
+    McpServerConfigModal(
+        editState,
+        onDelete = { cfg ->
+            vm.updateSettings(
+                settings.copy(
+                    mcpServers = mcpConfigs.filter { it.id != cfg.id }
+                )
+            )
+        },
+    )
     if (showImportDialog) {
         McpImportModal(
             onDismiss = { showImportDialog = false },
@@ -435,10 +445,14 @@ private fun McpServerItem(
 }
 
 @Composable
-private fun McpServerConfigModal(state: EditState<McpServerConfig>) {
+private fun McpServerConfigModal(
+    state: EditState<McpServerConfig>,
+    onDelete: ((McpServerConfig) -> Unit)? = null,
+) {
     state.EditStateContent { config, updateValue ->
         val pagerState = rememberPagerState { 2 }
         val scope = rememberCoroutineScope()
+        var showDeleteConfirm by remember { mutableStateOf(false) }
         ModalBottomSheet(
             onDismissRequest = {
                 state.dismiss()
@@ -503,8 +517,19 @@ private fun McpServerConfigModal(state: EditState<McpServerConfig>) {
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    if (onDelete != null) {
+                        TextButton(
+                            onClick = { showDeleteConfirm = true },
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Text(stringResource(R.string.delete))
+                        }
+                    }
+                    Spacer(Modifier.weight(1f))
                     TextButton(
                         onClick = {
                             if (config.commonOptions.name.isNotBlank() && isValidMcpName(config.commonOptions.name)) {
@@ -517,6 +542,27 @@ private fun McpServerConfigModal(state: EditState<McpServerConfig>) {
                 }
             }
         }
+    }
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text(stringResource(R.string.delete)) },
+            text = { Text(stringResource(R.string.delete_confirm_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteConfirm = false
+                    onDelete?.invoke(config)
+                    state.dismiss()
+                }) {
+                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
     }
 }
 

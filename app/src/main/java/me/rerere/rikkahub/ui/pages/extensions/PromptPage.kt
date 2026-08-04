@@ -39,6 +39,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledIconButton
@@ -290,7 +291,10 @@ private fun ModeInjectionTab(
                 injection = state,
                 onDismiss = { editState.dismiss() },
                 onConfirm = { editState.confirm() },
-                onEdit = { editState.currentState = it }
+                onEdit = { editState.currentState = it },
+                onDelete = if (modeInjections.any { it.id == state.id }) {
+                    { onUpdate(modeInjections - state); editState.dismiss() }
+                } else null
             )
         }
     }
@@ -395,10 +399,12 @@ private fun ModeInjectionEditSheet(
     injection: PromptInjection.ModeInjection,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
-    onEdit: (PromptInjection.ModeInjection) -> Unit
+    onEdit: (PromptInjection.ModeInjection) -> Unit,
+    onDelete: (() -> Unit)? = null,
 ) {
     val sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded))
     val scope = rememberCoroutineScope()
+    var showDeleteConfirm by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -508,8 +514,19 @@ private fun ModeInjectionEditSheet(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                if (onDelete != null) {
+                    TextButton(
+                        onClick = { showDeleteConfirm = true },
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Text(stringResource(R.string.delete))
+                    }
+                }
+                Spacer(Modifier.weight(1f))
                 TextButton(onClick = onDismiss) {
                     Text(stringResource(R.string.prompt_page_cancel))
                 }
@@ -518,6 +535,26 @@ private fun ModeInjectionEditSheet(
                 }
             }
         }
+    }
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text(stringResource(R.string.delete)) },
+            text = { Text(stringResource(R.string.delete_confirm_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteConfirm = false
+                    onDelete?.invoke()
+                }) {
+                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
     }
 }
 
@@ -702,7 +739,10 @@ private fun LorebookTab(
                 book = state,
                 onDismiss = { editState.dismiss() },
                 onConfirm = { editState.confirm() },
-                onEdit = { editState.currentState = it }
+                onEdit = { editState.currentState = it },
+                onDelete = if (lorebooks.any { it.id == state.id }) {
+                    { onUpdate(lorebooks - state); editState.dismiss() }
+                } else null
             )
         }
     }
@@ -818,10 +858,12 @@ private fun LorebookEditSheet(
     book: Lorebook,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
-    onEdit: (Lorebook) -> Unit
+    onEdit: (Lorebook) -> Unit,
+    onDelete: (() -> Unit)? = null,
 ) {
     val sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded))
     val scope = rememberCoroutineScope()
+    var showDeleteConfirm by remember { mutableStateOf(false) }
     val entryEditState = useEditState<PromptInjection.RegexInjection> { edited ->
         val index = book.entries.indexOfFirst { it.id == edited.id }
         if (index >= 0) {
@@ -919,8 +961,19 @@ private fun LorebookEditSheet(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                if (onDelete != null) {
+                    TextButton(
+                        onClick = { showDeleteConfirm = true },
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Text(stringResource(R.string.delete))
+                    }
+                }
+                Spacer(Modifier.weight(1f))
                 TextButton(onClick = onDismiss) {
                     Text(stringResource(R.string.prompt_page_cancel))
                 }
@@ -929,6 +982,27 @@ private fun LorebookEditSheet(
                 }
             }
         }
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text(stringResource(R.string.delete)) },
+            text = { Text(stringResource(R.string.delete_confirm_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteConfirm = false
+                    onDelete?.invoke()
+                }) {
+                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
     }
 
     if (entryEditState.isEditing) {
