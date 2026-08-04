@@ -1133,8 +1133,17 @@ object SubAgentToolUI : ToolUIRenderer {
     override fun icon(context: ToolUIContext): ImageVector = HugeIcons.ChatBot
 
     @Composable
-    override fun title(context: ToolUIContext): String =
-        stringResource(R.string.chat_message_tool_sub_agent)
+    override fun title(context: ToolUIContext): String {
+        val isBackground = when (context.content.getStringContent("mode")) {
+            "background" -> true
+            "synchronous" -> false
+            else -> context.arguments.getStringContent("run_in_background") != "false"
+        }
+        return stringResource(
+            if (isBackground) R.string.chat_message_tool_sub_agent_background
+            else R.string.chat_message_tool_sub_agent
+        )
+    }
 
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
