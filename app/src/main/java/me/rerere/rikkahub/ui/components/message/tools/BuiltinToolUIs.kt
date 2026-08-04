@@ -1203,11 +1203,8 @@ object SubAgentToolUI : ToolUIRenderer {
 
     @Composable
     override fun title(context: ToolUIContext): String {
-        val isBackground = when (context.content.getStringContent("mode")) {
-            "background" -> true
-            "synchronous" -> false
-            else -> context.arguments.getStringContent("run_in_background") != "false"
-        }
+        // loading（content=null）默认"运行子代理"；确认为后台执行（mode=background）才加"（后台）"
+        val isBackground = context.content.getStringContent("mode") == "background"
         return stringResource(
             if (isBackground) R.string.chat_message_tool_sub_agent_background
             else R.string.chat_message_tool_sub_agent
@@ -1233,6 +1230,13 @@ object SubAgentToolUI : ToolUIRenderer {
         ToolDetailContainer {
             description?.takeIf { it.isNotBlank() }?.let {
                 Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            }
+            context.arguments.getStringContent("prompt")?.takeIf { it.isNotBlank() }?.let { prompt ->
+                Text(
+                    text = prompt,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 when (status) {
