@@ -391,15 +391,17 @@ fun <T : SearchServiceOptions> T.withSingleKey(key: String): T = when (this) {
     else -> this
 } as T
 
-private fun Throwable.isQuotaExceeded(): Boolean {
+private fun Throwable.isRetryable(): Boolean {
     val msg = message?.lowercase() ?: return false
     return msg.contains("quota") || msg.contains("rate limit") || msg.contains("429") ||
-        msg.contains("402") || msg.contains("insufficient") || msg.contains("limit exceeded")
+        msg.contains("402") || msg.contains("insufficient") || msg.contains("limit exceeded") ||
+        msg.contains("401") || msg.contains("403") || msg.contains("unauthorized") ||
+        msg.contains("invalid key") || msg.contains("api key")
 }
 
 /**
  * 多 key 自动重试：拆分 apiKey（逗号/空格/换行），随机顺序逐个尝试。
- * 额度/限流类错误自动换下一个 key；非该类错误立即返回；全部失败返回最后错误。
+ * 额度/限流/鉴权类错误自动换下一个 key；非该类错误立即返回；全部失败返回最后错误。
  */
 suspend fun <T : SearchServiceOptions, R> retryOnQuota(
     options: T,
@@ -413,7 +415,7 @@ suspend fun <T : SearchServiceOptions, R> retryOnQuota(
         if (attempt.isSuccess) return attempt
         val err = attempt.exceptionOrNull() ?: return attempt
         lastError = err
-        if (!err.isQuotaExceeded()) return attempt
+        if (!err.isRetryable()) return attempt
     }
     return Result.failure(lastError ?: IllegalStateException("All API keys failed"))
 }

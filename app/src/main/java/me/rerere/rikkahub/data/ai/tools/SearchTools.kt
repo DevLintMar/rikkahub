@@ -92,7 +92,7 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                         ?.let { name -> selectedByName[name] }
                         ?: selected.firstOrNull() ?: SearchServiceOptions.DEFAULT
                     val service = SearchService.getService(options)
-                    val numResults = args.jsonObject["num_results"]?.jsonPrimitive?.intOrNull ?: 10
+                    val numResults = (args.jsonObject["num_results"]?.jsonPrimitive?.intOrNull ?: 10).coerceIn(1, 50)
                     val commonOptions = settings.searchCommonOptions.copy(resultSize = numResults)
                     val result = retryOnQuota(options) { o ->
                         service.search(args.jsonObject, commonOptions, o)
@@ -155,8 +155,14 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                             ?.let { name -> scrapeCapableByName[name] }
                             ?: scrapeCapable.first()
                         val service = SearchService.getService(options)
+                        // 归一化 url/urls 参数：CustomJs 需要 urls(数组)，其余 scrape 服务读 url，多余的键会被忽略
+                        val scrapeUrl = args.jsonObject["url"]?.jsonPrimitive?.contentOrNull ?: ""
+                        val scrapeParams = buildJsonObject {
+                            put("url", JsonPrimitive(scrapeUrl))
+                            put("urls", buildJsonArray { add(scrapeUrl) })
+                        }
                         val result = retryOnQuota(options) { o ->
-                            service.scrape(args.jsonObject, settings.searchCommonOptions, o)
+                            service.scrape(scrapeParams, settings.searchCommonOptions, o)
                         }
                         val payload = JsonInstantPretty.encodeToJsonElement(result.getOrThrow()).jsonObject
                         val urls = payload["urls"]?.jsonArray.orEmpty()
