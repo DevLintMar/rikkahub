@@ -112,7 +112,6 @@ export function SearchPickerButton({ disabled = false, className }: SearchPicker
 
   const builtInSearchEnabled = hasBuiltInSearch(currentModel?.tools);
   const searchEnabled = currentAssistant?.enableWebSearch ?? false;
-  const currentService = settings?.searchServices?.[settings.searchServiceSelected] ?? null;
   const checked = searchEnabled || builtInSearchEnabled;
 
   React.useEffect(() => {
@@ -133,9 +132,9 @@ export function SearchPickerButton({ disabled = false, className }: SearchPicker
     onSuccess: () => setError(null),
   });
 
-  const selectServiceMutation = useMutation({
-    mutationFn: ({ index }: { index: number }) =>
-      api.post<{ status: string }>("settings/search/service", { index }),
+  const updateSearchServicesMutation = useMutation({
+    mutationFn: ({ serviceIds }: { serviceIds: string[] }) =>
+      api.post<{ status: string }>("settings/search/service", { serviceIds }),
     onError: (serviceError) => {
       setError(extractErrorMessage(serviceError, t("search.switch_service_failed")));
     },
@@ -158,7 +157,7 @@ export function SearchPickerButton({ disabled = false, className }: SearchPicker
   const loading =
     toggleSearchEnabledMutation.isPending ||
     toggleBuiltInSearchMutation.isPending ||
-    selectServiceMutation.isPending;
+    updateSearchServicesMutation.isPending;
 
   return (
     <Popover {...popoverProps}>
@@ -176,14 +175,7 @@ export function SearchPickerButton({ disabled = false, className }: SearchPicker
         >
           {toggleSearchEnabledMutation.isPending || toggleBuiltInSearchMutation.isPending ? (
             <LoaderCircle className="size-4 animate-spin" />
-          ) : searchEnabled && currentService ? (
-            <AIIcon
-              name={getServiceLabel(currentService, t)}
-              size={16}
-              className="bg-transparent"
-              imageClassName="h-full w-full"
-            />
-          ) : builtInSearchEnabled ? (
+          ) : checked ? (
             <Search className="size-4" />
           ) : (
             <Earth className="size-4" />
@@ -249,10 +241,10 @@ export function SearchPickerButton({ disabled = false, className }: SearchPicker
                 {settings?.searchServices?.length ? (
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {settings.searchServices.map((service, index) => {
-                      const selected = index === settings.searchServiceSelected;
-                      const switching =
-                        selectServiceMutation.isPending &&
-                        selectServiceMutation.variables?.index === index;
+                      const selectedIds = settings.searchServiceSelectedIds ?? [];
+                      const selected = selectedIds.includes(service.id);
+                      const isLastSelected = selected && selectedIds.length === 1;
+                      const switching = updateSearchServicesMutation.isPending;
 
                       return (
                         <button
@@ -264,9 +256,11 @@ export function SearchPickerButton({ disabled = false, className }: SearchPicker
                           )}
                           disabled={disabled || loading}
                           onClick={() => {
-                            if (!canUse || !settings || index === settings.searchServiceSelected)
-                              return;
-                            selectServiceMutation.mutate({ index });
+                            if (!canUse || !settings || isLastSelected) return;
+                            const next = selected
+                              ? selectedIds.filter((x) => x !== service.id)
+                              : [...selectedIds, service.id];
+                            updateSearchServicesMutation.mutate({ serviceIds: next });
                           }}
                         >
                           <AIIcon

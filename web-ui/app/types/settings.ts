@@ -155,6 +155,6 @@ export interface Settings {
   mcpServers: McpServerConfig[];
   searchServices: SearchServiceOption[];
   quickMessages?: QuickMessage[];
-  searchServiceSelected: number;
+  searchServiceSelectedIds: string[];
   [key: string]: unknown;
 }
