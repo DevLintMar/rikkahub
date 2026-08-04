@@ -310,6 +310,7 @@ private fun ModeInjectionCard(
     val swipeState = rememberSwipeToDismissBoxState()
     val scope = rememberCoroutineScope()
     var showExportDialog by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
     val exporter = rememberExporter(injection, ModeInjectionSerializer)
 
     SwipeToDismissBox(
@@ -326,10 +327,7 @@ private fun ModeInjectionCard(
                     Icon(HugeIcons.Cancel01, null)
                 }
                 FilledIconButton(onClick = {
-                    scope.launch {
-                        onDelete()
-                        swipeState.reset()
-                    }
+                    showDeleteConfirm = true
                 }) {
                     Icon(HugeIcons.Delete01, stringResource(R.string.prompt_page_delete))
                 }
@@ -386,6 +384,29 @@ private fun ModeInjectionCard(
         }
     }
 
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text(stringResource(R.string.delete)) },
+            text = { Text(stringResource(R.string.delete_confirm_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteConfirm = false
+                    scope.launch {
+                        onDelete()
+                        swipeState.reset()
+                    }
+                }) {
+                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
     if (showExportDialog) {
         ExportDialog(
             exporter = exporter,
@@ -758,6 +779,7 @@ private fun LorebookCard(
     val swipeState = rememberSwipeToDismissBoxState()
     val scope = rememberCoroutineScope()
     var showExportDialog by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
     val exporter = rememberExporter(book, LorebookSerializer)
 
     SwipeToDismissBox(
@@ -774,10 +796,7 @@ private fun LorebookCard(
                     Icon(HugeIcons.Cancel01, null)
                 }
                 FilledIconButton(onClick = {
-                    scope.launch {
-                        onDelete()
-                        swipeState.reset()
-                    }
+                    showDeleteConfirm = true
                 }) {
                     Icon(HugeIcons.Delete01, stringResource(R.string.prompt_page_delete))
                 }
@@ -845,6 +864,29 @@ private fun LorebookCard(
         }
     }
 
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text(stringResource(R.string.delete)) },
+            text = { Text(stringResource(R.string.delete_confirm_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteConfirm = false
+                    scope.launch {
+                        onDelete()
+                        swipeState.reset()
+                    }
+                }) {
+                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
     if (showExportDialog) {
         ExportDialog(
             exporter = exporter,

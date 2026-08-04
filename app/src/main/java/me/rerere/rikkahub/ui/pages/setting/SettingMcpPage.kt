@@ -264,6 +264,7 @@ private fun McpServerItem(
     val dismissBoxState = rememberSwipeToDismissBoxState()
     val scope = rememberCoroutineScope()
     var errorDetail by remember { mutableStateOf<McpStatus.Error?>(null) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
 
     errorDetail?.let { error ->
         val context = LocalContext.current
@@ -299,6 +300,26 @@ private fun McpServerItem(
             },
         )
     }
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text(stringResource(R.string.delete)) },
+            text = { Text(stringResource(R.string.delete_confirm_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteConfirm = false
+                    onDelete()
+                }) {
+                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
     SwipeToDismissBox(
         state = dismissBoxState,
         backgroundContent = {
@@ -316,7 +337,7 @@ private fun McpServerItem(
                 }
                 FilledTonalIconButton(
                     onClick = {
-                        onDelete()
+                        showDeleteConfirm = true
                     }
                 ) {
                     Icon(HugeIcons.Delete01, null)
