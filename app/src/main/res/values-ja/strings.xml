@@ -754,6 +754,10 @@
   <string name="setting_model_page_translate_prompt_vars">変数: 原文テキスト: {source_text}, 対象言語: {target_lang}</string>
   <string name="setting_page_about">アプリについて</string>
   <string name="setting_page_about_desc">このアプリについて</string>
+  <string name="setting_page_documentation">ドキュメント</string>
+  <string name="setting_page_documentation_desc">アプリの使用方法とヘルプドキュメントを表示</string>
+  <string name="setting_page_donate">寄付</string>
+  <string name="setting_page_donate_desc">このアプリを気に入った場合は、作者の作品をスポンサーしてください</string>
   <string name="setting_page_assistant">アシスタント</string>
   <string name="setting_page_assistant_desc">カスタムアシスタント（エージェント）を設定</string>
   <string name="setting_page_built_in_tools">組み込みツール</string>
@@ -791,7 +795,6 @@
   <string name="setting_page_mcp_desc">MCPサーバーを設定</string>
   <string name="setting_page_message_display_settings">メッセージ表示</string>
   <string name="setting_page_model_and_services">モデルとサービス</string>
-  <string name="setting_page_no_share_app">共有アプリが見つかりません</string>
   <string name="setting_page_providers">プロバイダー</string>
   <string name="setting_page_providers_desc">AIプロバイダーを設定</string>
   <string name="setting_page_request_logs">リクエストログ</string>
@@ -809,7 +812,6 @@
   <string name="setting_page_search_title">検索サービス</string>
   <string name="setting_page_share">共有</string>
   <string name="setting_page_share_desc">このアプリを友達と共有</string>
-  <string name="setting_page_share_text">RikkaHub - オープンソースAndroid AIアシスタント</string>
   <string name="setting_page_theme_setting">テーマ</string>
   <string name="setting_page_theme_setting_desc">アプリの配色をカスタマイズ</string>
   <string name="setting_theme_page_preset_themes">プリセットテーマ</string>

@@ -796,6 +796,10 @@
   <string name="setting_model_page_translate_prompt_vars">变量: 原始文本: {source_text}, 目标语言: {target_lang}</string>
   <string name="setting_page_about">关于</string>
   <string name="setting_page_about_desc">关于本APP</string>
+  <string name="setting_page_documentation">使用文档</string>
+  <string name="setting_page_documentation_desc">查看应用使用说明和帮助文档</string>
+  <string name="setting_page_donate">赞助</string>
+  <string name="setting_page_donate_desc">如果你喜欢这个应用，请赞助作者的工作</string>
   <string name="setting_page_assistant">助手</string>
   <string name="setting_page_assistant_desc">设置个性化助手 (智能体)</string>
   <string name="setting_page_built_in_tools">内置工具</string>
@@ -833,7 +837,6 @@
   <string name="setting_page_mcp_desc">配置MCP服务器</string>
   <string name="setting_page_message_display_settings">消息显示</string>
   <string name="setting_page_model_and_services">模型与服务</string>
-  <string name="setting_page_no_share_app">找不到分享应用</string>
   <string name="setting_page_providers">提供商</string>
   <string name="setting_page_providers_desc">配置AI提供商</string>
   <string name="setting_page_request_logs">请求日志</string>
@@ -851,7 +854,6 @@
   <string name="setting_page_search_title">搜索服务</string>
   <string name="setting_page_share">分享</string>
   <string name="setting_page_share_desc">分享本APP给朋友</string>
-  <string name="setting_page_share_text">RikkaHub - 开源安卓AI助手</string>
   <string name="setting_page_theme_setting">主题</string>
   <string name="setting_page_theme_setting_desc">自定义应用配色方案</string>
   <string name="setting_theme_page_preset_themes">预设主题</string>

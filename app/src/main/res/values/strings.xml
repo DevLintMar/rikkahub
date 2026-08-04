@@ -835,6 +835,10 @@
   <string name="setting_model_page_translate_prompt_vars">Variables: Source text: {source_text}, Target language: {target_lang}</string>
   <string name="setting_page_about">About</string>
   <string name="setting_page_about_desc">About this app</string>
+  <string name="setting_page_documentation">Documentation</string>
+  <string name="setting_page_documentation_desc">View app usage instructions and help documentation</string>
+  <string name="setting_page_donate">Donate</string>
+  <string name="setting_page_donate_desc">If you like it, sponsor the author's work</string>
   <string name="setting_page_assistant">Assistant</string>
   <string name="setting_page_assistant_desc">Set up personalized assistants (agents)</string>
   <string name="setting_page_built_in_tools">Built-in Tools</string>
@@ -882,7 +886,6 @@
   <string name="setting_page_mcp_desc">Configure MCP Servers</string>
   <string name="setting_page_message_display_settings">Message Display</string>
   <string name="setting_page_model_and_services">Models &amp; Services</string>
-  <string name="setting_page_no_share_app">No sharing app found</string>
   <string name="setting_page_providers">Providers</string>
   <string name="setting_page_providers_desc">Configure AI providers</string>
   <string name="setting_page_request_logs">Request Logs</string>
@@ -900,7 +903,6 @@
   <string name="setting_page_search_title">Search Service</string>
   <string name="setting_page_share">Share</string>
   <string name="setting_page_share_desc">Share this app with friends</string>
-  <string name="setting_page_share_text">RikkaHub - Open Source Android AI Assistant</string>
   <string name="setting_page_theme_setting">Theme</string>
   <string name="setting_page_theme_setting_desc">Customize app color scheme</string>
   <string name="setting_theme_page_preset_themes">Preset Themes</string>
