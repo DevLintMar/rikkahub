@@ -23,6 +23,8 @@ class UpdateChecker(private val client: OkHttpClient) {
     private val json = Json { ignoreUnknownKeys = true }
 
     fun checkUpdate(): Flow<UiState<UpdateInfo>> = flow {
+        // 暂时禁用更新检查/自动更新：不发起网络请求（如需恢复，删除本行 return@flow 即可）
+        return@flow
         emit(UiState.Loading)
         emit(
             UiState.Success(
