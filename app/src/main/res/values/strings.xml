@@ -839,7 +839,7 @@
   <string name="setting_page_documentation">Documentation</string>
   <string name="setting_page_documentation_desc">View app usage instructions and help documentation</string>
   <string name="setting_page_donate">Donate</string>
-  <string name="setting_page_donate_desc">If you like it, sponsor the author's work</string>
+  <string name="setting_page_donate_desc">If you like it, sponsor the author\'s work</string>
   <string name="setting_page_assistant">Assistant</string>
   <string name="setting_page_assistant_desc">Set up personalized assistants (agents)</string>
   <string name="setting_page_built_in_tools">Built-in Tools</string>
@@ -1319,7 +1319,6 @@
   <string name="tool_ui_grep_default">Grep files</string>
   <string name="tool_ui_grep_empty">No matches</string>
   <string name="tool_ui_conv_search_empty">No conversations found</string>
-  <string name="tool_ui_match_count">%d matches</string>
   <string name="tool_ui_recent_chats_empty">No conversations</string>
   <string name="tool_ui_untitled">Untitled</string>
   <string name="tool_ui_all_day">all day</string>

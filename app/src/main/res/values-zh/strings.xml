@@ -1302,7 +1302,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="tool_ui_grep_default">Grep 文件</string>
   <string name="tool_ui_grep_empty">没有匹配</string>
   <string name="tool_ui_conv_search_empty">没有找到会话</string>
-  <string name="tool_ui_match_count">%d 条匹配</string>
   <string name="tool_ui_recent_chats_empty">没有会话</string>
   <string name="tool_ui_untitled">无标题</string>
   <string name="tool_ui_all_day">全天</string>
