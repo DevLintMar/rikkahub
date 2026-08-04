@@ -32,11 +32,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import kotlin.uuid.Uuid
 import me.rerere.ai.provider.BuiltInTools
 import me.rerere.ai.provider.Model
 import me.rerere.ai.registry.ModelRegistry
@@ -63,11 +63,10 @@ fun SearchPickerButton(
     settings: Settings,
     modifier: Modifier = Modifier,
     onToggleSearch: (Boolean) -> Unit,
-    onUpdateSearchService: (Int) -> Unit,
+    onUpdateSearchService: (List<Uuid>) -> Unit,
     model: Model?,
 ) {
     var showSearchPicker by remember { mutableStateOf(false) }
-    val currentService = settings.searchServices.getOrNull(settings.searchServiceSelected)
 
     ToggleSurface(
         modifier = modifier,
@@ -86,15 +85,10 @@ fun SearchPickerButton(
                 modifier = Modifier.size(24.dp),
                 contentAlignment = Alignment.Center
             ) {
-                if (model?.tools?.contains(BuiltInTools.Search) == true) {
+                if (enableSearch || model?.tools?.contains(BuiltInTools.Search) == true) {
                     Icon(
                         imageVector = HugeIcons.AiSearch02,
                         contentDescription = stringResource(R.string.use_web_search),
-                    )
-                } else if (enableSearch && currentService != null) {
-                    AutoAIIcon(
-                        name = currentService.displayName,
-                        color = Color.Transparent
                     )
                 } else {
                     Icon(
@@ -153,7 +147,7 @@ private fun SearchPicker(
     model: Model?,
     modifier: Modifier = Modifier,
     onToggleSearch: (Boolean) -> Unit,
-    onUpdateSearchService: (Int) -> Unit,
+    onUpdateSearchService: (List<Uuid>) -> Unit,
     onDismiss: () -> Unit
 ) {
     val navBackStack = LocalNavController.current
@@ -191,7 +185,7 @@ private fun AppSearchSettings(
     onToggleSearch: (Boolean) -> Unit,
     modifier: Modifier,
     settings: Settings,
-    onUpdateSearchService: (Int) -> Unit
+    onUpdateSearchService: (List<Uuid>) -> Unit
 ) {
     Card {
         Row(
@@ -241,16 +235,18 @@ private fun AppSearchSettings(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        itemsIndexed(settings.searchServices) { index, service ->
+        itemsIndexed(settings.searchServices) { _, service ->
+            val selected = service.id in settings.searchServiceSelectedIds
+            val isLastSelected = selected && settings.searchServiceSelectedIds.size == 1
             val containerColor = animateColorAsState(
-                if (settings.searchServiceSelected == index) {
+                if (selected) {
                     MaterialTheme.colorScheme.primaryContainer
                 } else {
                     MaterialTheme.colorScheme.surface
                 }
             )
             val textColor = animateColorAsState(
-                if (settings.searchServiceSelected == index) {
+                if (selected) {
                     MaterialTheme.colorScheme.onPrimaryContainer
                 } else {
                     MaterialTheme.colorScheme.onSurface
@@ -262,7 +258,13 @@ private fun AppSearchSettings(
                     contentColor = textColor.value,
                 ),
                 onClick = {
-                    onUpdateSearchService(index)
+                    if (isLastSelected) return@Card  // 至少保留一个
+                    val next = if (selected) {
+                        settings.searchServiceSelectedIds - service.id
+                    } else {
+                        settings.searchServiceSelectedIds + service.id
+                    }
+                    onUpdateSearchService(next)
                 },
                 shape = MaterialTheme.shapes.large
             ) {

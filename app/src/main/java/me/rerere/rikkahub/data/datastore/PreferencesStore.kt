@@ -113,6 +113,7 @@ class SettingsStore(
         val SEARCH_SERVICES = stringPreferencesKey("search_services")
         val SEARCH_COMMON = stringPreferencesKey("search_common")
         val SEARCH_SELECTED = intPreferencesKey("search_selected")
+        val SEARCH_SELECTED_IDS = stringPreferencesKey("search_selected_ids")
 
         // MCP
         val MCP_SERVERS = stringPreferencesKey("mcp_servers")
@@ -170,6 +171,20 @@ class SettingsStore(
                 throw exception
             }
         }.map { preferences ->
+            val searchServices = preferences[SEARCH_SERVICES]?.let {
+                JsonInstant.decodeFromString(it)
+            } ?: listOf(SearchServiceOptions.DEFAULT)
+            val rawSelectedIds = preferences[SEARCH_SELECTED_IDS]?.let {
+                runCatching { JsonInstant.decodeFromString<List<Uuid>>(it) }.getOrDefault(emptyList())
+            } ?: emptyList()
+            val oldSelectedIndex = preferences[SEARCH_SELECTED] ?: 0
+            val effectiveSelectedIds = if (rawSelectedIds.isNotEmpty()) {
+                rawSelectedIds
+            } else if (searchServices.isNotEmpty()) {
+                listOf(searchServices.getOrNull(oldSelectedIndex)?.id ?: searchServices.first().id)
+            } else {
+                emptyList()
+            }
             Settings(
                 favoriteModels = preferences[FAVORITE_MODELS]?.let {
                     JsonInstant.decodeFromString(it)
@@ -207,13 +222,11 @@ class SettingsStore(
                 } ?: emptyList(),
                 developerMode = preferences[DEVELOPER_MODE] == true,
                 displaySetting = JsonInstant.decodeFromString(preferences[DISPLAY_SETTING] ?: "{}"),
-                searchServices = preferences[SEARCH_SERVICES]?.let {
-                    JsonInstant.decodeFromString(it)
-                } ?: listOf(SearchServiceOptions.DEFAULT),
+                searchServices = searchServices,
                 searchCommonOptions = preferences[SEARCH_COMMON]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: SearchCommonOptions(),
-                searchServiceSelected = preferences[SEARCH_SELECTED] ?: 0,
+                searchServiceSelectedIds = effectiveSelectedIds,
                 mcpServers = preferences[MCP_SERVERS]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),
@@ -338,6 +351,13 @@ class SettingsStore(
                 },
                 ttsProviders = settings.ttsProviders.distinctBy { it.id },
                 asrProviders = asrProviders,
+                searchServiceSelectedIds = settings.searchServiceSelectedIds.filter { id ->
+                    settings.searchServices.any { it.id == id }
+                }.let { ids ->
+                    if (ids.isEmpty() && settings.searchServices.isNotEmpty()) {
+                        listOf(settings.searchServices.first().id)
+                    } else ids
+                },
                 selectedASRProviderId = settings.selectedASRProviderId
                     ?.takeIf { id -> asrProviders.any { provider -> provider.id == id } }
                     ?: asrProviders.firstOrNull()?.id,
@@ -404,7 +424,7 @@ class SettingsStore(
 
             preferences[SEARCH_SERVICES] = JsonInstant.encodeToString(settings.searchServices)
             preferences[SEARCH_COMMON] = JsonInstant.encodeToString(settings.searchCommonOptions)
-            preferences[SEARCH_SELECTED] = settings.searchServiceSelected.coerceIn(0, settings.searchServices.size - 1)
+            preferences[SEARCH_SELECTED_IDS] = JsonInstant.encodeToString(settings.searchServiceSelectedIds)
 
             preferences[MCP_SERVERS] = JsonInstant.encodeToString(settings.mcpServers)
             preferences[WEBDAV_CONFIG] = JsonInstant.encodeToString(settings.webDavConfig)
@@ -571,7 +591,7 @@ data class Settings(
     val assistantTags: List<Tag> = emptyList(),
     val searchServices: List<SearchServiceOptions> = listOf(SearchServiceOptions.DEFAULT),
     val searchCommonOptions: SearchCommonOptions = SearchCommonOptions(),
-    val searchServiceSelected: Int = 0,
+    val searchServiceSelectedIds: List<Uuid> = emptyList(),
     val mcpServers: List<McpServerConfig> = emptyList(),
     val webDavConfig: WebDavConfig = WebDavConfig(),
     val s3Config: S3Config = S3Config(),
@@ -598,6 +618,18 @@ data class Settings(
         fun dummy() = Settings(init = true)
     }
 }
+
+/** 多选的有效服务列表（为空/全失效时回退第一个） */
+val Settings.selectedSearchServices: List<SearchServiceOptions>
+    get() {
+        if (searchServices.isEmpty()) return emptyList()
+        val picked = if (searchServiceSelectedIds.isEmpty()) {
+            searchServices
+        } else {
+            searchServices.filter { it.id in searchServiceSelectedIds }
+        }
+        return picked.ifEmpty { listOf(searchServices.first()) }
+    }
 
 @Serializable
 enum class ChatFontFamily {

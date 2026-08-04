@@ -116,8 +116,8 @@ data class UpdateSearchEnabledRequest(
 )
 
 @Serializable
-data class UpdateSearchServiceRequest(
-    val index: Int,
+data class UpdateSearchServicesRequest(
+    val serviceIds: List<String>,
 )
 
 @Serializable

@@ -52,14 +52,11 @@ import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.AutoAIIcon
-import me.rerere.rikkahub.ui.components.ui.FormItem
-import me.rerere.rikkahub.ui.components.ui.OutlinedNumberInput
 import me.rerere.rikkahub.ui.components.ui.Tag
 import me.rerere.rikkahub.ui.components.ui.TagType
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.utils.plus
-import me.rerere.search.SearchCommonOptions
 import me.rerere.search.SearchService
 import me.rerere.search.SearchServiceOptions
 import org.koin.androidx.compose.koinViewModel
@@ -159,17 +156,6 @@ fun SettingSearchPage(vm: SettingVM = koinViewModel()) {
                             )
                     )
                 }
-            }
-
-            item("common_options") {
-                CommonOptions(
-                    settings = settings,
-                    onUpdate = { options ->
-                        vm.updateSettings(
-                            settings.copy(searchCommonOptions = options)
-                        )
-                    }
-                )
             }
         }
     }
@@ -362,48 +348,6 @@ fun SearchAbilityTagLine(
                 type = TagType.DEFAULT,
             ) {
                 Text(stringResource(R.string.search_ability_scrape))
-            }
-        }
-    }
-}
-
-@Composable
-private fun CommonOptions(
-    settings: me.rerere.rikkahub.data.datastore.Settings,
-    onUpdate: (SearchCommonOptions) -> Unit
-) {
-    var commonOptions by remember(settings.searchCommonOptions) {
-        mutableStateOf(settings.searchCommonOptions)
-    }
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = CustomColors.listItemColors.containerColor
-        )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.setting_page_search_common_options),
-                style = MaterialTheme.typography.titleMedium
-            )
-
-            FormItem(
-                label = {
-                    Text(stringResource(R.string.setting_page_search_result_size))
-                }
-            ) {
-                OutlinedNumberInput(
-                    value = commonOptions.resultSize,
-                    onValueChange = {
-                        commonOptions = commonOptions.copy(resultSize = it)
-                        onUpdate(commonOptions)
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                )
             }
         }
     }

@@ -13,6 +13,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.ai.core.Tool
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.datastore.Settings
+import me.rerere.rikkahub.data.datastore.selectedSearchServices
 import me.rerere.rikkahub.utils.JsonInstantPretty
 import me.rerere.rikkahub.utils.toLocalString
 import me.rerere.search.SearchService
@@ -52,16 +53,14 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                     The population is about 2.1 million. [citation,example.com](abc123) [citation,example2.com](def456)
                     """.trimIndent(),
                 parameters = {
-                    val options = settings.searchServices.getOrElse(
-                        index = settings.searchServiceSelected,
-                        defaultValue = { SearchServiceOptions.DEFAULT })
+                    val options = settings.selectedSearchServices.firstOrNull()
+                        ?: SearchServiceOptions.DEFAULT
                     val service = SearchService.getService(options)
                     service.parameters(options)
                 },
                 execute = {
-                    val options = settings.searchServices.getOrElse(
-                        index = settings.searchServiceSelected,
-                        defaultValue = { SearchServiceOptions.DEFAULT })
+                    val options = settings.selectedSearchServices.firstOrNull()
+                        ?: SearchServiceOptions.DEFAULT
                     val service = SearchService.getService(options)
                     val result = service.search(
                         params = it.jsonObject,
@@ -96,9 +95,8 @@ fun createSearchTools(settings: Settings): Set<Tool> {
             )
         )
 
-        val options = settings.searchServices.getOrElse(
-            index = settings.searchServiceSelected,
-            defaultValue = { SearchServiceOptions.DEFAULT })
+        val options = settings.selectedSearchServices.firstOrNull()
+            ?: SearchServiceOptions.DEFAULT
         val service = SearchService.getService(options)
         if (service.scrapingParameters(options) != null) {
             add(
@@ -110,16 +108,14 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                         Avoid using it for common questions unless the user asks.
                         """.trimIndent(),
                     parameters = {
-                        val options = settings.searchServices.getOrElse(
-                            index = settings.searchServiceSelected,
-                            defaultValue = { SearchServiceOptions.DEFAULT })
+                        val options = settings.selectedSearchServices.firstOrNull()
+                            ?: SearchServiceOptions.DEFAULT
                         val service = SearchService.getService(options)
                         service.scrapingParameters(options)
                     },
                     execute = {
-                        val options = settings.searchServices.getOrElse(
-                            index = settings.searchServiceSelected,
-                            defaultValue = { SearchServiceOptions.DEFAULT })
+                        val options = settings.selectedSearchServices.firstOrNull()
+                            ?: SearchServiceOptions.DEFAULT
                         val service = SearchService.getService(options)
                         val result = service.scrape(
                             params = it.jsonObject,

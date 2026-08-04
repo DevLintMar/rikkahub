@@ -395,10 +395,10 @@ private fun ChatPageContent(
                             )
                         )
                     },
-                    onUpdateSearchService = { index ->
+                    onUpdateSearchService = { ids ->
                         vm.updateSettings(
                             setting.copy(
-                                searchServiceSelected = index
+                                searchServiceSelectedIds = ids
                             )
                         )
                     },

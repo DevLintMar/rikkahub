@@ -20,8 +20,9 @@ import me.rerere.rikkahub.web.dto.UpdateAssistantInjectionsRequest
 import me.rerere.rikkahub.web.dto.UpdateBuiltInToolRequest
 import me.rerere.rikkahub.web.dto.UpdateFavoriteModelsRequest
 import me.rerere.rikkahub.web.dto.UpdateSearchEnabledRequest
-import me.rerere.rikkahub.web.dto.UpdateSearchServiceRequest
+import me.rerere.rikkahub.web.dto.UpdateSearchServicesRequest
 import java.util.Locale
+import kotlin.uuid.Uuid
 
 fun Route.settingsRoutes(
     settingsStore: SettingsStore
@@ -139,16 +140,22 @@ fun Route.settingsRoutes(
         }
 
         post("/search/service") {
-            val request = call.receive<UpdateSearchServiceRequest>()
+            val request = call.receive<UpdateSearchServicesRequest>()
 
             settingsStore.update { settings ->
-                if (settings.searchServices.isEmpty()) {
-                    throw BadRequestException("No search services configured")
+                val validIds = settings.searchServices.map { it.id.toString() }.toSet()
+                val unknown = request.serviceIds.filterNot { it in validIds }
+                if (unknown.isNotEmpty()) {
+                    throw BadRequestException("Unknown search service ids: $unknown")
                 }
-                if (request.index !in settings.searchServices.indices) {
-                    throw BadRequestException("search service index out of range")
+                if (request.serviceIds.isEmpty()) {
+                    throw BadRequestException("At least one search service must be selected")
                 }
-                settings.copy(searchServiceSelected = request.index)
+                settings.copy(
+                    searchServiceSelectedIds = request.serviceIds.mapNotNull { id ->
+                        runCatching { Uuid.parse(id) }.getOrNull()
+                    }
+                )
             }
             call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
         }
