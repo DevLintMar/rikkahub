@@ -24,11 +24,17 @@ object TimeReminderTransformer : InputMessageTransformer {
         messages: List<UIMessage>,
     ): List<UIMessage> {
         if (!ctx.assistant.enableTimeReminder) return messages
-        return applyTimeReminder(messages)
+        return applyTimeReminder(
+            messages,
+            alwaysInsert = ctx.assistant.timeReminderAlwaysInsert,
+        )
     }
 }
 
-internal fun applyTimeReminder(messages: List<UIMessage>): List<UIMessage> {
+internal fun applyTimeReminder(
+    messages: List<UIMessage>,
+    alwaysInsert: Boolean = false,
+): List<UIMessage> {
     val result = mutableListOf<UIMessage>()
     val tz = TimeZone.currentSystemDefault()
 
@@ -45,7 +51,7 @@ internal fun applyTimeReminder(messages: List<UIMessage>): List<UIMessage> {
                 val prevInstant = previous.createdAt.toInstant(tz)
                 val gapSeconds = (currInstant - prevInstant).inWholeSeconds
 
-                if (gapSeconds > TIME_GAP_THRESHOLD_SECONDS) {
+                if (alwaysInsert || gapSeconds > TIME_GAP_THRESHOLD_SECONDS) {
                     result.add(buildTimeReminderMessage(gapSeconds, currInstant))
                 }
             }

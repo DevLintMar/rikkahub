@@ -246,6 +246,26 @@ private fun AssistantMemoryContent(
                     )
                 }
             )
+            item(
+                headlineContent = { Text(stringResource(R.string.assistant_page_time_reminder_always)) },
+                supportingContent = {
+                    Text(
+                        text = stringResource(R.string.assistant_page_time_reminder_always_desc),
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = assistant.timeReminderAlwaysInsert,
+                        onCheckedChange = {
+                            onUpdateAssistant(
+                                assistant.copy(
+                                    timeReminderAlwaysInsert = it
+                                )
+                            )
+                        }
+                    )
+                }
+            )
         }
 
         Box(
