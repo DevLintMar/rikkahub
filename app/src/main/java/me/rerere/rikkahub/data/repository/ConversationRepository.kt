@@ -24,7 +24,6 @@ import me.rerere.rikkahub.data.db.entity.MessageNodeEntity
 import me.rerere.rikkahub.data.embedding.SemanticIndexManager
 import me.rerere.rikkahub.data.embedding.rrfFuseScored
 import me.rerere.rikkahub.data.files.FilesManager
-import kotlinx.datetime.date
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.utils.JsonInstant
