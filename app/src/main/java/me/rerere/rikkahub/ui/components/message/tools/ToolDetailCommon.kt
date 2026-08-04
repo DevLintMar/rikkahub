@@ -28,7 +28,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.CodeSquare
 import me.rerere.rikkahub.R
@@ -99,15 +103,25 @@ internal fun formatFileSize(bytes: Long): String = when {
     }
 }
 
+/** 工具入参是否为空（{} / [] / null）：空参数时隐藏"参数"分区 */
+internal fun JsonElement.isJsonEmpty(): Boolean = when (this) {
+    is JsonObject -> isEmpty()
+    is JsonArray -> isEmpty()
+    is JsonNull -> true
+    is JsonPrimitive -> false
+}
+
 /** 工具详情整页 JSON 视图（content-only）：参数 + 结果 JsonTreeView */
 @Composable
 internal fun ToolJsonBody(context: ToolUIContext) {
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        ToolJsonSection(
-            label = stringResource(R.string.tool_ui_arguments),
-            json = context.arguments,
-        ) {
-            JsonTreeView(context.arguments)
+        if (!context.arguments.isJsonEmpty()) {
+            ToolJsonSection(
+                label = stringResource(R.string.tool_ui_arguments),
+                json = context.arguments,
+            ) {
+                JsonTreeView(context.arguments)
+            }
         }
         if (context.content != null) {
             ToolJsonSection(

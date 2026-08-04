@@ -123,11 +123,13 @@ fun DefaultToolPreview(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        ToolJsonSection(
-            label = stringResource(R.string.tool_ui_arguments),
-            json = context.arguments,
-        ) {
-            JsonTreeView(context.arguments)
+        if (!context.arguments.isJsonEmpty()) {
+            ToolJsonSection(
+                label = stringResource(R.string.tool_ui_arguments),
+                json = context.arguments,
+            ) {
+                JsonTreeView(context.arguments)
+            }
         }
         if (context.tool.output.isNotEmpty()) {
             val textParts = context.tool.output.filterIsInstance<UIMessagePart.Text>()
