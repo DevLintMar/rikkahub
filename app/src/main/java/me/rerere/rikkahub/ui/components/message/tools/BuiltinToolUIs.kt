@@ -993,13 +993,18 @@ private fun SearchWebPreview(content: JsonElement) {
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        content.getStringContent("answer")?.takeIf { it.isNotBlank() }?.let { answer ->
-            Card {
+        content.getStringContent("answer")?.let { answer ->
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            ) {
                 MarkdownBlock(
                     content = answer,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(8.dp)
+                        .padding(16.dp)
+                        .fillMaxWidth(),
+                    style = MaterialTheme.typography.bodySmall
                 )
             }
         }
