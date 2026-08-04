@@ -20,6 +20,7 @@ import me.rerere.rikkahub.data.datastore.selectedSearchServices
 import me.rerere.rikkahub.utils.JsonInstantPretty
 import me.rerere.rikkahub.utils.toLocalString
 import me.rerere.search.SearchService
+import me.rerere.search.SearchServiceOptions
 import me.rerere.search.retryOnQuota
 import java.time.LocalDate
 import kotlin.uuid.Uuid
@@ -87,7 +88,7 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                 execute = { args ->
                     val options = args.jsonObject["service"]?.jsonPrimitive?.contentOrNull
                         ?.let { name -> selectedByName[name] }
-                        ?: selected.first()
+                        ?: selected.firstOrNull() ?: SearchServiceOptions.DEFAULT
                     val service = SearchService.getService(options)
                     val numResults = args.jsonObject["num_results"]?.jsonPrimitive?.intOrNull ?: 10
                     val commonOptions = settings.searchCommonOptions.copy(resultSize = numResults)
