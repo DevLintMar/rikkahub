@@ -61,6 +61,7 @@ import me.rerere.search.SearchCommonOptions
 import me.rerere.search.SearchResult
 import me.rerere.search.SearchService
 import me.rerere.search.SearchServiceOptions
+import me.rerere.search.retryOnQuota
 import org.koin.androidx.compose.koinViewModel
 import kotlin.uuid.Uuid
 
@@ -275,7 +276,9 @@ private fun SearchTestSection(
                                 val params = JsonObject(
                                     mapOf("query" to JsonPrimitive(query))
                                 )
-                                result = service.search(params, commonOptions, options)
+                                result = retryOnQuota(options) { o ->
+                                    service.search(params, commonOptions, o)
+                                }
                                 testing = false
                             }
                         }

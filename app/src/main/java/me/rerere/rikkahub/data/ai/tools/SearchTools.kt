@@ -4,12 +4,15 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import me.rerere.ai.core.InputSchema
 import me.rerere.ai.core.Tool
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.datastore.Settings
@@ -17,13 +20,20 @@ import me.rerere.rikkahub.data.datastore.selectedSearchServices
 import me.rerere.rikkahub.utils.JsonInstantPretty
 import me.rerere.rikkahub.utils.toLocalString
 import me.rerere.search.SearchService
-import me.rerere.search.SearchServiceOptions
+import me.rerere.search.retryOnQuota
 import java.time.LocalDate
 import kotlin.uuid.Uuid
 
 private const val MAX_SCRAPE_TEXT_CHARS = 32 * 1024
 
 fun createSearchTools(settings: Settings): Set<Tool> {
+    val selected = settings.selectedSearchServices
+    val selectedByName = selected.associateBy { it.displayName }
+    val scrapeCapable = selected.filter {
+        SearchService.getService(it).scrapingParameters(it) != null
+    }
+    val scrapeCapableByName = scrapeCapable.associateBy { it.displayName }
+
     return buildSet {
         add(
             Tool(
@@ -31,7 +41,9 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                 description = """
                     Search the web for up-to-date or specific information.
                     Use this when the user asks for the latest news, current facts, or needs verification.
-                    Generate focused keywords and run multiple searches if needed.
+                    Available search services: ${selected.joinToString(", ") { it.displayName }}.
+                    Choose one via the `service` parameter (must be one of the listed values);
+                    `num_results` controls how many results to return (default: 10).
                     Today is ${LocalDate.now().toLocalString(true)}.
 
                     Response format:
@@ -51,22 +63,37 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                     Example:
                     The capital of France is Paris. [citation,example.com](abc123)
                     The population is about 2.1 million. [citation,example.com](abc123) [citation,example2.com](def456)
-                    """.trimIndent(),
+                """.trimIndent(),
                 parameters = {
-                    val options = settings.selectedSearchServices.firstOrNull()
-                        ?: SearchServiceOptions.DEFAULT
-                    val service = SearchService.getService(options)
-                    service.parameters(options)
-                },
-                execute = {
-                    val options = settings.selectedSearchServices.firstOrNull()
-                        ?: SearchServiceOptions.DEFAULT
-                    val service = SearchService.getService(options)
-                    val result = service.search(
-                        params = it.jsonObject,
-                        commonOptions = settings.searchCommonOptions,
-                        serviceOptions = options,
+                    InputSchema.Obj(
+                        properties = buildJsonObject {
+                            put("query", buildJsonObject {
+                                put("type", "string")
+                                put("description", "Search keywords to look up")
+                            })
+                            put("service", buildJsonObject {
+                                put("type", "string")
+                                put("description", "Search service to use; one of the listed available services")
+                                put("enum", buildJsonArray { selected.forEach { add(it.displayName) } })
+                            })
+                            put("num_results", buildJsonObject {
+                                put("type", "integer")
+                                put("description", "Number of results to return (default: 10)")
+                            })
+                        },
+                        required = listOf("query")
                     )
+                },
+                execute = { args ->
+                    val options = args.jsonObject["service"]?.jsonPrimitive?.contentOrNull
+                        ?.let { name -> selectedByName[name] }
+                        ?: selected.first()
+                    val service = SearchService.getService(options)
+                    val numResults = args.jsonObject["num_results"]?.jsonPrimitive?.intOrNull ?: 10
+                    val commonOptions = settings.searchCommonOptions.copy(resultSize = numResults)
+                    val result = retryOnQuota(options) { o ->
+                        service.search(args.jsonObject, commonOptions, o)
+                    }
                     val results =
                         JsonInstantPretty.encodeToJsonElement(result.getOrThrow()).jsonObject.let { json ->
                             val map = json.toMutableMap()
@@ -79,7 +106,7 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                                 })
                             JsonObject(map)
                         }
-                    val query = it.jsonObject["query"]?.jsonPrimitive?.contentOrNull
+                    val query = args.jsonObject["query"]?.jsonPrimitive?.contentOrNull
                     listOf(
                         UIMessagePart.Text(
                             buildJsonObject {
@@ -95,36 +122,42 @@ fun createSearchTools(settings: Settings): Set<Tool> {
             )
         )
 
-        val options = settings.selectedSearchServices.firstOrNull()
-            ?: SearchServiceOptions.DEFAULT
-        val service = SearchService.getService(options)
-        if (service.scrapingParameters(options) != null) {
+        if (scrapeCapable.isNotEmpty()) {
             add(
                 Tool(
                     name = "scrape_web",
                     description = """
                         Scrape a URL for detailed page content.
                         Use this when the user requests content from a specific page or when search snippets are insufficient.
-                        Avoid using it for common questions unless the user asks.
+                        Available scraping services: ${scrapeCapable.joinToString(", ") { it.displayName }}.
                         """.trimIndent(),
                     parameters = {
-                        val options = settings.selectedSearchServices.firstOrNull()
-                            ?: SearchServiceOptions.DEFAULT
-                        val service = SearchService.getService(options)
-                        service.scrapingParameters(options)
-                    },
-                    execute = {
-                        val options = settings.selectedSearchServices.firstOrNull()
-                            ?: SearchServiceOptions.DEFAULT
-                        val service = SearchService.getService(options)
-                        val result = service.scrape(
-                            params = it.jsonObject,
-                            commonOptions = settings.searchCommonOptions,
-                            serviceOptions = options,
+                        InputSchema.Obj(
+                            properties = buildJsonObject {
+                                put("url", buildJsonObject {
+                                    put("type", "string")
+                                    put("description", "URL to scrape")
+                                })
+                                put("service", buildJsonObject {
+                                    put("type", "string")
+                                    put("description", "Search service to use for scraping")
+                                    put("enum", buildJsonArray { scrapeCapable.forEach { add(it.displayName) } })
+                                })
+                            },
+                            required = listOf("url")
                         )
+                    },
+                    execute = { args ->
+                        val options = args.jsonObject["service"]?.jsonPrimitive?.contentOrNull
+                            ?.let { name -> scrapeCapableByName[name] }
+                            ?: scrapeCapable.first()
+                        val service = SearchService.getService(options)
+                        val result = retryOnQuota(options) { o ->
+                            service.scrape(args.jsonObject, settings.searchCommonOptions, o)
+                        }
                         val payload = JsonInstantPretty.encodeToJsonElement(result.getOrThrow()).jsonObject
                         val urls = payload["urls"]?.jsonArray.orEmpty()
-                        val url = it.jsonObject["url"]?.jsonPrimitive?.contentOrNull
+                        val url = args.jsonObject["url"]?.jsonPrimitive?.contentOrNull
                             ?: urls.firstOrNull()?.jsonObject?.get("url")?.jsonPrimitive?.contentOrNull
                             ?: ""
                         // 聚合所有 URL 的正文 (scrape 服务支持一次传入多个 URL), 避免只返回第一个 URL 的内容
@@ -146,7 +179,8 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                             )
                         )
                     }
-                ))
+                )
+            )
         }
     }
 }
