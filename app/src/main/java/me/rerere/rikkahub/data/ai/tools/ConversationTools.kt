@@ -32,6 +32,7 @@ fun createConversationTools(
             Returns conversation titles and the date of last activity, ordered by pinned first then most recently updated.
             Use this when you need quick context about what the user has been discussing lately.
             Only titles and dates are returned; use `conversation_search` to look up the actual content.
+            Use `offset` to page through older conversations beyond the first page.
         """.trimIndent(),
         parameters = {
             InputSchema.Obj(
@@ -43,14 +44,23 @@ fun createConversationTools(
                             "Maximum number of recent conversations to return (default: 10, max: 50)"
                         )
                     })
+                    put("offset", buildJsonObject {
+                        put("type", "integer")
+                        put(
+                            "description",
+                            "Number of conversations to skip, to read older ones (default: 0)"
+                        )
+                    })
                 }
             )
         },
         execute = {
             val limit = (it.jsonObject["limit"]?.jsonPrimitive?.intOrNull ?: 10).coerceIn(1, 50)
+            val offset = (it.jsonObject["offset"]?.jsonPrimitive?.intOrNull ?: 0).coerceAtLeast(0)
             val recent = conversationRepo.getRecentConversations(
                 assistantId = assistantId,
                 limit = limit,
+                offset = offset,
             )
             val payload = buildJsonObject {
                 put("type", "recent_chats")
@@ -110,9 +120,7 @@ fun createConversationTools(
                             put("title", h.title.ifBlank { "Untitled" })
                             put("index", h.index)
                             put("role", h.role)
-                            put("text", h.text)
                             put("snippet", h.snippet)
-                            put("score", h.score)
                         })
                     }
                 }
@@ -128,6 +136,8 @@ fun createConversationTools(
             to read a conversation of interest. Tool and system messages are excluded.
             The message `index` from conversation_search results maps to the `offset` here,
             so pass an `offset` near the index to read the context around a match.
+            For long conversations, do not read the whole conversation at once — read only the
+            needed window by passing the appropriate `offset` and a small `limit`.
         """.trimIndent(),
         parameters = {
             InputSchema.Obj(

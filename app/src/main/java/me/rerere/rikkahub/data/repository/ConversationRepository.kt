@@ -21,7 +21,6 @@ import me.rerere.rikkahub.data.db.dao.FavoriteDAO
 import me.rerere.rikkahub.data.db.dao.MessageNodeDAO
 import me.rerere.rikkahub.data.db.entity.ConversationEntity
 import me.rerere.rikkahub.data.db.entity.MessageNodeEntity
-import me.rerere.rikkahub.data.embedding.MessageTextExtractor
 import me.rerere.rikkahub.data.embedding.SemanticIndexManager
 import me.rerere.rikkahub.data.embedding.rrfFuseScored
 import me.rerere.rikkahub.data.files.FilesManager
@@ -45,10 +44,15 @@ class ConversationRepository(
         private const val INITIAL_LOAD_SIZE = 40
     }
 
-    suspend fun getRecentConversations(assistantId: Uuid, limit: Int = 10): List<Conversation> {
+    suspend fun getRecentConversations(
+        assistantId: Uuid,
+        limit: Int = 10,
+        offset: Int = 0,
+    ): List<Conversation> {
         return conversationDAO.getRecentConversationsOfAssistant(
             assistantId = assistantId.toString(),
-            limit = limit
+            limit = limit,
+            offset = offset
         ).map { entity ->
             val nodes = loadMessageNodes(entity.id)
             conversationEntityToConversation(entity, nodes)
@@ -341,9 +345,7 @@ class ConversationRepository(
         val title: String,
         val index: Int,        // 在 currentMessages(USER/ASSISTANT) 中的位置，与 read_conversation offset 对齐
         val role: String,
-        val text: String,      // 匹配消息全文
         val snippet: String,   // FTS snippet（[brackets] 着重标记）
-        val score: Float,
     )
 
     data class RebuildResult(
@@ -388,9 +390,7 @@ class ConversationRepository(
                 title = conversation.title,
                 index = index,
                 role = message.role.name.lowercase(),
-                text = MessageTextExtractor.messageToSearchText(message),
                 snippet = hit.snippet,
-                score = hit.score.toFloat(),
             )
         }
     }

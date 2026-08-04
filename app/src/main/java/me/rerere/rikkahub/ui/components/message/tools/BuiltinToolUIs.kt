@@ -638,7 +638,6 @@ object ConversationSearchToolUI : ToolUIRenderer {
                     val index = (r.jsonObjectOrNull?.get("index") as? JsonPrimitive)?.contentOrNull?.toIntOrNull()
                     val role = r.getStringContent("role")
                     val snippet = r.getStringContent("snippet").orEmpty()
-                    val text = r.getStringContent("text").orEmpty()
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -659,10 +658,9 @@ object ConversationSearchToolUI : ToolUIRenderer {
                             index?.let { ToolPill("#$it") }
                             role?.takeIf { it.isNotBlank() }?.let { ToolPill(it) }
                         }
-                        val display = snippet.ifBlank { text }
-                        if (display.isNotBlank()) {
+                        if (snippet.isNotBlank()) {
                             Text(
-                                text = display,
+                                text = snippet,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
