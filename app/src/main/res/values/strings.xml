@@ -145,7 +145,7 @@
   <string name="assistant_page_thinking_budget">Thinking Budget</string>
   <string name="assistant_page_time_reminder">Time Reminder</string>
   <string name="assistant_page_time_reminder_desc">Automatically inject time reminders before messages with large time gaps to help AI understand conversation intervals</string>
-  <string name="assistant_page_time_reminder_always">Always insert</string>
+  <string name="assistant_page_time_reminder_always">Always insert time reminder</string>
   <string name="assistant_page_time_reminder_always_desc">Insert a time reminder before every user message, ignoring the time-gap threshold</string>
   <string name="assistant_page_title">Assistant Settings</string>
   <string name="assistant_page_top_p">Top P</string>

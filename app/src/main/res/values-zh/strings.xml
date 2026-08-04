@@ -145,7 +145,7 @@
   <string name="assistant_page_thinking_budget">思考预算</string>
   <string name="assistant_page_time_reminder">时间提醒</string>
   <string name="assistant_page_time_reminder_desc">在间隔较大的消息前自动插入时间提醒，帮助 AI 理解对话间隔</string>
-  <string name="assistant_page_time_reminder_always">总是插入</string>
+  <string name="assistant_page_time_reminder_always">总是插入时间提醒</string>
   <string name="assistant_page_time_reminder_always_desc">在每个用户消息前都插入时间提醒，忽略时间间隔阈值</string>
   <string name="assistant_page_title">助手设置</string>
   <string name="assistant_page_top_p">Top P</string>
