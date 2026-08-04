@@ -635,37 +635,39 @@ object ConversationSearchToolUI : ToolUIRenderer {
             } else {
                 results.forEach { r ->
                     val title = r.getStringContent("title") ?: stringResource(R.string.tool_ui_untitled)
-                    val matchCount = (r.jsonObjectOrNull?.get("match_count") as? JsonPrimitive)?.contentOrNull?.toIntOrNull()
-                    Row(
+                    val index = (r.jsonObjectOrNull?.get("index") as? JsonPrimitive)?.contentOrNull?.toIntOrNull()
+                    val role = r.getStringContent("role")
+                    val snippet = r.getStringContent("snippet").orEmpty()
+                    val text = r.getStringContent("text").orEmpty()
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        if (matchCount != null && matchCount > 0) {
-                            ToolPill(stringResource(R.string.tool_ui_match_count, matchCount))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                text = title,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            index?.let { ToolPill("#$it") }
+                            role?.takeIf { it.isNotBlank() }?.let { ToolPill(it) }
+                        }
+                        val display = snippet.ifBlank { text }
+                        if (display.isNotBlank()) {
+                            Text(
+                                text = display,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
                     }
-                    // 前 3 条消息片段
-                    (r.jsonObjectOrNull?.get("messages") as? JsonArray)
-                        ?.take(3)
-                        ?.forEach { m ->
-                            val text = m.getStringContent("text").orEmpty()
-                            if (text.isNotBlank()) {
-                                Text(
-                                    text = text,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
                 }
             }
         }

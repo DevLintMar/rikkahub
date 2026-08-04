@@ -336,18 +336,14 @@ class ConversationRepository(
         sort: MessageSearchSort = MessageSearchSort.RELEVANCE,
     ) = messageFtsManager.search(keyword, sort)
 
-    data class ConversationSearchWindow(
+    data class ConversationSearchHit(
         val conversationId: String,
         val title: String,
-        val topScore: Float,
-        val matchCount: Int,
-        val messages: List<WindowMessage>,
-    )
-
-    data class WindowMessage(
-        val participant: String,
-        val text: String,
-        val timestamp: String,
+        val index: Int,        // 在 currentMessages(USER/ASSISTANT) 中的位置，与 read_conversation offset 对齐
+        val role: String,
+        val text: String,      // 匹配消息全文
+        val snippet: String,   // FTS snippet（[brackets] 着重标记）
+        val score: Float,
     )
 
     data class RebuildResult(
@@ -356,20 +352,14 @@ class ConversationRepository(
     )
 
     /**
-     * 混合搜索并返回上下文窗口（Agora 式结果形态）：对每个命中点展开 ±N/2 条
-     * 消息（不对称补偿、重叠合并、窗口上限 N*3、全局 200 条封顶），跨会话按
-     * 融合分降序。只沿选中分支（currentMessages）展开。
+     * 混合搜索并返回每条匹配的具体消息（融合 FTS + 语义，跨会话按融合分降序）。
+     * 每条结果含所在对话、该消息在 currentMessages(USER/ASSISTANT) 中的索引
+     * （与 read_conversation 的 offset 对齐）与 FTS [brackets] 着重标记 snippet。
      */
-    suspend fun searchConversationsHybrid(
+    suspend fun searchConversationMessages(
         query: String,
         limit: Int = 15,
-        contextWindow: Int = 8,
-    ): List<ConversationSearchWindow> {
-        val n = contextWindow.coerceIn(4, 32)
-        val halfN = n / 2
-        val maxWindowSize = n * 3
-        val totalCap = 200
-
+    ): List<ConversationSearchHit> {
         val fts = searchMessages(query, MessageSearchSort.RELEVANCE).take(limit)
         val semantic = if (semanticIndexManager.isConfigured()) {
             semanticIndexManager.search(query, limit).map { hit ->
@@ -385,97 +375,24 @@ class ConversationRepository(
         } else emptyList()
 
         val fused = rrfFuseScored(fts, semantic, k = 60)
-        if (fused.isEmpty()) return emptyList()
-
-        val scoreByMessageId = fused.associate { it.messageId to it.score.toFloat() }
-        val matchesByConv = fused.groupBy({ it.conversationId }, { it.messageId })
-        val allWindows = mutableListOf<ConversationSearchWindow>()
-
-        for ((convId, matchIds) in matchesByConv) {
-            val conversation = getConversationById(Uuid.parse(convId)) ?: continue
+        return fused.mapNotNull { hit ->
+            val conversation = getConversationById(Uuid.parse(hit.conversationId)) ?: return@mapNotNull null
             val branch = runCatching { conversation.currentMessages }
                 .getOrDefault(emptyList())
                 .filter { it.role == MessageRole.USER || it.role == MessageRole.ASSISTANT }
-            val indexMap = branch.withIndex().associate { (i, m) -> m.id.toString() to i }
-            val branchMatchIds = matchIds.filter { it in indexMap }.toSet()
-
-            // 每个命中点展开 ±halfN，一边不够从另一边补偿
-            val windows = mutableListOf<Pair<IntRange, Float>>()
-            for (matchId in branchMatchIds) {
-                val centerIdx = indexMap[matchId] ?: continue
-                val score = scoreByMessageId[matchId] ?: 1f
-                val before = halfN.coerceAtMost(centerIdx)
-                val after = halfN.coerceAtMost(branch.size - 1 - centerIdx)
-                val extraBefore = (halfN - before).coerceAtMost(branch.size - 1 - centerIdx - after)
-                val extraAfter = (halfN - after - extraBefore).coerceAtLeast(0).coerceAtMost(centerIdx - before)
-                val start = (centerIdx - before - extraAfter).coerceAtLeast(0)
-                val end = (centerIdx + after + extraBefore).coerceAtMost(branch.size - 1)
-                windows.add((start..end) to score)
-            }
-
-            // 合并重叠窗口（按分数降序，相邻/重叠合并取最高分）
-            val sorted = windows.sortedByDescending { it.second }
-            val merged = mutableListOf<Pair<IntRange, Float>>()
-            for ((range, score) in sorted) {
-                var mergedRange = range
-                val overlapIdx = merged.indexOfFirst { (existing, _) ->
-                    mergedRange.first <= existing.last + 1 && existing.first <= mergedRange.last + 1
-                }
-                if (overlapIdx >= 0) {
-                    val (existing, existingScore) = merged[overlapIdx]
-                    mergedRange = (minOf(mergedRange.first, existing.first)..maxOf(mergedRange.last, existing.last))
-                    merged[overlapIdx] = mergedRange to maxOf(score, existingScore)
-                } else {
-                    merged.add(mergedRange to score)
-                }
-            }
-
-            for ((range, score) in merged) {
-                var cappedRange = range
-                if (range.last - range.first + 1 > maxWindowSize) {
-                    val centerId = branchMatchIds.maxByOrNull { scoreByMessageId[it] ?: 0f }
-                    val centerIdx =
-                        if (centerId != null) indexMap[centerId] ?: (range.first + range.last) / 2
-                        else (range.first + range.last) / 2
-                    cappedRange = ((centerIdx - halfN).coerceAtLeast(range.first)..(centerIdx + halfN).coerceAtMost(range.last))
-                }
-                val windowMsgIds =
-                    branch.subList(cappedRange.first, cappedRange.last + 1).map { it.id.toString() }.toSet()
-                val matchedInWindow = branchMatchIds.count { it in windowMsgIds }
-                val messages = cappedRange.map { branch[it] }.map { m ->
-                    WindowMessage(
-                        participant = m.role.name.lowercase(),
-                        text = MessageTextExtractor.messageToSearchText(m),
-                        timestamp = m.createdAt.toString(),
-                    )
-                }
-                allWindows.add(
-                    ConversationSearchWindow(
-                        conversationId = convId,
-                        title = conversation.title,
-                        topScore = score,
-                        matchCount = matchedInWindow,
-                        messages = messages,
-                    ),
-                )
-            }
+            val index = branch.indexOfFirst { it.id.toString() == hit.messageId }
+            if (index < 0) return@mapNotNull null
+            val message = branch[index]
+            ConversationSearchHit(
+                conversationId = hit.conversationId,
+                title = conversation.title,
+                index = index,
+                role = message.role.name.lowercase(),
+                text = MessageTextExtractor.messageToSearchText(message),
+                snippet = hit.snippet,
+                score = hit.score.toFloat(),
+            )
         }
-
-        // 跨会话按 topScore 降序，全局 200 条封顶
-        val finalWindows = mutableListOf<ConversationSearchWindow>()
-        var totalMessages = 0
-        for (window in allWindows.sortedByDescending { it.topScore }) {
-            if (totalMessages >= totalCap) break
-            val available = totalCap - totalMessages
-            if (window.messages.size > available) {
-                finalWindows.add(window.copy(messages = window.messages.take(available)))
-                totalMessages = totalCap
-            } else {
-                finalWindows.add(window)
-                totalMessages += window.messages.size
-            }
-        }
-        return finalWindows
     }
 
     suspend fun rebuildAllIndexes(

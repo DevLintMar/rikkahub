@@ -73,7 +73,9 @@ fun createConversationTools(
             Hybrid semantic + keyword search across the user's past conversations to recall specific information they mentioned before.
             Matches on meaning as well as exact keywords, so paraphrased queries can find relevant past messages.
             Run multiple searches with different phrasings if needed.
-            Each result is a window of surrounding messages from one conversation, ordered by relevance, with the conversation title, a relevance score, and the match count.
+            Returns each specific matched message, with the matched keywords marked in [brackets] in `snippet`.
+            Each result includes the conversation (`conversation_id`, `title`) and the message's `index` within it.
+            Use `read_conversation` with the same `conversation_id` and an `offset` near `index` to read the surrounding context.
         """.trimIndent(),
         parameters = {
             InputSchema.Obj(
@@ -86,14 +88,7 @@ fun createConversationTools(
                         put("type", "integer")
                         put(
                             "description",
-                            "Maximum number of matching conversations to return (default: 15, max: 50)"
-                        )
-                    })
-                    put("context_window", buildJsonObject {
-                        put("type", "integer")
-                        put(
-                            "description",
-                            "Total context window size around each hit in messages (default: 8, min: 4, max: 32). Larger gives more surrounding context but uses more tokens."
+                            "Maximum number of matched messages to return (default: 15, max: 50)"
                         )
                     })
                 },
@@ -104,27 +99,20 @@ fun createConversationTools(
             val query = it.jsonObject["query"]?.jsonPrimitive?.contentOrNull
                 ?: error("query is required")
             val limit = (it.jsonObject["limit"]?.jsonPrimitive?.intOrNull ?: 15).coerceIn(1, 50)
-            val contextWindow = (it.jsonObject["context_window"]?.jsonPrimitive?.intOrNull ?: 8).coerceIn(4, 32)
-            val windows = conversationRepo.searchConversationsHybrid(query, limit, contextWindow)
+            val hits = conversationRepo.searchConversationMessages(query, limit)
             val payload = buildJsonObject {
                 put("type", "conversation_search")
                 put("query", query)
                 putJsonArray("results") {
-                    windows.forEach { w ->
+                    hits.forEach { h ->
                         add(buildJsonObject {
-                            put("title", w.title.ifBlank { "Untitled" })
-                            put("conversation_id", w.conversationId)
-                            put("top_score", w.topScore)
-                            put("match_count", w.matchCount)
-                            putJsonArray("messages") {
-                                w.messages.forEach { m ->
-                                    add(buildJsonObject {
-                                        put("participant", m.participant)
-                                        put("text", m.text)
-                                        put("timestamp", m.timestamp)
-                                    })
-                                }
-                            }
+                            put("conversation_id", h.conversationId)
+                            put("title", h.title.ifBlank { "Untitled" })
+                            put("index", h.index)
+                            put("role", h.role)
+                            put("text", h.text)
+                            put("snippet", h.snippet)
+                            put("score", h.score)
                         })
                     }
                 }
@@ -138,6 +126,8 @@ fun createConversationTools(
             Read a specific conversation by ID, showing the currently selected message branch
             as a linear list with pagination. Use this after recent_chats or conversation_search
             to read a conversation of interest. Tool and system messages are excluded.
+            The message `index` from conversation_search results maps to the `offset` here,
+            so pass an `offset` near the index to read the context around a match.
         """.trimIndent(),
         parameters = {
             InputSchema.Obj(
