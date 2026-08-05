@@ -199,6 +199,26 @@ private fun AssistantLocalToolContent(
                 }
             )
             item(
+                headlineContent = { Text(stringResource(R.string.assistant_page_recent_chats)) },
+                supportingContent = {
+                    Text(
+                        text = stringResource(R.string.assistant_page_recent_chats_desc),
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = assistant.enableRecentChatsReference,
+                        onCheckedChange = {
+                            onUpdate(
+                                assistant.copy(
+                                    enableRecentChatsReference = it
+                                )
+                            )
+                        }
+                    )
+                }
+            )
+            item(
                 headlineContent = {
                     Text(stringResource(R.string.assistant_page_local_tools_screen_time_title))
                 },

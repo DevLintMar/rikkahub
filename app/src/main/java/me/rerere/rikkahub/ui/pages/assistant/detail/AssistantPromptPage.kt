@@ -257,6 +257,55 @@ private fun AssistantPromptContent(
         Card(
             colors = CustomColors.cardColorsOnSurfaceContainer
         ) {
+            Column {
+                FormItem(
+                    modifier = Modifier.padding(8.dp),
+                    label = {
+                        Text(stringResource(R.string.assistant_page_time_reminder))
+                    },
+                    description = {
+                        Text(stringResource(R.string.assistant_page_time_reminder_desc))
+                    },
+                    tail = {
+                        Switch(
+                            checked = assistant.enableTimeReminder,
+                            onCheckedChange = {
+                                onUpdate(
+                                    assistant.copy(
+                                        enableTimeReminder = it
+                                    )
+                                )
+                            }
+                        )
+                    }
+                )
+                FormItem(
+                    modifier = Modifier.padding(8.dp),
+                    label = {
+                        Text(stringResource(R.string.assistant_page_time_reminder_always))
+                    },
+                    description = {
+                        Text(stringResource(R.string.assistant_page_time_reminder_always_desc))
+                    },
+                    tail = {
+                        Switch(
+                            checked = assistant.timeReminderAlwaysInsert,
+                            onCheckedChange = {
+                                onUpdate(
+                                    assistant.copy(
+                                        timeReminderAlwaysInsert = it
+                                    )
+                                )
+                            }
+                        )
+                    }
+                )
+            }
+        }
+
+        Card(
+            colors = CustomColors.cardColorsOnSurfaceContainer
+        ) {
             FormItem(
                 modifier = Modifier.padding(8.dp),
                 label = {
