@@ -4,6 +4,7 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.PencilEdit01
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.Delete01
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,11 +23,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -63,6 +64,7 @@ fun AssistantMemoryPage(id: String) {
     )
     val assistant by vm.assistant.collectAsStateWithLifecycle()
     val memories by vm.memories.collectAsStateWithLifecycle()
+    val activeMemory by vm.activeMemory.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     Scaffold(
@@ -85,10 +87,12 @@ fun AssistantMemoryPage(id: String) {
             innerPadding = innerPadding,
             assistant = assistant,
             memories = memories,
+            activeMemory = activeMemory,
             onUpdateAssistant = { vm.update(it) },
             onDeleteMemory = { vm.deleteMemory(it) },
             onAddMemory = { vm.addMemory(it) },
-            onUpdateMemory = { vm.updateMemory(it) }
+            onUpdateMemory = { vm.updateMemory(it) },
+            onUpdateActiveMemory = { vm.updateActiveMemory(it) }
         )
     }
 }
@@ -98,10 +102,12 @@ private fun AssistantMemoryContent(
     innerPadding: PaddingValues,
     assistant: Assistant,
     memories: List<AssistantMemory>,
+    activeMemory: AssistantMemory?,
     onUpdateAssistant: (Assistant) -> Unit,
     onAddMemory: (AssistantMemory) -> Unit,
     onUpdateMemory: (AssistantMemory) -> Unit,
     onDeleteMemory: (AssistantMemory) -> Unit,
+    onUpdateActiveMemory: (String) -> Unit,
 ) {
     val memoryDialogState = useEditState<AssistantMemory> {
         if (it.id == 0) {
@@ -110,34 +116,80 @@ private fun AssistantMemoryContent(
             onUpdateMemory(it)
         }
     }
+    var activeMemoryEditing by remember { mutableStateOf(false) }
+    var activeMemoryDraft by remember { mutableStateOf("") }
     var pendingDeleteMemory by remember { mutableStateOf<AssistantMemory?>(null) }
 
-    // 记忆对话框
+    // 已保存记忆 添加/编辑对话框（标题 + 描述 + 内容）
     memoryDialogState.EditStateContent { memory, update ->
         AlertDialog(
-            onDismissRequest = {
-                memoryDialogState.dismiss()
-            },
+            onDismissRequest = { memoryDialogState.dismiss() },
             title = {
-                Text(stringResource(R.string.assistant_page_manage_memory_title))
+                Text(stringResource(R.string.assistant_page_edit_memory))
             },
             text = {
-                TextField(
-                    value = memory.content,
-                    onValueChange = {
-                        update(memory.copy(content = it))
-                    },
-                    label = {
-                        Text(stringResource(R.string.assistant_page_manage_memory_title))
-                    },
-                    minLines = 2,
-                    maxLines = 8
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = memory.title,
+                        onValueChange = { update(memory.copy(title = it)) },
+                        label = { Text(stringResource(R.string.assistant_page_memory_title_hint)) },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = memory.description,
+                        onValueChange = { update(memory.copy(description = it)) },
+                        label = { Text(stringResource(R.string.assistant_page_memory_description_hint)) },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = memory.content,
+                        onValueChange = { update(memory.copy(content = it)) },
+                        label = { Text(stringResource(R.string.assistant_page_memory_content_hint)) },
+                        minLines = 2,
+                        maxLines = 8,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { memoryDialogState.confirm() },
+                    // 标题是已保存记忆的主键，必填（仓库 addMemory 对空标题抛错，须在 UI 拦截避免未捕获协程崩溃）
+                    enabled = memory.title.isNotBlank(),
+                ) {
+                    Text(stringResource(R.string.assistant_page_save))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { memoryDialogState.dismiss() }
+                ) {
+                    Text(stringResource(R.string.assistant_page_cancel))
+                }
+            }
+        )
+    }
+
+    // 活跃记忆编辑对话框（仅内容）
+    if (activeMemoryEditing) {
+        AlertDialog(
+            onDismissRequest = { activeMemoryEditing = false },
+            title = {
+                Text(stringResource(R.string.assistant_page_active_memory_edit))
+            },
+            text = {
+                OutlinedTextField(
+                    value = activeMemoryDraft,
+                    onValueChange = { activeMemoryDraft = it },
+                    label = { Text(stringResource(R.string.assistant_page_active_memory)) },
+                    minLines = 3,
+                    maxLines = 10,
                 )
             },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        memoryDialogState.confirm()
+                        onUpdateActiveMemory(activeMemoryDraft)
+                        activeMemoryEditing = false
                     }
                 ) {
                     Text(stringResource(R.string.assistant_page_save))
@@ -145,9 +197,7 @@ private fun AssistantMemoryContent(
             },
             dismissButton = {
                 TextButton(
-                    onClick = {
-                        memoryDialogState.dismiss()
-                    }
+                    onClick = { activeMemoryEditing = false }
                 ) {
                     Text(stringResource(R.string.assistant_page_cancel))
                 }
@@ -207,65 +257,97 @@ private fun AssistantMemoryContent(
                 }
             )
             item(
-                headlineContent = { Text(stringResource(R.string.assistant_page_recent_chats)) },
+                headlineContent = { Text(stringResource(R.string.assistant_page_edit_active_memory)) },
                 supportingContent = {
                     Text(
-                        text = stringResource(R.string.assistant_page_recent_chats_desc),
+                        text = stringResource(R.string.assistant_page_edit_active_memory_desc),
                     )
                 },
                 trailingContent = {
                     Switch(
-                        checked = assistant.enableRecentChatsReference,
+                        checked = assistant.enableEditActiveMemory,
                         onCheckedChange = {
                             onUpdateAssistant(
                                 assistant.copy(
-                                    enableRecentChatsReference = it
+                                    enableEditActiveMemory = it
                                 )
                             )
-                        }
+                        },
+                        enabled = assistant.enableMemory
                     )
                 }
             )
             item(
-                headlineContent = { Text(stringResource(R.string.assistant_page_time_reminder)) },
+                headlineContent = { Text(stringResource(R.string.assistant_page_edit_saved_memories)) },
                 supportingContent = {
                     Text(
-                        text = stringResource(R.string.assistant_page_time_reminder_desc),
+                        text = stringResource(R.string.assistant_page_edit_saved_memories_desc),
                     )
                 },
                 trailingContent = {
                     Switch(
-                        checked = assistant.enableTimeReminder,
+                        checked = assistant.enableEditSavedMemories,
                         onCheckedChange = {
                             onUpdateAssistant(
                                 assistant.copy(
-                                    enableTimeReminder = it
+                                    enableEditSavedMemories = it
                                 )
                             )
-                        }
+                        },
+                        enabled = assistant.enableMemory
                     )
                 }
             )
-            item(
-                headlineContent = { Text(stringResource(R.string.assistant_page_time_reminder_always)) },
-                supportingContent = {
-                    Text(
-                        text = stringResource(R.string.assistant_page_time_reminder_always_desc),
-                    )
+        }
+
+        // 活跃记忆卡（始终显示）
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                    activeMemoryDraft = activeMemory?.content.orEmpty()
+                    activeMemoryEditing = true
                 },
-                trailingContent = {
-                    Switch(
-                        checked = assistant.timeReminderAlwaysInsert,
-                        onCheckedChange = {
-                            onUpdateAssistant(
-                                assistant.copy(
-                                    timeReminderAlwaysInsert = it
-                                )
-                            )
-                        }
+            colors = CustomColors.cardColorsOnSurfaceContainer
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.assistant_page_active_memory),
+                        style = MaterialTheme.typography.titleMediumEmphasized,
+                    )
+                    Text(
+                        text = when {
+                            activeMemory == null ->
+                                stringResource(R.string.assistant_page_active_memory_empty)
+                            activeMemory.content.length > 100 ->
+                                activeMemory.content.take(100) + "..."
+                            else -> activeMemory.content
+                        },
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-            )
+                IconButton(
+                    onClick = {
+                        activeMemoryDraft = activeMemory?.content.orEmpty()
+                        activeMemoryEditing = true
+                    }
+                ) {
+                    Icon(
+                        HugeIcons.PencilEdit01,
+                        stringResource(R.string.assistant_page_active_memory_edit)
+                    )
+                }
+            }
         }
 
         Box(
@@ -274,7 +356,7 @@ private fun AssistantMemoryContent(
                 .padding(horizontal = 8.dp)
         ) {
             Text(
-                text = stringResource(R.string.assistant_page_manage_memory_title),
+                text = stringResource(R.string.assistant_page_saved_memories),
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier
                     .padding(bottom = 8.dp)
@@ -283,7 +365,7 @@ private fun AssistantMemoryContent(
 
             IconButton(
                 onClick = {
-                    memoryDialogState.open(AssistantMemory(0, ""))
+                    memoryDialogState.open(AssistantMemory(0, "", "", ""))
                 },
                 modifier = Modifier.align(Alignment.CenterEnd)
             ) {
@@ -351,12 +433,24 @@ private fun MemoryItem(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    text = "#${memory.id}",
+                    text = memory.title.ifBlank {
+                        memory.content.trim().take(40)
+                    },
                     style = MaterialTheme.typography.titleMediumEmphasized,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
+                if (memory.description.isNotBlank()) {
+                    Text(
+                        text = memory.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 Text(
                     text = memory.content,
-
                     maxLines = 5,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodySmall,
