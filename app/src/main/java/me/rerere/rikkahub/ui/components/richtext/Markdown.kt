@@ -114,6 +114,7 @@ import org.intellij.markdown.flavours.gfm.GFMElementTypes
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 import org.intellij.markdown.parser.MarkdownParser
+import java.util.LinkedHashMap
 import kotlin.time.Clock
 
 private val flavour by lazy {
@@ -236,6 +237,67 @@ private fun parseMarkdown(content: String): MarkdownParseResult {
     return MarkdownParseResult(preprocessed, astTree, astTree.containsHtml())
 }
 
+/**
+ * 进程级 LRU 缓存（accessOrder=true 的 LinkedHashMap，[maxSize] 后按最近最少使用淘汰）。
+ * Markdown 解析 / 段落 annotated string 构建结果缓存：
+ * LazyColumn 滚出视野的消息会被解除组合，滚回时重新组合；这些计算在主线程做，
+ * 消息越长越慢。缓存命中即可跳过重复解析/构建，消除滚动卡顿。
+ */
+private class LruCache<K : Any, V : Any>(private val maxSize: Int) {
+    private val map = object : LinkedHashMap<K, V>(maxSize, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<K, V>): Boolean = size > maxSize
+    }
+
+    @Synchronized
+    fun get(key: K): V? = map[key]
+
+    @Synchronized
+    fun put(key: K, value: V) {
+        map[key] = value
+    }
+}
+
+// Markdown 解析结果进程级缓存：key=原始内容，命中直接复用 AST，跳过主线程同步解析
+private val markdownParseCache = LruCache<String, MarkdownParseResult>(maxSize = 128)
+
+private fun parseMarkdownCached(content: String): MarkdownParseResult =
+    markdownParseCache.get(content) ?: parseMarkdown(content).also { markdownParseCache.put(content, it) }
+
+/** 段落 annotated string 构建的缓存 key（影响构建输出的全部输入） */
+private data class ParagraphRenderKey(
+    val text: String,                  // 段落原始文本（getTextInNode）
+    val trim: Boolean,
+    val enableLatexRendering: Boolean,
+    val latexColorArgb: Int,           // 行内公式渲染色（resolvedColor）
+    val primaryArgb: Int,              // 主题主色（链接/行内代码着色，亮暗主题切换时失效保护）
+    // 以下仅在行内公式渲染时影响输出（latex 分段宽度/占位符尺寸），无公式时归一为 -1，
+    // 使首帧 maxWidthPx 0→实际宽度的两次 key 命中同一缓存项，避免二次构建
+    val maxWidthPx: Float,
+    val fontSizePx: Float,
+    val densityDensity: Float,
+    val densityFontScale: Float,
+)
+
+private class ParagraphRenderValue(
+    val annotatedString: AnnotatedString,
+    val inlineContents: Map<String, InlineTextContent>,
+)
+
+// 段落 annotated string 构建结果进程级缓存（含 inlineContents）
+private val paragraphRenderCache = LruCache<ParagraphRenderKey, ParagraphRenderValue>(maxSize = 96)
+
+/**
+ * 段落是否包含 citation 链接。含引用的段落不缓存：inlineContents 里的引用占位符捕获了
+ * onClickCitation 回调，跨消息复用时回调会指向错误的处理函数。
+ */
+private fun ASTNode.containsCitationLink(content: String): Boolean {
+    if (type == MarkdownElementTypes.INLINE_LINK) {
+        val linkText = findChildOfTypeRecursive(MarkdownElementTypes.LINK_TEXT)?.getTextInNode(content) ?: ""
+        if (linkText.startsWith("citation,")) return true
+    }
+    return children.any { it.containsCitationLink(content) }
+}
+
 @Composable
 fun MarkdownBlock(
     content: String,
@@ -243,7 +305,7 @@ fun MarkdownBlock(
     style: TextStyle = LocalTextStyle.current,
     onClickCitation: (String) -> Unit = {}
 ) {
-    var (data, setData) = remember { mutableStateOf(parseMarkdown(content)) }
+    var (data, setData) = remember { mutableStateOf(parseMarkdownCached(content)) }
 
     // 监听内容变化，重新解析AST树
     // 这里在后台线程解析AST树, 防止频繁更新的时候掉帧
@@ -251,7 +313,7 @@ fun MarkdownBlock(
     LaunchedEffect(Unit) {
         snapshotFlow { updatedContent }
             .distinctUntilChanged()
-            .mapLatest { parseMarkdown(it) }
+            .mapLatest { parseMarkdownCached(it) }
             .catch { exception -> exception.printStackTrace() }
             .flowOn(Dispatchers.Default)
             .collect { setData(it) }
@@ -796,6 +858,10 @@ private fun Paragraph(
     val hasInlineMath = remember(node) {
         node.findChildOfTypeRecursive(GFMElementTypes.INLINE_MATH) != null
     }
+    // 含 citation 链接的段落不缓存（回调失效保护，见 containsCitationLink）
+    val hasCitation = remember(node, content) { node.containsCitationLink(content) }
+    // 无行内公式时宽度/字号/密度不影响构建输出，key 归一避免首帧 0→实际宽度二次 key
+    val cacheAffecting = hasInlineMath && enableLatexRendering
 
     val textStyle = LocalTextStyle.current
     val density = LocalDensity.current
@@ -814,6 +880,7 @@ private fun Paragraph(
     // measurements of SubcomposeLayout layouts is not supported" 崩溃。
     var maxWidthPx by remember { mutableFloatStateOf(0f) }
     val effectiveMaxWidthPx = if (maxWidthPx > 0f) maxWidthPx else Float.MAX_VALUE
+    val primaryArgb = colorScheme.primary.toArgb()
 
     FlowRow(
         modifier = Modifier
@@ -825,26 +892,51 @@ private fun Paragraph(
                 else Modifier
             )
     ) {
-        val annotatedString = remember(content, enableLatexRendering, latexColorArgb, maxWidthPx) {
-            buildAnnotatedString {
-                node.children.fastForEach { child ->
-                    appendMarkdownNodeContent(
-                        node = child,
-                        content = content,
-                        inlineContents = inlineContents,
-                        colorScheme = colorScheme,
-                        onClickCitation = onClickCitation,
-                        style = textStyle,
-                        density = density,
-                        trim = trim,
-                        enableLatexRendering = enableLatexRendering,
-                        latexColorArgb = latexColorArgb,
-                        maxWidthPx = effectiveMaxWidthPx,
-                        fontSizePx = fontSizePx,
-                        formulaDisplayLists = formulaDisplayLists,
-                        resolvedColor = resolvedColor,
-                    )
+        // 构建结果进程级缓存：滚动滚回视野命中即复用 annotated string + inlineContents，
+        // 跳过主线程重复构建（①的 AST 缓存之外再省一层）。含引用段落不缓存。
+        val annotatedString = remember(content, node, enableLatexRendering, latexColorArgb, maxWidthPx, trim, primaryArgb) {
+            val cacheKey = if (hasCitation) null else ParagraphRenderKey(
+                text = node.getTextInNode(content),
+                trim = trim,
+                enableLatexRendering = enableLatexRendering,
+                latexColorArgb = latexColorArgb,
+                primaryArgb = primaryArgb,
+                maxWidthPx = if (cacheAffecting) effectiveMaxWidthPx else -1f,
+                fontSizePx = if (cacheAffecting) fontSizePx else -1f,
+                densityDensity = if (cacheAffecting) density.density else -1f,
+                densityFontScale = if (cacheAffecting) density.fontScale else -1f,
+            )
+            val cached = cacheKey?.let { paragraphRenderCache.get(it) }
+            if (cached != null) {
+                inlineContents.clear()
+                inlineContents.putAll(cached.inlineContents)
+                cached.annotatedString
+            } else {
+                inlineContents.clear()
+                val built = buildAnnotatedString {
+                    node.children.fastForEach { child ->
+                        appendMarkdownNodeContent(
+                            node = child,
+                            content = content,
+                            inlineContents = inlineContents,
+                            colorScheme = colorScheme,
+                            onClickCitation = onClickCitation,
+                            style = textStyle,
+                            density = density,
+                            trim = trim,
+                            enableLatexRendering = enableLatexRendering,
+                            latexColorArgb = latexColorArgb,
+                            maxWidthPx = effectiveMaxWidthPx,
+                            fontSizePx = fontSizePx,
+                            formulaDisplayLists = formulaDisplayLists,
+                            resolvedColor = resolvedColor,
+                        )
+                    }
                 }
+                if (cacheKey != null) {
+                    paragraphRenderCache.put(cacheKey, ParagraphRenderValue(built, inlineContents.toMap()))
+                }
+                built
             }
         }
         Text(
