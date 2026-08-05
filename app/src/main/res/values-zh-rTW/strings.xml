@@ -1199,7 +1199,7 @@
   <string name="tool_ui_shell_default">Shell</string>
   <string name="tool_ui_shell_timeout">timeout</string>
   <string name="tool_ui_shell_exit">exit %s</string>
-  <string name="tool_ui_speaking">說話：%s</string>
+  <string name="tool_ui_speaking">朗讀</string>
   <string name="tool_ui_replay">重播</string>
   <string name="tool_ui_delete_memory">刪除記憶</string>
   <string name="tool_ui_file">文件</string>

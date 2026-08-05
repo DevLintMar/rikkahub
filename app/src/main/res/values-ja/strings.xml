@@ -1201,7 +1201,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="tool_ui_shell_default">Shell</string>
   <string name="tool_ui_shell_timeout">timeout</string>
   <string name="tool_ui_shell_exit">exit %s</string>
-  <string name="tool_ui_speaking">発話中: %s</string>
+  <string name="tool_ui_speaking">読み上げ</string>
   <string name="tool_ui_replay">リプレイ</string>
   <string name="tool_ui_delete_memory">メモリを削除</string>
   <string name="tool_ui_file">ファイル</string>

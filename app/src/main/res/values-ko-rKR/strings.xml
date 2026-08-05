@@ -1201,7 +1201,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="tool_ui_shell_default">Shell</string>
   <string name="tool_ui_shell_timeout">timeout</string>
   <string name="tool_ui_shell_exit">exit %s</string>
-  <string name="tool_ui_speaking">말하는 중: %s</string>
+  <string name="tool_ui_speaking">소리내어 읽기</string>
   <string name="tool_ui_replay">재생</string>
   <string name="tool_ui_delete_memory">메모리 삭제</string>
   <string name="tool_ui_file">파일</string>

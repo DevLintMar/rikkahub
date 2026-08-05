@@ -1276,7 +1276,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="tool_ui_shell_default">Shell</string>
   <string name="tool_ui_shell_timeout">timeout</string>
   <string name="tool_ui_shell_exit">exit %s</string>
-  <string name="tool_ui_speaking">朗读: %s</string>
+  <string name="tool_ui_speaking">朗读</string>
   <string name="tool_ui_sub_agent_completed">已完成</string>
   <string name="tool_ui_sub_agent_failed">失败</string>
   <string name="tool_ui_sub_agent_started">已在后台启动</string>

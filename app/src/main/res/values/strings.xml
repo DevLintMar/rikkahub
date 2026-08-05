@@ -1296,7 +1296,7 @@
   <string name="tool_ui_shell_default">Shell</string>
   <string name="tool_ui_shell_timeout">timeout</string>
   <string name="tool_ui_shell_exit">exit %s</string>
-  <string name="tool_ui_speaking">Speaking: %s</string>
+  <string name="tool_ui_speaking">Read aloud</string>
   <string name="tool_ui_sub_agent_completed">Completed</string>
   <string name="tool_ui_sub_agent_failed">Failed</string>
   <string name="tool_ui_sub_agent_started">Started in background</string>

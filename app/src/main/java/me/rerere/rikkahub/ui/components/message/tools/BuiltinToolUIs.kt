@@ -438,13 +438,10 @@ object TextToSpeechToolUI : ToolUIRenderer {
 
     override fun icon(context: ToolUIContext): ImageVector = HugeIcons.VolumeHigh
 
+    // 标题固定"朗读"（朗读内容内联在 Summary 下方, 无需在标题二次显示）
     @Composable
-    override fun title(context: ToolUIContext): String {
-        val preview = context.arguments.getStringContent("text")?.let { text ->
-            if (text.length > 24) text.take(24) + "…" else text
-        } ?: ""
-        return stringResource(R.string.tool_ui_speaking, preview)
-    }
+    override fun title(context: ToolUIContext): String =
+        stringResource(R.string.tool_ui_speaking)
 
     // 文本来源与 Preview 保持一致（content 优先、arguments 兜底；arguments 在调用期即已知）
     private fun speakText(context: ToolUIContext): String =

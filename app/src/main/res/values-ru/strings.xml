@@ -1201,7 +1201,7 @@
   <string name="tool_ui_shell_default">Shell</string>
   <string name="tool_ui_shell_timeout">timeout</string>
   <string name="tool_ui_shell_exit">exit %s</string>
-  <string name="tool_ui_speaking">Говорит: %s</string>
+  <string name="tool_ui_speaking">Читать вслух</string>
   <string name="tool_ui_replay">Повторить</string>
   <string name="tool_ui_delete_memory">Удалить память</string>
   <string name="tool_ui_file">файл</string>
