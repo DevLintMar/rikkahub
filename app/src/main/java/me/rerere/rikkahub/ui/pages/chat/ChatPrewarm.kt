@@ -58,7 +58,7 @@ private suspend fun prewarmText(
 }
 
 private suspend fun prewarmToolOutput(highlighter: Highlighter, tool: UIMessagePart.Tool) {
-    val text = tool.output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }.trim()
+    val text = tool.output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
     if (text.isBlank()) return
     // 与 DefaultToolPreview 一致：非 JSON 输出才走 HighlightCodeBlock(plaintext)
     if (runCatching { JsonInstant.parseToJsonElement(text) }.isFailure) {

@@ -44,8 +44,13 @@ private val highlightTokenCache = HighlightTokenLruCache(maxSize = 128)
 private fun highlightCacheKey(code: String, language: String): String = "$language\u0000$code"
 
 /** 切换对话遮罩期间后台预热：把高亮 token 写入进程级缓存（超长纯文本路径跳过） */
-suspend fun prewarmHighlight(highlighter: Highlighter, code: String, language: String) {
-    if (code.length > MAX_CODE_LENGTH) return
+suspend fun prewarmHighlight(
+    highlighter: Highlighter,
+    code: String,
+    language: String,
+    maxCodeLength: Int = MAX_CODE_LENGTH,
+) {
+    if (code.length > maxCodeLength) return
     val key = highlightCacheKey(code, language)
     if (highlightTokenCache.get(key) == null) {
         highlightTokenCache.put(key, highlighter.highlight(code, language))

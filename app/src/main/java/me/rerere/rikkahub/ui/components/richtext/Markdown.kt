@@ -1452,15 +1452,6 @@ private fun ASTNode.findChildOfTypeRecursive(vararg types: IElementType): ASTNod
     return null
 }
 
-private fun ASTNode.traverseChildren(
-    action: (ASTNode) -> Unit
-) {
-    children.fastForEach { child ->
-        action(child)
-        child.traverseChildren(action)
-    }
-}
-
 /** 前序遍历 AST（含根节点自身），供 collectCodeFences 收集代码块 */
 private fun ASTNode.walkNodes(action: (ASTNode) -> Unit) {
     action(this)
