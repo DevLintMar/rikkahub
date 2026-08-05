@@ -34,8 +34,17 @@ data class WorkspaceEntity(
     @ColumnInfo("tool_approvals", defaultValue = "{}")
     val toolApprovals: String = "{}",
 ) {
+    companion object {
+        private val TOOL_NAME_LEGACY_MAP = mapOf(
+            "workspace_read_file" to "workspace_read",
+            "workspace_write_file" to "workspace_write",
+            "workspace_edit_file" to "workspace_edit",
+        )
+    }
+
     fun toolApprovalOverrides(): Map<String, Boolean> = runCatching {
         JsonInstant.decodeFromString<Map<String, Boolean>>(toolApprovals)
+            .mapKeys { (key, _) -> TOOL_NAME_LEGACY_MAP[key] ?: key }
     }.getOrDefault(emptyMap())
 
     fun toWorkspace(): Workspace = Workspace(

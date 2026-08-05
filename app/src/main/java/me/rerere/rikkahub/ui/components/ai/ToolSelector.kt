@@ -24,9 +24,9 @@ import me.rerere.rikkahub.R
 val ALL_BASE_TOOLS = listOf(
     "search_web",
     "scrape_web",
-    "workspace_read_file",
-    "workspace_write_file",
-    "workspace_edit_file",
+    "workspace_read",
+    "workspace_write",
+    "workspace_edit",
     "workspace_shell",
     "workspace_glob",
     "workspace_grep",

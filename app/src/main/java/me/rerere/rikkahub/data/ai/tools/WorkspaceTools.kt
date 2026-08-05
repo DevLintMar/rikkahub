@@ -31,9 +31,9 @@ private const val SHELL_TIMEOUT_MAX_SECONDS = 600L
 private const val MAX_READ_FILE_BYTES = 8L * 1024 * 1024
 
 val WorkspaceToolDefaultApprovals: Map<String, Boolean> = mapOf(
-    "workspace_read_file" to false,
-    "workspace_write_file" to false,
-    "workspace_edit_file" to false,
+    "workspace_read" to false,
+    "workspace_write" to false,
+    "workspace_edit" to false,
     "workspace_shell" to true,
     "workspace_glob" to false,
     "workspace_grep" to false,
@@ -75,7 +75,7 @@ private fun createReadFileTool(
     needsApproval: (String) -> Boolean,
     workspaceRepository: WorkspaceRepository,
 ) = Tool(
-    name = "workspace_read_file",
+    name = "workspace_read",
     description = """
         Read a file using the assistant's bound workspace Rootfs. Paths must be absolute inside Rootfs.
         Use /workspace for the workspace files area.
@@ -98,7 +98,7 @@ private fun createReadFileTool(
             required = listOf("path"),
         )
     },
-    needsApproval = { needsApproval("workspace_read_file") },
+    needsApproval = { needsApproval("workspace_read") },
     execute = {
         val path = it.jsonObject.absolutePath("path")
         if (path.isImagePath()) {
@@ -122,7 +122,7 @@ private fun createReadFileTool(
             listOf(
                 UIMessagePart.Text(
                     buildJsonObject {
-                        put("type", JsonPrimitive("workspace_read_file"))
+                        put("type", JsonPrimitive("workspace_read"))
                         put("path", JsonPrimitive(path))
                         put("text", JsonPrimitive(text))
                         put("offset", JsonPrimitive(offset))
@@ -141,7 +141,7 @@ private fun createWriteFileTool(
     needsApproval: (String) -> Boolean,
     workspaceRepository: WorkspaceRepository,
 ) = Tool(
-    name = "workspace_write_file",
+    name = "workspace_write",
     description = """
         Write a UTF-8 text file using the assistant's bound workspace Rootfs. Paths must be absolute inside Rootfs.
         Use /workspace for the workspace files area.
@@ -162,7 +162,7 @@ private fun createWriteFileTool(
             required = listOf("path", "text"),
         )
     },
-    needsApproval = { needsApproval("workspace_write_file") || it.pathOutsideWritableRoots("path") },
+    needsApproval = { needsApproval("workspace_write") || it.pathOutsideWritableRoots("path") },
     execute = {
         val params = it.jsonObject
         val path = params.absolutePath("path")
@@ -172,7 +172,7 @@ private fun createWriteFileTool(
         listOf(
             UIMessagePart.Text(
                 buildJsonObject {
-                    put("type", "workspace_write_file")
+                    put("type", "workspace_write")
                     put("path", entry.path)
                     put("name", entry.name)
                     put("isDirectory", entry.isDirectory)
@@ -189,7 +189,7 @@ private fun createEditFileTool(
     needsApproval: (String) -> Boolean,
     workspaceRepository: WorkspaceRepository,
 ) = Tool(
-    name = "workspace_edit_file",
+    name = "workspace_edit",
     description = """
         Edit a UTF-8 text file using the assistant's bound workspace Rootfs. Paths must be absolute inside Rootfs.
         Use /workspace for the workspace files area.
@@ -216,7 +216,7 @@ private fun createEditFileTool(
             required = listOf("path", "old_text", "new_text"),
         )
     },
-    needsApproval = { needsApproval("workspace_edit_file") || it.pathOutsideWritableRoots("path") },
+    needsApproval = { needsApproval("workspace_edit") || it.pathOutsideWritableRoots("path") },
     execute = {
         val params = it.jsonObject
         val path = params.absolutePath("path")
@@ -237,7 +237,7 @@ private fun createEditFileTool(
         listOf(
             UIMessagePart.Text(
                 text = buildJsonObject {
-                    put("type", "workspace_edit_file")
+                    put("type", "workspace_edit")
                     put("path", entry.path)
                     put("replacements", result.replacements)
                     if (result.strategy != ExactReplacer.name) put("matchStrategy", result.strategy)
@@ -506,7 +506,7 @@ private suspend fun WorkspaceRepository.readImageInRootfs(
         UIMessagePart.Image(url = uris.first().toString()),
         UIMessagePart.Text(
             buildJsonObject {
-                put("type", "workspace_read_file")
+                put("type", "workspace_read")
                 put("path", path)
                 put("description", "Image file read successfully")
             }.toString()

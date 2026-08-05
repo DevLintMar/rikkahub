@@ -48,7 +48,7 @@ data class GoogleThoughtMetadata(
 ) : PartMetadata
 
 /**
- * 文件编辑类工具(如 workspace_edit_file)输出部件的元数据,
+ * 文件编辑类工具(如 workspace_edit)输出部件的元数据,
  * 携带 unified diff 文本供 UI 渲染 diff view, 不会发送给 API
  */
 @Serializable

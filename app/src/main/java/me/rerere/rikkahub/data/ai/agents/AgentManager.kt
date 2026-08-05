@@ -22,8 +22,8 @@ class AgentManager(
                 "agent to perform the search for you.",
             tools = listOf("*"),
             disallowedTools = listOf(
-                "workspace_write_file",
-                "workspace_edit_file",
+                "workspace_write",
+                "workspace_edit",
                 "workspace_shell",
             ),
             mcpServers = null,
