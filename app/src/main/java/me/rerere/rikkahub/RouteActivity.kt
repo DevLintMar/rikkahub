@@ -271,15 +271,15 @@ class RouteActivity : ComponentActivity() {
         }
         val migrationState by DatabaseMigrationTracker.state.collectAsStateWithLifecycle()
 
+        val startNewId = Uuid.random().toString()
+        val startId = if (readBooleanPreference("create_new_conversation_on_start", true)) {
+            startNewId
+        } else {
+            readStringPreference("lastConversationId") ?: startNewId
+        }
         val startScreen = Screen.Chat(
-            id = if (readBooleanPreference("create_new_conversation_on_start", true)) {
-                Uuid.random().toString()
-            } else {
-                readStringPreference(
-                    "lastConversationId",
-                    Uuid.random().toString()
-                ) ?: Uuid.random().toString()
-            }
+            id = startId,
+            isNewChat = startId == startNewId,   // 新建对话（含启动即新建）零闪不转圈
         )
 
         val backStack = rememberNavBackStack(startScreen)
@@ -344,7 +344,8 @@ class RouteActivity : ComponentActivity() {
                                     text = key.text,
                                     files = key.files.map { it.toUri() },
                                     nodeId = key.nodeId?.let { Uuid.parse(it) },
-                                    isNewChat = key.isNewChat
+                                    isNewChat = key.isNewChat,
+                                    openDrawer = key.openDrawer
                                 )
                             }
 
@@ -613,7 +614,8 @@ sealed interface Screen : NavKey {
         val text: String? = null,
         val files: List<String> = emptyList(),
         val nodeId: String? = null,
-        val isNewChat: Boolean = false
+        val isNewChat: Boolean = false,
+        val openDrawer: Boolean = false
     ) : Screen
 
     @Serializable

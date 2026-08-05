@@ -303,7 +303,7 @@ fun ChatDrawerContent(
                                 .firstOrNull()
                                 ?.id ?: newId
                         }
-                        navigateToChatPage(navigator = navController, chatId = id, isNewChat = id == newId)
+                        navigateToChatPage(navigator = navController, chatId = id, isNewChat = id == newId, openDrawer = true)
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
