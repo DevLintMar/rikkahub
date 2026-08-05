@@ -1115,7 +1115,9 @@ private fun AssistantMemoryContent(
             },
             confirmButton = {
                 TextButton(
-                    onClick = { memoryDialogState.confirm() }
+                    onClick = { memoryDialogState.confirm() },
+                    // 标题是已保存记忆的主键，必填（仓库 addMemory 对空标题抛错，须在 UI 拦截避免未捕获协程崩溃）
+                    enabled = memory.title.isNotBlank(),
                 ) {
                     Text(stringResource(R.string.assistant_page_save))
                 }
