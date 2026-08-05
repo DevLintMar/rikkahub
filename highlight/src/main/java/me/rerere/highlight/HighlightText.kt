@@ -25,6 +25,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastForEach
 import java.util.LinkedHashMap
 
+/** 高亮长度上限（256KB）：超过回退纯文本，避免超大代码/工具 JSON 卡住单线程高亮 executor */
+private const val MAX_CODE_LENGTH = 256 * 1024
+
 val LocalHighlighter = compositionLocalOf<Highlighter> { error("No Highlighter provided") }
 
 /** 进程级高亮 token 缓存：token 与主题无关，跨亮暗复用；AnnotatedString 仍按当前 palette 每次构建 */
@@ -47,6 +50,7 @@ suspend fun prewarmHighlight(
     code: String,
     language: String,
 ) {
+    if (code.length > MAX_CODE_LENGTH) return
     val key = highlightCacheKey(code, language)
     if (highlightTokenCache.get(key) == null) {
         highlightTokenCache.put(key, highlighter.highlight(code, language))
@@ -79,10 +83,12 @@ fun HighlightText(
         snapshotFlow { updatedCode to updatedLanguage }.collect {
             val key = highlightCacheKey(updatedCode, updatedLanguage)
             val cached = highlightTokenCache.get(key)
-            tokens = if (cached != null) {
-                cached
-            } else {
-                highlighter.highlight(updatedCode, updatedLanguage).also { highlightTokenCache.put(key, it) }
+            tokens = when {
+                cached != null -> cached
+                updatedCode.length <= MAX_CODE_LENGTH -> {
+                    highlighter.highlight(updatedCode, updatedLanguage).also { highlightTokenCache.put(key, it) }
+                }
+                else -> listOf(HighlightToken.Plain(content = updatedCode))
             }
             annotatedString = buildAnnotatedString {
                 tokens.fastForEach { token ->
