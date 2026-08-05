@@ -167,7 +167,9 @@ fun SettingSearchPage(vm: SettingVM = koinViewModel()) {
                 showAddDialog = false
                 vm.updateSettings(
                     settings.copy(
-                        searchServices = listOf(options) + settings.searchServices
+                        searchServices = listOf(options) + settings.searchServices,
+                        // 新增服务自动加入选中集，否则它不选中、搜索默认落到列表第一个
+                        searchServiceSelectedIds = settings.searchServiceSelectedIds + options.id
                     )
                 )
                 scope.launch {
@@ -184,7 +186,8 @@ private fun AddProviderDialog(
     onConfirm: (SearchServiceOptions) -> Unit
 ) {
     var selectedType by remember {
-        mutableStateOf(SearchServiceOptions.TYPES.keys.first())
+        // 默认不选 Bing（Bing 是 TYPES 第一项）；取第一个非 Bing 类型，避免添加时默认变成 Bing
+        mutableStateOf(SearchServiceOptions.TYPES.keys.first { it != SearchServiceOptions.BingLocalOptions::class })
     }
 
     AlertDialog(
