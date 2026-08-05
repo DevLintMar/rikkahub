@@ -284,9 +284,21 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
         return entity.copy(id = memoryDAO.insertMemory(entity).toInt()).toModel()
     }
 
+    /** 兼容旧调用（迁移期临时，Task 5 后删除）：按 assistantId + content 写入空标题记录 */
+    suspend fun addMemory(assistantId: String, content: String): AssistantMemory =
+        addMemory(assistantId, title = "", description = "", content = content, overwrite = false)
+
     suspend fun updateMemory(id: Int, title: String, description: String, content: String): AssistantMemory {
         val old = memoryDAO.getMemoryById(id) ?: error("Memory record #$id not found")
         val updated = old.copy(title = title, description = description, content = content)
+        memoryDAO.updateMemory(updated)
+        return updated.toModel()
+    }
+
+    /** 兼容旧调用（迁移期临时，Task 5 后删除）：仅更新内容，保留标题/描述 */
+    suspend fun updateContent(id: Int, content: String): AssistantMemory {
+        val old = memoryDAO.getMemoryById(id) ?: error("Memory record #$id not found")
+        val updated = old.copy(content = content)
         memoryDAO.updateMemory(updated)
         return updated.toModel()
     }
@@ -345,7 +357,7 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
 }
 ```
 
-> 注：删除了原 `updateContent(id, content)`（其唯一调用方 `memory_tool` 在 Task 3 被删除；`AssistantDetailVM.updateMemory` 在 Task 5 改用 `updateMemory` 全字段）。
+> 注：保留两个**迁移期兼容方法**——旧签名 `addMemory(assistantId, content)` 与 `updateContent(id, content)`——使旧 `memory_tool` 接线（GenerationHandler）与 `AssistantDetailVM` 在本任务后仍能编译；Task 4 迁移 GenerationHandler、Task 5 迁移 VM 后删除。
 
 - [ ] **Step 7: 编译验证 + 提交**
 
@@ -862,11 +874,21 @@ Expected: CI 绿。
     }
 ```
 
-- [ ] **Step 3: 编译验证 + 提交**
+- [ ] **Step 3: 删除迁移期兼容方法**
+
+此时 GenerationHandler 已改用新记忆方法（Task 4）、旧 `memory_tool` 已删除（Task 3）、`AssistantDetailVM` 已改用全字段方法（Step 2）。删除 `MemoryRepository` 中的两个兼容方法，先 grep 确认零引用：
+
+```bash
+grep -rn "updateContent\|addMemory(" app/src/main/java --include=*.kt | grep -v "MemoryRepository.kt"
+```
+预期：无 `memoryRepository.updateContent` / `memoryRepository.addMemory(`（旧签名）调用。然后从 `MemoryRepository.kt` 删除 `addMemory(assistantId: String, content: String)` 兼容重载与 `updateContent(id, content)`。
+
+- [ ] **Step 4: 编译验证 + 提交**
 
 ```bash
 git add app/src/main/java/me/rerere/rikkahub/ui/pages/assistant/detail/AssistantDetailVM.kt
-git commit -m "feat(memory): AssistantDetailVM 加 activeMemory flow 与全字段 CRUD"
+git add app/src/main/java/me/rerere/rikkahub/data/repository/MemoryRepository.kt
+git commit -m "feat(memory): AssistantDetailVM 加 activeMemory flow 与全字段 CRUD，删除迁移期兼容方法"
 git push origin master
 gh workflow run nightly-build-debug.yml --repo DevLintMar/rikkahub --ref master
 ```
