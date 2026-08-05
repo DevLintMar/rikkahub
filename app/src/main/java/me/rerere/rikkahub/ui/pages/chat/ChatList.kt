@@ -128,6 +128,7 @@ fun ChatList(
     hazeState: HazeState,
     errors: List<ChatError> = emptyList(),
     conversationLoaded: Boolean,
+    isNewChat: Boolean = false,
     onDismissError: (Uuid) -> Unit = {},
     onClearAllErrors: () -> Unit = {},
     onRegenerate: (UIMessage) -> Unit = {},
@@ -171,6 +172,7 @@ fun ChatList(
                 hazeState = hazeState,
                 errors = errors,
                 conversationLoaded = conversationLoaded,
+                isNewChat = isNewChat,
                 onDismissError = onDismissError,
                 onClearAllErrors = onClearAllErrors,
                 onRegenerate = onRegenerate,
@@ -202,6 +204,7 @@ private fun ChatListNormal(
     hazeState: HazeState,
     errors: List<ChatError>,
     conversationLoaded: Boolean,
+    isNewChat: Boolean = false,
     onDismissError: (Uuid) -> Unit,
     onClearAllErrors: () -> Unit,
     onRegenerate: (UIMessage) -> Unit,
@@ -275,8 +278,13 @@ private fun ChatListNormal(
     }
     val highlighter: Highlighter = koinInject()
 
-    // 切换对话遮罩：conversation 变化时盖上，真实内容加载完成 + 列表稳定后淡出（8s 超时兜底）
-    var covered by remember(conversation.id) { mutableStateOf(true) }
+    // 切换对话遮罩：conversation 变化时盖上（新建对话初始不盖，零闪），真实内容加载完成 + 列表稳定后淡出
+    var covered by remember(conversation.id) { mutableStateOf(!isNewChat) }
+    // 硬兜底：无论 conversationLoaded/newConversation 是否到达，8s 后必露出（绝不持久转圈）
+    LaunchedEffect(conversation.id) {
+        delay(8000)
+        covered = false
+    }
     // 新对话：一律不转圈（initializeConversation 创建后立即隐藏，避免空对话闪转圈；
     // 新建对话即使带预设消息也直接露出；打开已有对话 newConversation=false 仍走下面转圈）
     LaunchedEffect(conversation.id, conversation.newConversation) {

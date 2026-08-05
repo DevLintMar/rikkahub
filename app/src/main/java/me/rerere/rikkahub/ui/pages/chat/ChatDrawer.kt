@@ -270,7 +270,7 @@ fun ChatDrawerContent(
                         vm.deleteConversation(it).join()
                         conversations.refresh()
                         if (it.id == current.id) {
-                            navigateToChatPage(navController)
+                            navigateToChatPage(navController, isNewChat = true)
                         }
                     }
                 },
@@ -294,15 +294,16 @@ fun ChatDrawerContent(
                     val updateJob = vm.updateSettings(it)
                     scope.launch {
                         updateJob.join()
+                        val newId = Uuid.random()
                         val id = if (context.readBooleanPreference("create_new_conversation_on_start", true)) {
-                            Uuid.random()
+                            newId
                         } else {
                             repo.getConversationsOfAssistant(it.assistantId)
                                 .first()
                                 .firstOrNull()
-                                ?.id ?: Uuid.random()
+                                ?.id ?: newId
                         }
-                        navigateToChatPage(navigator = navController, chatId = id)
+                        navigateToChatPage(navigator = navController, chatId = id, isNewChat = id == newId)
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),

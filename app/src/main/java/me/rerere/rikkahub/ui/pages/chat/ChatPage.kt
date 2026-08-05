@@ -97,7 +97,7 @@ import java.io.File
 import kotlin.uuid.Uuid
 
 @Composable
-fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
+fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null, isNewChat: Boolean = false) {
     val vm: ChatVM = koinViewModel(
         parameters = {
             parametersOf(id.toString())
@@ -219,6 +219,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                     onDismissError = { vm.dismissError(it) },
                     onClearAllErrors = { vm.clearAllErrors() },
                     conversationLoaded = conversationLoaded,
+                    isNewChat = isNewChat,
                 )
             }
         }
@@ -253,6 +254,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                     onDismissError = { vm.dismissError(it) },
                     onClearAllErrors = { vm.clearAllErrors() },
                     conversationLoaded = conversationLoaded,
+                    isNewChat = isNewChat,
                 )
             }
             BackHandler(drawerState.isOpen) {
@@ -276,6 +278,7 @@ private fun ChatPageContent(
     chatListState: LazyListState,
     enableWebSearch: Boolean,
     currentChatModel: Model?,
+    isNewChat: Boolean = false,
     errors: List<ChatError>,
     onDismissError: (Uuid) -> Unit,
     onClearAllErrors: () -> Unit,
@@ -317,7 +320,7 @@ private fun ChatPageContent(
                     drawerState = drawerState,
                     previewMode = previewMode,
                     onNewChat = {
-                        navigateToChatPage(navController)
+                        navigateToChatPage(navController, isNewChat = true)
                     },
                     onClickMenu = {
                         previewMode = !previewMode
@@ -425,6 +428,7 @@ private fun ChatPageContent(
                 hazeState = hazeState,
                 errors = errors,
                 conversationLoaded = conversationLoaded,
+                isNewChat = isNewChat,
                 onDismissError = onDismissError,
                 onClearAllErrors = onClearAllErrors,
                 onRegenerate = {

@@ -86,7 +86,13 @@ class ChatVM(
 
         // 初始化对话
         viewModelScope.launch {
-            chatService.initializeConversation(_conversationId)
+            try {
+                chatService.initializeConversation(_conversationId)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e                    // 协程取消正常传播，不吞
+            } catch (e: Exception) {
+                // 初始化失败（如新建对话路径异常）不阻塞遮罩释放：conversationLoaded 仍置 true
+            }
             conversationLoaded = true
         }
 
