@@ -9,11 +9,20 @@ import me.rerere.rikkahub.data.db.entity.MemoryEntity
 
 @Dao
 interface MemoryDAO {
-    @Query("SELECT * FROM memoryentity WHERE assistant_id = :assistantId")
+    @Query("SELECT * FROM memoryentity WHERE assistant_id = :assistantId AND is_active = 0")
     fun getMemoriesOfAssistantFlow(assistantId: String): Flow<List<MemoryEntity>>
 
-    @Query("SELECT * FROM memoryentity WHERE assistant_id = :assistantId")
+    @Query("SELECT * FROM memoryentity WHERE assistant_id = :assistantId AND is_active = 0")
     suspend fun getMemoriesOfAssistant(assistantId: String): List<MemoryEntity>
+
+    @Query("SELECT * FROM memoryentity WHERE assistant_id = :assistantId AND is_active = 1")
+    suspend fun getActiveMemory(assistantId: String): MemoryEntity?
+
+    @Query("SELECT * FROM memoryentity WHERE assistant_id = :assistantId AND is_active = 1")
+    fun getActiveMemoryFlow(assistantId: String): Flow<MemoryEntity?>
+
+    @Query("SELECT * FROM memoryentity WHERE assistant_id = :assistantId AND title = :title LIMIT 1")
+    suspend fun getMemoryByTitle(assistantId: String, title: String): MemoryEntity?
 
     @Query("SELECT * FROM memoryentity")
     fun getAllMemoriesFlow(): Flow<List<MemoryEntity>>

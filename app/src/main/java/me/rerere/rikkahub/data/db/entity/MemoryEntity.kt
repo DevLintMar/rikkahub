@@ -12,4 +12,10 @@ data class MemoryEntity(
     val assistantId: String,
     @ColumnInfo("content")
     val content: String = "",
+    @ColumnInfo("title")
+    val title: String = "",
+    @ColumnInfo("description")
+    val description: String = "",
+    @ColumnInfo("is_active")
+    val isActive: Boolean = false,
 )
