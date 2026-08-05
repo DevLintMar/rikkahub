@@ -275,9 +275,15 @@ private fun ChatListNormal(
     var covered by remember(conversation.id) { mutableStateOf(true) }
     LaunchedEffect(conversation.id) {
         withTimeoutOrNull(8000) {
-            // 预热：与稳定采样并发，受同一 8s 上限；异常被 runCatching 吞掉，绝不阻塞遮罩释放
+            // 预热：与稳定采样并发，受同一 8s 上限；异常不阻塞遮罩释放
             launch(Dispatchers.Default) {
-                runCatching { prewarmConversation(conversation, assistant, highlighter) }
+                try {
+                    prewarmConversation(conversation, assistant, highlighter)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e                    // 超时取消必须向上传播，不能吞
+                } catch (_: Exception) {
+                    // 预热失败不阻塞遮罩释放
+                }
             }
             // 稳定采样
             var stable = 0

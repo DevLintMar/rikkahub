@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.ui.pages.chat
 
+import kotlinx.coroutines.yield
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.highlight.Highlighter
@@ -23,16 +24,21 @@ suspend fun prewarmConversation(
     highlighter: Highlighter,
 ) {
     conversation.currentMessages.asReversed().forEach { message ->
+        yield()   // 让 8s 超时的取消在每条消息间可观察（markdown 同步解析段无挂起点）
         val scope = if (message.role == MessageRole.USER) AssistantAffectScope.USER else AssistantAffectScope.ASSISTANT
         message.parts.forEach { part ->
             // 逐 part 吞异常：一条坏消息/坏 part（如 Prism 高亮失败）不中止整段预热
-            runCatching {
+            try {
                 when (part) {
                     is UIMessagePart.Text -> prewarmText(part.text, assistant, scope, highlighter)
                     is UIMessagePart.Reasoning -> prewarmText(part.reasoning, assistant, AssistantAffectScope.ASSISTANT, highlighter)
                     is UIMessagePart.Tool -> prewarmToolOutput(highlighter, part)
                     else -> {}
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e                       // 超时取消必须向上传播，不能吞
+            } catch (_: Exception) {
+                // 单条消息预热失败跳过，不中止整段
             }
         }
     }
