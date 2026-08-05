@@ -280,7 +280,7 @@ private fun ChatListNormal(
         }
         withTimeoutOrNull(8000) {
             var stable = 0
-            var lastSignature: List<Any>? = null
+            var lastSignature: List<Any?>? = null
             while (stable < 3) {
                 delay(32)
                 val info = state.layoutInfo
