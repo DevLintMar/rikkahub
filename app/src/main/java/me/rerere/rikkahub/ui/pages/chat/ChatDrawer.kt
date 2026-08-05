@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DrawerState
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -101,6 +102,7 @@ fun ChatDrawerContent(
     vm: ChatVM,
     settings: Settings,
     current: Conversation,
+    drawerState: DrawerState? = null,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -254,7 +256,11 @@ fun ChatDrawerContent(
                     .fillMaxWidth()
                     .weight(1f),
                 onClick = {
-                    navigateToChatPage(navController, it.id)
+                    // 手机端：先等侧栏关闭动画结束（空窗），再导航加载；大屏 drawerState 为 null 直接导航
+                    scope.launch {
+                        drawerState?.close()
+                        navigateToChatPage(navController, it.id)
+                    }
                 },
                 onRegenerateTitle = {
                     vm.generateTitle(it, true)

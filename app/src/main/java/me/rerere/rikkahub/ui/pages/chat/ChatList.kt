@@ -277,9 +277,19 @@ private fun ChatListNormal(
 
     // 切换对话遮罩：conversation 变化时盖上，真实内容加载完成 + 列表稳定后淡出（8s 超时兜底）
     var covered by remember(conversation.id) { mutableStateOf(true) }
+    // 新对话且空白：不转圈（initializeConversation 创建后立即隐藏，避免空对话闪转圈；
+    // 一旦有消息 messageNodes 非空则不再命中，回访有内容的对话仍会转圈）
+    LaunchedEffect(conversation.id, conversation.newConversation, conversation.messageNodes) {
+        if (conversation.newConversation && conversation.messageNodes.isEmpty()) covered = false
+    }
     LaunchedEffect(conversation.id, conversationLoaded) {
         // 占位空对话期间保持盖上：真实内容（initializeConversation 完成）到达前绝不露出
         if (!conversationLoaded) return@LaunchedEffect
+        // 空白对话（无内容可渲染）：无需转圈，直接露出
+        if (conversation.messageNodes.isEmpty()) {
+            covered = false
+            return@LaunchedEffect
+        }
         withTimeoutOrNull(8000) {
             // 预热：此时 conversation 已是真实内容快照；与稳定采样并发，受同一 8s 上限；异常不阻塞遮罩释放
             launch(Dispatchers.Default) {
