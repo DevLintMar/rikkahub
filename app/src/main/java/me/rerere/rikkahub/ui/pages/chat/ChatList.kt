@@ -66,6 +66,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -126,6 +127,7 @@ fun ChatList(
     settings: Settings,
     hazeState: HazeState,
     errors: List<ChatError> = emptyList(),
+    conversationLoaded: Boolean,
     onDismissError: (Uuid) -> Unit = {},
     onClearAllErrors: () -> Unit = {},
     onRegenerate: (UIMessage) -> Unit = {},
@@ -168,6 +170,7 @@ fun ChatList(
                 settings = settings,
                 hazeState = hazeState,
                 errors = errors,
+                conversationLoaded = conversationLoaded,
                 onDismissError = onDismissError,
                 onClearAllErrors = onClearAllErrors,
                 onRegenerate = onRegenerate,
@@ -198,6 +201,7 @@ private fun ChatListNormal(
     settings: Settings,
     hazeState: HazeState,
     errors: List<ChatError>,
+    conversationLoaded: Boolean,
     onDismissError: (Uuid) -> Unit,
     onClearAllErrors: () -> Unit,
     onRegenerate: (UIMessage) -> Unit,
@@ -271,11 +275,13 @@ private fun ChatListNormal(
     }
     val highlighter: Highlighter = koinInject()
 
-    // 切换对话遮罩：conversation 变化时盖上，后台预热 + 列表稳定后淡出（8s 超时兜底）
+    // 切换对话遮罩：conversation 变化时盖上，真实内容加载完成 + 列表稳定后淡出（8s 超时兜底）
     var covered by remember(conversation.id) { mutableStateOf(true) }
-    LaunchedEffect(conversation.id) {
+    LaunchedEffect(conversation.id, conversationLoaded) {
+        // 占位空对话期间保持盖上：真实内容（initializeConversation 完成）到达前绝不露出
+        if (!conversationLoaded) return@LaunchedEffect
         withTimeoutOrNull(8000) {
-            // 预热：与稳定采样并发，受同一 8s 上限；异常不阻塞遮罩释放
+            // 预热：此时 conversation 已是真实内容快照；与稳定采样并发，受同一 8s 上限；异常不阻塞遮罩释放
             launch(Dispatchers.Default) {
                 try {
                     prewarmConversation(conversation, assistant, highlighter)
@@ -285,7 +291,10 @@ private fun ChatListNormal(
                     // 预热失败不阻塞遮罩释放
                 }
             }
-            // 稳定采样
+            // minor5: 先等一帧，让 ChatPage 的 requestScrollToItem（延迟到下一帧的滚动）有机会开始，
+            // 避免它在稳定采样判稳后才启动导致遮罩提前 1 帧露出
+            withFrameNanos {}
+            // 稳定采样：有内容、停止滚动、连续 3 次签名一致
             var stable = 0
             var lastSignature: List<Any?>? = null
             while (stable < 3) {
