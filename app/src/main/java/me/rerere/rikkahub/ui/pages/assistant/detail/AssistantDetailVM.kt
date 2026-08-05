@@ -78,6 +78,18 @@ class AssistantDetailVM(
             scope = viewModelScope, started = SharingStarted.Eagerly, initialValue = emptyList()
         )
 
+    val activeMemory = assistant
+        .flatMapLatest { currentAssistant ->
+            if (currentAssistant.useGlobalMemory) {
+                memoryRepository.getActiveMemoryFlow(MemoryRepository.GLOBAL_MEMORY_ID)
+            } else {
+                memoryRepository.getActiveMemoryFlow(assistantId.toString())
+            }
+        }
+        .stateIn(
+            scope = viewModelScope, started = SharingStarted.Eagerly, initialValue = null
+        )
+
     val providers = settingsStore
         .settingsFlow
         .map { settings ->
@@ -187,14 +199,33 @@ class AssistantDetailVM(
             }
             memoryRepository.addMemory(
                 assistantId = memoryAssistantId,
-                content = memory.content
+                title = memory.title,
+                description = memory.description,
+                content = memory.content,
+                overwrite = false,
             )
         }
     }
 
     fun updateMemory(memory: AssistantMemory) {
         viewModelScope.launch {
-            memoryRepository.updateContent(id = memory.id, content = memory.content)
+            memoryRepository.updateMemory(
+                id = memory.id,
+                title = memory.title,
+                description = memory.description,
+                content = memory.content,
+            )
+        }
+    }
+
+    fun updateActiveMemory(content: String) {
+        viewModelScope.launch {
+            val scope = if (assistant.value.useGlobalMemory) {
+                MemoryRepository.GLOBAL_MEMORY_ID
+            } else {
+                assistantId.toString()
+            }
+            memoryRepository.updateActiveMemory(assistantId = scope, content = content)
         }
     }
 

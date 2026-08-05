@@ -105,23 +105,9 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
         return entity.copy(id = memoryDAO.insertMemory(entity).toInt()).toModel()
     }
 
-    /** 兼容旧调用（迁移期临时，Task 5 后删除）：按 assistantId + content 写入空标题记录。不校验标题，直接插入（旧 memory_tool 无标题概念） */
-    suspend fun addMemory(assistantId: String, content: String): AssistantMemory {
-        val entity = MemoryEntity(assistantId = assistantId, content = content)
-        return entity.copy(id = memoryDAO.insertMemory(entity).toInt()).toModel()
-    }
-
     suspend fun updateMemory(id: Int, title: String, description: String, content: String): AssistantMemory {
         val old = memoryDAO.getMemoryById(id) ?: error("Memory record #$id not found")
         val updated = old.copy(title = title, description = description, content = content)
-        memoryDAO.updateMemory(updated)
-        return updated.toModel()
-    }
-
-    /** 兼容旧调用（迁移期临时，Task 5 后删除）：仅更新内容，保留标题/描述 */
-    suspend fun updateContent(id: Int, content: String): AssistantMemory {
-        val old = memoryDAO.getMemoryById(id) ?: error("Memory record #$id not found")
-        val updated = old.copy(content = content)
         memoryDAO.updateMemory(updated)
         return updated.toModel()
     }
