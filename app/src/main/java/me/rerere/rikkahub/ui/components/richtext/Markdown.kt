@@ -263,6 +263,39 @@ private val markdownParseCache = LruCache<String, MarkdownParseResult>(maxSize =
 private fun parseMarkdownCached(content: String): MarkdownParseResult =
     markdownParseCache.get(content) ?: parseMarkdown(content).also { markdownParseCache.put(content, it) }
 
+/** 切换对话遮罩期间后台预热：把解析结果写入进程级缓存，露出后 MarkdownBlock 首帧即命中 */
+fun prewarmMarkdown(content: String) {
+    parseMarkdownCached(content)
+}
+
+/** 从已解析内容收集所有代码块 (code, language)，供高亮预热 */
+fun collectCodeFences(content: String): List<Pair<String, String>> {
+    val result = parseMarkdownCached(content)
+    if (result.hasHtml) return emptyList()   // HTML 走 MarkdownNew 路径，不缓存
+    return buildList {
+        result.astTree.walkNodes { node ->
+            if (node.type == MarkdownElementTypes.CODE_FENCE) {
+                val extracted = extractCodeFence(node, result.preprocessed) ?: return@walkNodes
+                add(extracted)
+            }
+        }
+    }
+}
+
+/** 从 CODE_FENCE 节点提取 (code, language)；解析异常时返回 null（与 MarkdownNode.CODE_FENCE 分支同逻辑） */
+private fun extractCodeFence(node: ASTNode, content: String): Pair<String, String>? {
+    // 这里不能直接取CODE_FENCE_CONTENT的内容，因为首行indent没有包含在内
+    // 因此，需要往上找到最后一个EOL元素，用它来作为代码块的起始offset
+    val contentStartIndex = node.children.indexOfFirst { it.type == MarkdownTokenTypes.CODE_FENCE_CONTENT }
+    if (contentStartIndex == -1) return null
+    val eolElement = node.children.subList(0, contentStartIndex).findLast { it.type == MarkdownTokenTypes.EOL } ?: return null
+    val codeContentStartOffset = eolElement.endOffset
+    val codeContentEndOffset = node.children.findLast { it.type == MarkdownTokenTypes.CODE_FENCE_CONTENT }?.endOffset ?: return null
+    val code = content.substring(codeContentStartOffset, codeContentEndOffset).trimIndent()
+    val language = node.findChildOfTypeRecursive(MarkdownTokenTypes.FENCE_LANG)?.getTextInNode(content) ?: "plaintext"
+    return code to language
+}
+
 /** 段落 annotated string 构建的缓存 key（影响构建输出的全部输入） */
 private data class ParagraphRenderKey(
     val text: String,                  // 段落原始文本（getTextInNode）
@@ -658,26 +691,12 @@ private fun MarkdownNode(
 
         // 代码块
         MarkdownElementTypes.CODE_FENCE -> {
-            // 这里不能直接取CODE_FENCE_CONTENT的内容，因为首行indent没有包含在内
-            // 因此，需要往上找到最后一个EOL元素，用它来作为代码块的起始offset
-            val contentStartIndex = node.children.indexOfFirst { it.type == MarkdownTokenTypes.CODE_FENCE_CONTENT }
-            if (contentStartIndex == -1) return
-            val eolElement =
-                node.children.subList(0, contentStartIndex).findLast { it.type == MarkdownTokenTypes.EOL } ?: return
-            val codeContentStartOffset = eolElement.endOffset
-            val codeContentEndOffset =
-                node.children.findLast { it.type == MarkdownTokenTypes.CODE_FENCE_CONTENT }?.endOffset ?: return
-            val code = content.substring(
-                codeContentStartOffset, codeContentEndOffset
-            ).trimIndent()
-
-            val language =
-                node.findChildOfTypeRecursive(MarkdownTokenTypes.FENCE_LANG)?.getTextInNode(content) ?: "plaintext"
+            val extracted = extractCodeFence(node, content) ?: return
             val hasEnd = node.findChildOfTypeRecursive(MarkdownTokenTypes.CODE_FENCE_END) != null
 
             HighlightCodeBlock(
-                code = code,
-                language = language,
+                code = extracted.first,
+                language = extracted.second,
                 modifier = Modifier
                     .padding(bottom = 4.dp)
                     .fillMaxWidth(),
@@ -1440,6 +1459,12 @@ private fun ASTNode.traverseChildren(
         action(child)
         child.traverseChildren(action)
     }
+}
+
+/** 前序遍历 AST（含根节点自身），供 collectCodeFences 收集代码块 */
+private fun ASTNode.walkNodes(action: (ASTNode) -> Unit) {
+    action(this)
+    children.fastForEach { it.walkNodes(action) }
 }
 
 private fun List<ASTNode>.trim(type: IElementType, size: Int): List<ASTNode> {
