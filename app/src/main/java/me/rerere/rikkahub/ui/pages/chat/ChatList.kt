@@ -90,7 +90,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import me.rerere.ai.ui.UIMessage
 import me.rerere.highlight.Highlighter
@@ -275,10 +274,12 @@ private fun ChatListNormal(
     // 切换对话遮罩：conversation 变化时盖上，后台预热 + 列表稳定后淡出（8s 超时兜底）
     var covered by remember(conversation.id) { mutableStateOf(true) }
     LaunchedEffect(conversation.id) {
-        withContext(Dispatchers.Default) {
-            prewarmConversation(conversation, assistant, highlighter)
-        }
         withTimeoutOrNull(8000) {
+            // 预热：与稳定采样并发，受同一 8s 上限；异常被 runCatching 吞掉，绝不阻塞遮罩释放
+            launch(Dispatchers.Default) {
+                runCatching { prewarmConversation(conversation, assistant, highlighter) }
+            }
+            // 稳定采样
             var stable = 0
             var lastSignature: List<Any?>? = null
             while (stable < 3) {
@@ -288,7 +289,7 @@ private fun ChatListNormal(
                 if (signature == lastSignature) stable++ else { lastSignature = signature; stable = 1 }
             }
         }
-        covered = false
+        covered = false   // 稳定或超时都会执行，遮罩绝不卡死
     }
 
     val modelById = remember(settings.providers) {

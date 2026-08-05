@@ -25,11 +25,14 @@ suspend fun prewarmConversation(
     conversation.currentMessages.asReversed().forEach { message ->
         val scope = if (message.role == MessageRole.USER) AssistantAffectScope.USER else AssistantAffectScope.ASSISTANT
         message.parts.forEach { part ->
-            when (part) {
-                is UIMessagePart.Text -> prewarmText(part.text, assistant, scope, highlighter)
-                is UIMessagePart.Reasoning -> prewarmText(part.reasoning, assistant, AssistantAffectScope.ASSISTANT, highlighter)
-                is UIMessagePart.Tool -> prewarmToolOutput(highlighter, part)
-                else -> {}
+            // 逐 part 吞异常：一条坏消息/坏 part（如 Prism 高亮失败）不中止整段预热
+            runCatching {
+                when (part) {
+                    is UIMessagePart.Text -> prewarmText(part.text, assistant, scope, highlighter)
+                    is UIMessagePart.Reasoning -> prewarmText(part.reasoning, assistant, AssistantAffectScope.ASSISTANT, highlighter)
+                    is UIMessagePart.Tool -> prewarmToolOutput(highlighter, part)
+                    else -> {}
+                }
             }
         }
     }
