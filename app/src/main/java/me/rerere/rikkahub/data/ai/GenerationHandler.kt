@@ -46,6 +46,7 @@ import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.AssistantMemory
+import me.rerere.rikkahub.data.repository.ActiveMemoryMode
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.utils.applyPlaceholders
 import java.util.Locale
@@ -102,15 +103,38 @@ class GenerationHandler(
                     }
                     buildMemoryTools(
                         json = json,
-                        onCreation = { content ->
-                            memoryRepo.addMemory(memoryAssistantId, content)
+                        readMemoryByTitle = { title ->
+                            memoryRepo.getMemoryByTitle(memoryAssistantId, title)
                         },
-                        onUpdate = { id, content ->
-                            memoryRepo.updateContent(id, content)
+                        updateActiveMemory = { content, mode, oldString, newString ->
+                            memoryRepo.updateActiveMemory(
+                                assistantId = memoryAssistantId,
+                                content = content,
+                                mode = ActiveMemoryMode.valueOf(mode.uppercase()),
+                                oldString = oldString,
+                                newString = newString,
+                            )
                         },
-                        onDelete = { id ->
-                            memoryRepo.deleteMemory(id)
-                        }
+                        writeMemory = { title, description, content, overwrite ->
+                            memoryRepo.addMemory(memoryAssistantId, title, description, content, overwrite)
+                        },
+                        editMemory = { title, newTitle, description, content, oldText, newText, replaceAll ->
+                            memoryRepo.editMemoryByTitle(
+                                assistantId = memoryAssistantId,
+                                title = title,
+                                newTitle = newTitle,
+                                description = description,
+                                content = content,
+                                oldText = oldText,
+                                newText = newText,
+                                replaceAll = replaceAll,
+                            )
+                        },
+                        deleteMemoryByTitle = { title ->
+                            memoryRepo.deleteMemoryByTitle(memoryAssistantId, title)
+                        },
+                        includeActiveEdit = assistant.enableEditActiveMemory,
+                        includeSavedEdit = assistant.enableEditSavedMemories,
                     ).let(this::addAll)
                 }
                 addAll(tools)
