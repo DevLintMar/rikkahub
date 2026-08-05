@@ -85,6 +85,10 @@ import me.rerere.rikkahub.utils.JsonInstantPretty
 import me.rerere.rikkahub.utils.jsonPrimitiveOrNull
 import me.rerere.rikkahub.utils.openUrl
 import org.koin.compose.koinInject
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 
 /**
  * 记忆工具: 按 action 区分标题/图标, 摘要显示记忆内容, 详情附带删除按钮
@@ -442,13 +446,52 @@ object TextToSpeechToolUI : ToolUIRenderer {
         return stringResource(R.string.tool_ui_speaking, preview)
     }
 
+    // 文本来源与 Preview 保持一致（content 优先、arguments 兜底；arguments 在调用期即已知）
+    private fun speakText(context: ToolUIContext): String =
+        context.content.getStringContent("text")
+            ?: context.arguments.getStringContent("text")
+            ?: ""
+
+    // 回归最早展示模式: 折叠步骤内联显示朗读文本 + 右侧重放按钮（596f08d 误移入 Preview）
+    override fun hasSummary(context: ToolUIContext): Boolean = speakText(context).isNotBlank()
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val eventBus: AppEventBus = koinInject()
+        val scope = rememberCoroutineScope()
+        val text = speakText(context)
+        if (text.isBlank()) return
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            FilledTonalIconButton(
+                onClick = { scope.launch { eventBus.emit(AppEvent.Speak(text)) } },
+                modifier = Modifier.size(28.dp),
+            ) {
+                Icon(
+                    imageVector = HugeIcons.Refresh01,
+                    contentDescription = stringResource(R.string.tool_ui_replay),
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+        }
+    }
+
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
         val eventBus: AppEventBus = koinInject()
         val scope = rememberCoroutineScope()
-        val text = context.content.getStringContent("text")
-            ?: context.arguments.getStringContent("text")
-            ?: ""
+        val text = speakText(context)
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -774,13 +817,34 @@ object GetScreenTimeToolUI : ToolUIRenderer {
             return
         }
         ToolDetailContainer {
-            val totalMinutes = content.getStringContent("total_minutes")?.toIntOrNull()
-            if (totalMinutes != null) {
+            // 回归最早展示: 总屏幕时间单独一行(label + Xh Ym), 下方区间与按时长排序的 app 列表(带占比条)
+            val totalMinutes = content.jsonObjectOrNull?.get("total_minutes")
+                ?.jsonPrimitiveOrNull?.longOrNull ?: 0
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    ToolPill(stringResource(R.string.tool_ui_screen_total, totalMinutes))
+                    Text(
+                        text = stringResource(R.string.tool_ui_screen_time_total),
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        text = formatMinutes(totalMinutes),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                val begin = content.getStringContent("start")
+                val finish = content.getStringContent("end")
+                if (begin != null && finish != null) {
+                    Text(
+                        text = "${formatRangeTime(begin)} → ${formatRangeTime(finish)}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    )
                 }
             }
             if (apps.isEmpty()) {
@@ -792,12 +856,14 @@ object GetScreenTimeToolUI : ToolUIRenderer {
             } else {
                 val maxAppMs = apps.maxOfOrNull { it.appMs() }?.takeIf { it > 0 } ?: 1L
                 apps.forEach { app ->
-                    val name = app.getStringContent("app_name") ?: app.getStringContent("package") ?: "?"
-                    val minutes = app.getStringContent("total_minutes")?.toIntOrNull()
-                    Column(modifier = Modifier.fillMaxWidth()) {
+                    val name = app.getStringContent("app_name")
+                        ?: app.getStringContent("package") ?: return@forEach
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             Text(
@@ -807,13 +873,11 @@ object GetScreenTimeToolUI : ToolUIRenderer {
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f),
                             )
-                            if (minutes != null) {
-                                Text(
-                                    text = stringResource(R.string.tool_ui_minutes, minutes),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
+                            Text(
+                                text = formatMinutes(app.appMinutes()),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            )
                         }
                         LinearProgressIndicator(
                             progress = { (app.appMs().toFloat() / maxAppMs).coerceIn(0f, 1f) },
@@ -981,6 +1045,23 @@ private fun formatMinutes(minutes: Long): String {
         else -> "${m}m"
     }
 }
+
+private val SCREEN_TIME_RANGE_FORMATTER: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("MM-dd HH:mm")
+
+/**
+ * 将工具返回的 ISO 时间字符串格式化为 "MM-dd HH:mm", 解析失败时原样返回.
+ *
+ * 工具用 ZonedDateTime.toString() 输出, 区域 ID 时会带 "[Asia/Shanghai]" 后缀,
+ * 故优先用 ZonedDateTime.parse, 再回退到 offset / 本地日期时间.
+ */
+private fun formatRangeTime(iso: String): String = runCatching {
+    ZonedDateTime.parse(iso).format(SCREEN_TIME_RANGE_FORMATTER)
+}.recoverCatching {
+    OffsetDateTime.parse(iso).format(SCREEN_TIME_RANGE_FORMATTER)
+}.recoverCatching {
+    LocalDateTime.parse(iso).format(SCREEN_TIME_RANGE_FORMATTER)
+}.getOrDefault(iso)
 
 @Composable
 private fun SearchWebPreview(content: JsonElement) {

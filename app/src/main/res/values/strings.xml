@@ -1329,9 +1329,7 @@
   <string name="tool_ui_event_start">Start: %1$s</string>
   <string name="tool_ui_memory_deleted">Memory deleted</string>
   <string name="tool_ui_memory_id">id %1$d</string>
-  <string name="tool_ui_minutes">%1$d min</string>
   <string name="tool_ui_screen_empty">No screen time</string>
-  <string name="tool_ui_screen_total">Total %1$d min</string>
   <string name="workspace_page_name_duplicate">Name already exists</string>
   <string name="setting_mcp_page_name_invalid">Name can only contain English letters and numbers</string>
   <string name="log_page_record_requests">Record requests</string>
