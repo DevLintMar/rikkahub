@@ -77,6 +77,7 @@ class GenerationHandler(
         outputTransformers: List<OutputMessageTransformer> = emptyList(),
         assistant: Assistant,
         memories: List<AssistantMemory>? = null,
+        activeMemory: AssistantMemory? = null,
         tools: List<Tool> = emptyList(),
         maxSteps: Int = 256,
         processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
@@ -179,6 +180,7 @@ class GenerationHandler(
                     provider = provider,
                     tools = toolsInternal,
                     memories = memories ?: emptyList(),
+                    activeMemory = activeMemory,
                     stream = assistant.streamOutput,
                     processingStatus = processingStatus,
                     conversationSystemPrompt = conversationSystemPrompt,
@@ -409,6 +411,7 @@ class GenerationHandler(
         provider: ProviderSetting,
         tools: List<Tool>,
         memories: List<AssistantMemory>,
+        activeMemory: AssistantMemory? = null,
         stream: Boolean,
         processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
         conversationSystemPrompt: String? = null,
@@ -431,7 +434,7 @@ class GenerationHandler(
                 // 记忆
                 if (assistant.enableMemory) {
                     appendLine()
-                    append(buildMemoryPrompt(memories = memories))
+                    append(buildMemoryPrompt(activeMemory = activeMemory, savedMemories = memories))
                 }
                 // 工具prompt
                 tools.forEach { tool ->

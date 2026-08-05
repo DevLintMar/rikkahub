@@ -1,26 +1,33 @@
 package me.rerere.rikkahub.data.ai
 
-import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import me.rerere.rikkahub.data.model.AssistantMemory
 import me.rerere.rikkahub.utils.JsonInstantPretty
 
-internal fun buildMemoryPrompt(memories: List<AssistantMemory>) =
-    buildString {
+internal fun buildMemoryPrompt(
+    activeMemory: AssistantMemory?,
+    savedMemories: List<AssistantMemory>,
+) = buildString {
+    appendLine()
+    append("**Memories**")
+    appendLine()
+    if (activeMemory != null && activeMemory.content.isNotBlank()) {
+        appendLine("Active memory:")
         appendLine()
-        append("**Memories**")
-        appendLine()
-        append("These are memories stored via the memory_tool that you can reference in future conversations.")
-        appendLine()
-        val json = buildJsonArray {
-            memories.forEach { memory ->
-                add(buildJsonObject {
-                    put("id", memory.id)
-                    put("content", memory.content)
-                })
-            }
-        }
-        append(JsonInstantPretty.encodeToString(json))
+        append(activeMemory.content)
         appendLine()
     }
+    if (savedMemories.isNotEmpty()) {
+        appendLine("Saved memories (use read_memory to read the full content of any):")
+        savedMemories.forEach { memory ->
+            val title = memory.title.ifBlank { memory.content.trim().take(40) }
+            if (memory.description.isBlank()) {
+                appendLine("- $title")
+            } else {
+                appendLine("- $title — ${memory.description}")
+            }
+        }
+    }
+    append("Only the titles and descriptions of saved memories are listed here; call read_memory with a title to fetch its full content.")
+}
