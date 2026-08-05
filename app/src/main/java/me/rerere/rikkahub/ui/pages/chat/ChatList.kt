@@ -277,10 +277,10 @@ private fun ChatListNormal(
 
     // 切换对话遮罩：conversation 变化时盖上，真实内容加载完成 + 列表稳定后淡出（8s 超时兜底）
     var covered by remember(conversation.id) { mutableStateOf(true) }
-    // 新对话且空白：不转圈（initializeConversation 创建后立即隐藏，避免空对话闪转圈；
-    // 一旦有消息 messageNodes 非空则不再命中，回访有内容的对话仍会转圈）
-    LaunchedEffect(conversation.id, conversation.newConversation, conversation.messageNodes) {
-        if (conversation.newConversation && conversation.messageNodes.isEmpty()) covered = false
+    // 新对话：一律不转圈（initializeConversation 创建后立即隐藏，避免空对话闪转圈；
+    // 新建对话即使带预设消息也直接露出；打开已有对话 newConversation=false 仍走下面转圈）
+    LaunchedEffect(conversation.id, conversation.newConversation) {
+        if (conversation.newConversation) covered = false
     }
     LaunchedEffect(conversation.id, conversationLoaded) {
         // 占位空对话期间保持盖上：真实内容（initializeConversation 完成）到达前绝不露出
