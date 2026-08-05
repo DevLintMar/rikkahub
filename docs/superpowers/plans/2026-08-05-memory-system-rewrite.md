@@ -375,16 +375,18 @@ Expected: CI 绿（核对 headSha）。`replaceText` import：`me.rerere.rikkahu
 
 ---
 
-### Task 3: AI 工具（MemoryTools.kt 重写）
+### Task 3: AI 工具（MemoryTools 重写 + GenerationHandler 注册接线）
 
 **Files:**
 - Modify: `app/src/main/java/me/rerere/rikkahub/data/ai/tools/MemoryTools.kt`（整文件重写）
+- Modify: `app/src/main/java/me/rerere/rikkahub/data/ai/GenerationHandler.kt`（toolsInternal 注册块，现 line 95-115）
 
 **Interfaces:**
 - Consumes: `MemoryRepository` 方法（Task 2）、`AssistantMemory`、`ActiveMemoryMode`、`replaceText`
 - Produces:
   - `fun buildMemoryTools(json: Json, readMemoryByTitle, updateActiveMemory, writeMemory, editMemory, deleteMemoryByTitle, includeActiveEdit: Boolean, includeSavedEdit: Boolean): List<Tool>`
   - 工具名：`read_memory`、`update_active_memory`、`write_memory`、`edit_memory`、`delete_memory`
+  - `GenerationHandler.generateText` 中记忆工具按门槛注册（本任务完成；`buildMemoryPrompt` 注入与 `activeMemory` 参数留待 Task 4）
 
 - [ ] **Step 1: 整文件重写 `MemoryTools.kt`**
 
@@ -636,11 +638,63 @@ fun buildMemoryTools(
 
 > 注：`enum` 数组用 `buildJsonArray { add("...") }`（`add`/`buildJsonArray` 来自 `kotlinx.serialization.json`，已在上方 import）；`put("id", memory.id)` 中 Int 自动装箱为 JsonPrimitive。
 
-- [ ] **Step 2: 编译验证 + 提交**
+- [ ] **Step 2: 替换 `GenerationHandler.generateText` 中记忆工具注册逻辑**
+
+把 `GenerationHandler.kt` 现 line 97-115 的 `if (assistant?.enableMemory == true) { ... buildMemoryTools(...) }` 整体替换为：
+
+```kotlin
+                if (assistant?.enableMemory == true) {
+                    val memoryAssistantId = if (assistant.useGlobalMemory) {
+                        MemoryRepository.GLOBAL_MEMORY_ID
+                    } else {
+                        assistant.id.toString()
+                    }
+                    buildMemoryTools(
+                        json = json,
+                        readMemoryByTitle = { title ->
+                            memoryRepo.getMemoryByTitle(memoryAssistantId, title)
+                        },
+                        updateActiveMemory = { content, mode, oldString, newString ->
+                            memoryRepo.updateActiveMemory(
+                                assistantId = memoryAssistantId,
+                                content = content,
+                                mode = ActiveMemoryMode.valueOf(mode.uppercase()),
+                                oldString = oldString,
+                                newString = newString,
+                            )
+                        },
+                        writeMemory = { title, description, content, overwrite ->
+                            memoryRepo.addMemory(memoryAssistantId, title, description, content, overwrite)
+                        },
+                        editMemory = { title, newTitle, description, content, oldText, newText, replaceAll ->
+                            memoryRepo.editMemoryByTitle(
+                                assistantId = memoryAssistantId,
+                                title = title,
+                                newTitle = newTitle,
+                                description = description,
+                                content = content,
+                                oldText = oldText,
+                                newText = newText,
+                                replaceAll = replaceAll,
+                            )
+                        },
+                        deleteMemoryByTitle = { title ->
+                            memoryRepo.deleteMemoryByTitle(memoryAssistantId, title)
+                        },
+                        includeActiveEdit = assistant.enableEditActiveMemory,
+                        includeSavedEdit = assistant.enableEditSavedMemories,
+                    ).let(this::addAll)
+                }
+```
+
+新增 import：`import me.rerere.rikkahub.data.ai.tools.buildMemoryTools`、`import me.rerere.rikkahub.data.repository.ActiveMemoryMode`、`import me.rerere.rikkahub.data.repository.MemoryRepository`（若未显式，用全限定名）。
+
+- [ ] **Step 3: 编译验证 + 提交**
 
 ```bash
 git add app/src/main/java/me/rerere/rikkahub/data/ai/tools/MemoryTools.kt
-git commit -m "feat(memory): 重写记忆工具为 read/update_active/write/edit/delete 五工具"
+git add app/src/main/java/me/rerere/rikkahub/data/ai/GenerationHandler.kt
+git commit -m "feat(memory): 重写记忆工具为 read/update_active/write/edit/delete 五工具并按开关门槛注册"
 git push origin master
 gh workflow run nightly-build-debug.yml --repo DevLintMar/rikkahub --ref master
 ```
@@ -648,11 +702,11 @@ Expected: CI 绿。旧 `memory_tool` 定义删除；`MemoryToolUI`（UI 渲染�
 
 ---
 
-### Task 4: 工具注册门槛 + 提示词注入 + ChatService 接线
+### Task 4: 提示词注入（buildMemoryPrompt 重写 + activeMemory 参数 + ChatService 接线）
 
 **Files:**
-- Modify: `app/src/main/java/me/rerere/rikkahub/data/ai/GenerationHandler.kt`
 - Modify: `app/src/main/java/me/rerere/rikkahub/data/ai/GenerationPrompts.kt`
+- Modify: `app/src/main/java/me/rerere/rikkahub/data/ai/GenerationHandler.kt`（activeMemory 参数 + 注入行）
 - Modify: `app/src/main/java/me/rerere/rikkahub/service/ChatService.kt:657-661`
 
 **Interfaces:**
@@ -714,58 +768,7 @@ internal fun buildMemoryPrompt(
                     activeMemory = activeMemory,
 ```
 
-- [ ] **Step 3: 替换 `generateText` 中记忆工具注册逻辑**
-
-把现 line 97-115 的 `if (assistant?.enableMemory == true) { ... buildMemoryTools(...) }` 整体替换为：
-
-```kotlin
-                if (assistant?.enableMemory == true) {
-                    val memoryAssistantId = if (assistant.useGlobalMemory) {
-                        MemoryRepository.GLOBAL_MEMORY_ID
-                    } else {
-                        assistant.id.toString()
-                    }
-                    buildMemoryTools(
-                        json = json,
-                        readMemoryByTitle = { title ->
-                            memoryRepo.getMemoryByTitle(memoryAssistantId, title)
-                        },
-                        updateActiveMemory = { content, mode, oldString, newString ->
-                            memoryRepo.updateActiveMemory(
-                                assistantId = memoryAssistantId,
-                                content = content,
-                                mode = ActiveMemoryMode.valueOf(mode.uppercase()),
-                                oldString = oldString,
-                                newString = newString,
-                            )
-                        },
-                        writeMemory = { title, description, content, overwrite ->
-                            memoryRepo.addMemory(memoryAssistantId, title, description, content, overwrite)
-                        },
-                        editMemory = { title, newTitle, description, content, oldText, newText, replaceAll ->
-                            memoryRepo.editMemoryByTitle(
-                                assistantId = memoryAssistantId,
-                                title = title,
-                                newTitle = newTitle,
-                                description = description,
-                                content = content,
-                                oldText = oldText,
-                                newText = newText,
-                                replaceAll = replaceAll,
-                            )
-                        },
-                        deleteMemoryByTitle = { title ->
-                            memoryRepo.deleteMemoryByTitle(memoryAssistantId, title)
-                        },
-                        includeActiveEdit = assistant.enableEditActiveMemory,
-                        includeSavedEdit = assistant.enableEditSavedMemories,
-                    ).let(this::addAll)
-                }
-```
-
-新增 import：`import me.rerere.rikkahub.data.ai.tools.buildMemoryTools`（若未显式，用全限定名或加 import）、`import me.rerere.rikkahub.data.repository.ActiveMemoryMode`、`import me.rerere.rikkahub.data.repository.MemoryRepository`。
-
-- [ ] **Step 4: `generateInternal` 加 `activeMemory` 参数并替换注入调用**
+- [ ] **Step 3: `generateInternal` 加 `activeMemory` 参数并替换注入调用**
 
 在 `generateInternal` 签名（`memories: List<AssistantMemory>` 之后，line 387）加：
 
@@ -783,7 +786,7 @@ internal fun buildMemoryPrompt(
                 }
 ```
 
-- [ ] **Step 5: `ChatService.kt` 传 `activeMemory`**
+- [ ] **Step 4: `ChatService.kt` 传 `activeMemory`**
 
 在 `generateText(...)` 调用的 `memories = ...`（line 657-661）之前加：
 
@@ -797,13 +800,13 @@ internal fun buildMemoryPrompt(
 
 确认 `ChatService` 已 import `MemoryRepository`（若未，加 `import me.rerere.rikkahub.data.repository.MemoryRepository`）。
 
-- [ ] **Step 6: 编译验证 + 提交**
+- [ ] **Step 5: 编译验证 + 提交**
 
 ```bash
 git add app/src/main/java/me/rerere/rikkahub/data/ai/GenerationHandler.kt
 git add app/src/main/java/me/rerere/rikkahub/data/ai/GenerationPrompts.kt
 git add app/src/main/java/me/rerere/rikkahub/service/ChatService.kt
-git commit -m "feat(memory): 记忆工具按开关门槛注册，注入活跃记忆全量+已保存记忆标题描述"
+git commit -m "feat(memory): 注入活跃记忆全量+已保存记忆标题描述，activeMemory 贯穿生成链路"
 git push origin master
 gh workflow run nightly-build-debug.yml --repo DevLintMar/rikkahub --ref master
 ```
