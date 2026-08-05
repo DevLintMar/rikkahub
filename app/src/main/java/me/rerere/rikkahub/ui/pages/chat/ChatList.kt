@@ -21,6 +21,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -44,6 +45,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
@@ -85,9 +87,13 @@ import androidx.compose.ui.zIndex
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import me.rerere.ai.ui.UIMessage
+import me.rerere.highlight.Highlighter
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.getAssistantById
@@ -102,6 +108,7 @@ import me.rerere.rikkahub.ui.components.ui.Tooltip
 import me.rerere.rikkahub.ui.hooks.ImeLazyListAutoScroller
 import me.rerere.rikkahub.ui.theme.ChatFontProvider
 import me.rerere.rikkahub.utils.plus
+import org.koin.compose.koinInject
 import kotlin.math.roundToInt
 import kotlin.uuid.Uuid
 
@@ -263,6 +270,27 @@ private fun ChatListNormal(
     val assistant = remember(settings.assistants, conversation.assistantId) {
         settings.getAssistantById(conversation.assistantId)
     }
+    val highlighter: Highlighter = koinInject()
+
+    // 切换对话遮罩：conversation 变化时盖上，后台预热 + 列表稳定后淡出（8s 超时兜底）
+    var covered by remember(conversation.id) { mutableStateOf(true) }
+    LaunchedEffect(conversation.id) {
+        withContext(Dispatchers.Default) {
+            prewarmConversation(conversation, assistant, highlighter)
+        }
+        withTimeoutOrNull(8000) {
+            var stable = 0
+            var lastSignature: List<Any>? = null
+            while (stable < 3) {
+                delay(32)
+                val info = state.layoutInfo
+                val signature = listOf(info.totalItemsCount, info.visibleItemsInfo.firstOrNull()?.index, state.isScrollInProgress)
+                if (signature == lastSignature) stable++ else { lastSignature = signature; stable = 1 }
+            }
+        }
+        covered = false
+    }
+
     val modelById = remember(settings.providers) {
         settings.providers
             .flatMap { it.models }
@@ -523,6 +551,22 @@ private fun ChatListNormal(
                     onClickSuggestion = onClickSuggestion,
                     modifier = Modifier.align(Alignment.BottomCenter)
                 )
+            }
+        }
+
+        // 切换对话遮罩：conversation 变化时盖上，后台预热 + 列表稳定后淡出（8s 超时兜底）
+        AnimatedVisibility(
+            visible = covered,
+            modifier = Modifier.fillMaxSize(),
+            exit = fadeOut(tween(300)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(48.dp), strokeWidth = 5.dp)
             }
         }
     }
