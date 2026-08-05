@@ -52,6 +52,8 @@ data class Assistant(
     val enableSubAgentAutoApproval: Boolean = false,     // 子代理免批准
     val allowConversationSystemPrompt: Boolean = false, // 允许对话单独重写 system prompt
     val allowConversationPromptInjection: Boolean = false, // 允许对话单独绑定提示词注入
+    val enableEditActiveMemory: Boolean = false,   // "更改活跃记忆"：允许 AI 修改活跃记忆
+    val enableEditSavedMemories: Boolean = false,  // "更改已保存的记忆"：允许 AI 新增/编辑/删除已保存记忆
 )
 
 @Serializable
@@ -64,7 +66,10 @@ data class QuickMessage(
 @Serializable
 data class AssistantMemory(
     val id: Int,
+    val title: String = "",
+    val description: String = "",
     val content: String = "",
+    val isActive: Boolean = false,   // 仅活跃记忆行为 true
 )
 
 @Serializable
