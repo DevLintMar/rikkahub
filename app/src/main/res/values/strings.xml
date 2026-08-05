@@ -258,12 +258,15 @@
   <string name="chat_message_tool_clipboard_read">Read clipboard</string>
   <string name="chat_message_tool_clipboard_write">Write clipboard</string>
   <string name="chat_message_tool_create_memory">Created memory</string>
-  <string name="chat_message_tool_delete_memory">Deleted memory</string>
+  <string name="chat_message_tool_delete_memory">Delete memory</string>
   <string name="chat_message_tool_denied">Denied</string>
   <string name="chat_message_tool_deny">Deny</string>
   <string name="chat_message_tool_deny_dialog_hint">Reason (optional)</string>
   <string name="chat_message_tool_deny_dialog_title">Deny Tool Execution</string>
-  <string name="chat_message_tool_edit_memory">Updated memory</string>
+  <string name="chat_message_tool_edit_memory">Edit memory</string>
+  <string name="chat_message_tool_read_memory">Read memory</string>
+  <string name="chat_message_tool_write_memory">Write memory</string>
+  <string name="chat_message_tool_update_active_memory">Update active memory</string>
   <string name="chat_message_tool_get_time">Get time info</string>
   <string name="chat_message_tool_read_conversation">Read conversation</string>
   <string name="chat_message_tool_scrape_prefix">Scrape website: %1$s</string>

@@ -249,12 +249,15 @@
   <string name="chat_message_tool_clipboard_read">클립보드 읽기</string>
   <string name="chat_message_tool_clipboard_write">클립보드에 쓰기</string>
   <string name="chat_message_tool_create_memory">기억 생성됨</string>
-  <string name="chat_message_tool_delete_memory">기억 삭제됨</string>
+  <string name="chat_message_tool_delete_memory">기억 삭제</string>
   <string name="chat_message_tool_denied">거부됨</string>
   <string name="chat_message_tool_deny">거부</string>
   <string name="chat_message_tool_deny_dialog_hint">거절 사유(선택 사항)</string>
   <string name="chat_message_tool_deny_dialog_title">도구 실행 거부</string>
-  <string name="chat_message_tool_edit_memory">기억 업데이트됨</string>
+  <string name="chat_message_tool_edit_memory">기억 편집</string>
+  <string name="chat_message_tool_read_memory">기억 읽기</string>
+  <string name="chat_message_tool_write_memory">기억 쓰기</string>
+  <string name="chat_message_tool_update_active_memory">활성 기억 업데이트</string>
   <string name="chat_message_tool_get_time">시간 정보 가져오기</string>
   <string name="chat_message_tool_scrape_prefix">웹사이트 긁어오기: %1$s</string>
   <string name="chat_message_tool_scrape_web">웹 페이지 긁어오기</string>

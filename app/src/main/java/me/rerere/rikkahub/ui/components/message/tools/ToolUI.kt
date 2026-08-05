@@ -86,6 +86,11 @@ private object DefaultToolUIRenderer : ToolUIRenderer {
  */
 object ToolUIRegistry {
     private val renderers: Map<String, ToolUIRenderer> = listOf(
+        ReadMemoryToolUI,
+        UpdateActiveMemoryToolUI,
+        WriteMemoryToolUI,
+        EditMemoryToolUI,
+        DeleteMemoryToolUI,
         MemoryToolUI,
         SearchWebToolUI,
         ScrapeWebToolUI,

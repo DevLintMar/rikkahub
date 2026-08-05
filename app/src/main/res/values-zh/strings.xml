@@ -258,12 +258,15 @@
   <string name="chat_message_tool_clipboard_read">读取剪贴板</string>
   <string name="chat_message_tool_clipboard_write">写入剪贴板</string>
   <string name="chat_message_tool_create_memory">创建了记忆</string>
-  <string name="chat_message_tool_delete_memory">删除了记忆</string>
+  <string name="chat_message_tool_delete_memory">删除记忆</string>
   <string name="chat_message_tool_denied">已拒绝</string>
   <string name="chat_message_tool_deny">拒绝</string>
   <string name="chat_message_tool_deny_dialog_hint">原因（可选）</string>
   <string name="chat_message_tool_deny_dialog_title">拒绝工具执行</string>
-  <string name="chat_message_tool_edit_memory">更新了记忆</string>
+  <string name="chat_message_tool_edit_memory">编辑记忆</string>
+  <string name="chat_message_tool_read_memory">读取记忆</string>
+  <string name="chat_message_tool_write_memory">写入记忆</string>
+  <string name="chat_message_tool_update_active_memory">更新活跃记忆</string>
   <string name="chat_message_tool_get_time">获取时间信息</string>
   <string name="chat_message_tool_read_conversation">阅读对话</string>
   <string name="chat_message_tool_scrape_prefix">抓取网站：%1$s</string>

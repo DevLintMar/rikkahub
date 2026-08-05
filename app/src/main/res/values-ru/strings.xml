@@ -249,12 +249,15 @@
   <string name="chat_message_tool_clipboard_read">Читать буфер обмена</string>
   <string name="chat_message_tool_clipboard_write">Записать в буфер обмена</string>
   <string name="chat_message_tool_create_memory">Создана заметка</string>
-  <string name="chat_message_tool_delete_memory">Удалённая память</string>
+  <string name="chat_message_tool_delete_memory">Удалить память</string>
   <string name="chat_message_tool_denied">Отклонено</string>
   <string name="chat_message_tool_deny">Отклонить</string>
   <string name="chat_message_tool_deny_dialog_hint">Причина (необязательно)</string>
   <string name="chat_message_tool_deny_dialog_title">Отклонить выполнение инструмента</string>
-  <string name="chat_message_tool_edit_memory">Обновлена память</string>
+  <string name="chat_message_tool_edit_memory">Редактировать память</string>
+  <string name="chat_message_tool_read_memory">Читать память</string>
+  <string name="chat_message_tool_write_memory">Записать память</string>
+  <string name="chat_message_tool_update_active_memory">Обновить активную память</string>
   <string name="chat_message_tool_get_time">Получить информацию о времени</string>
   <string name="chat_message_tool_scrape_prefix">Собрать данные с сайта: %1$s</string>
   <string name="chat_message_tool_scrape_web">Собрать данные со страницы</string>
