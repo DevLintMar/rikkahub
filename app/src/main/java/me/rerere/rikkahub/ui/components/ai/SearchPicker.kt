@@ -32,6 +32,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -42,8 +43,8 @@ import me.rerere.ai.provider.Model
 import me.rerere.ai.registry.ModelRegistry
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.GlobalSearch
-import me.rerere.hugeicons.stroke.AiSearch02
 import me.rerere.hugeicons.stroke.Search01
+import me.rerere.hugeicons.stroke.SearchRemove
 import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
@@ -87,13 +88,15 @@ fun SearchPickerButton(
             ) {
                 if (enableSearch || model?.tools?.contains(BuiltInTools.Search) == true) {
                     Icon(
-                        imageVector = HugeIcons.AiSearch02,
+                        imageVector = HugeIcons.Search01,
                         contentDescription = stringResource(R.string.use_web_search),
+                        tint = Color.Black,
                     )
                 } else {
                     Icon(
-                        imageVector = HugeIcons.Search01,
+                        imageVector = HugeIcons.SearchRemove,
                         contentDescription = stringResource(R.string.use_web_search),
+                        tint = Color.Black,
                     )
                 }
             }
