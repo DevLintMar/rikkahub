@@ -394,6 +394,8 @@ package me.rerere.rikkahub.data.ai.tools
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
@@ -466,7 +468,12 @@ fun buildMemoryTools(
                         })
                         put("mode", buildJsonObject {
                             put("type", "string")
-                            put("enum", buildJsonArrayOf("replace", "append", "prepend", "patch"))
+                            put("enum", buildJsonArray {
+                                add("replace")
+                                add("append")
+                                add("prepend")
+                                add("patch")
+                            })
                             put("description", "One of: replace, append, prepend, patch. Default is replace.")
                         })
                         put("old_string", buildJsonObject {
@@ -627,7 +634,7 @@ fun buildMemoryTools(
 }
 ```
 
-> 注：`buildJsonArrayOf` 来自 `kotlinx.serialization.json`（顶层函数，无需 import 冲突）；`put("id", memory.id)` 中 Int 自动装箱为 JsonPrimitive。
+> 注：`enum` 数组用 `buildJsonArray { add("...") }`（`add`/`buildJsonArray` 来自 `kotlinx.serialization.json`，已在上方 import）；`put("id", memory.id)` 中 Int 自动装箱为 JsonPrimitive。
 
 - [ ] **Step 2: 编译验证 + 提交**
 
