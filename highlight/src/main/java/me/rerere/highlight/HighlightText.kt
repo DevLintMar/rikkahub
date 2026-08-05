@@ -23,10 +23,34 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastForEach
+import java.util.LinkedHashMap
 
 val LocalHighlighter = compositionLocalOf<Highlighter> { error("No Highlighter provided") }
 
 private const val MAX_CODE_LENGTH = 4096
+
+/** 进程级高亮 token 缓存：token 与主题无关，跨亮暗复用；AnnotatedString 仍按当前 palette 每次构建 */
+private class HighlightTokenLruCache(private val maxSize: Int) {
+    private val map = object : LinkedHashMap<String, List<HighlightToken>>(maxSize, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<HighlightToken>>): Boolean = size > maxSize
+    }
+    @Synchronized
+    fun get(key: String): List<HighlightToken>? = map[key]
+    @Synchronized
+    fun put(key: String, value: List<HighlightToken>) { map[key] = value }
+}
+
+private val highlightTokenCache = HighlightTokenLruCache(maxSize = 128)
+private fun highlightCacheKey(code: String, language: String): String = "$language\u0000$code"
+
+/** 切换对话遮罩期间后台预热：把高亮 token 写入进程级缓存（超长纯文本路径跳过） */
+suspend fun prewarmHighlight(highlighter: Highlighter, code: String, language: String) {
+    if (code.length > MAX_CODE_LENGTH) return
+    val key = highlightCacheKey(code, language)
+    if (highlightTokenCache.get(key) == null) {
+        highlightTokenCache.put(key, highlighter.highlight(code, language))
+    }
+}
 
 @Composable
 fun HighlightText(
@@ -53,12 +77,14 @@ fun HighlightText(
     val updatedLanguage by rememberUpdatedState(language)
     LaunchedEffect(Unit) {
         snapshotFlow { updatedCode to updatedLanguage }.collect {
-            tokens = if (updatedCode.length <= maxCodeLength) {
-                highlighter.highlight(updatedCode, updatedLanguage)
-            } else {
-                listOf(
-                    HighlightToken.Plain(content = updatedCode)
-                )
+            val key = highlightCacheKey(updatedCode, updatedLanguage)
+            val cached = highlightTokenCache.get(key)
+            tokens = when {
+                cached != null -> cached
+                updatedCode.length <= maxCodeLength -> {
+                    highlighter.highlight(updatedCode, updatedLanguage).also { highlightTokenCache.put(key, it) }
+                }
+                else -> listOf(HighlightToken.Plain(content = updatedCode))
             }
             annotatedString = buildAnnotatedString {
                 tokens.fastForEach { token ->
