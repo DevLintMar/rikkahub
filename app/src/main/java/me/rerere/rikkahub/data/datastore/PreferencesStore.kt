@@ -171,8 +171,10 @@ class SettingsStore(
                 throw exception
             }
         }.map { preferences ->
-            val searchServices = preferences[SEARCH_SERVICES]?.let {
-                JsonInstant.decodeFromString(it)
+            val searchServices: List<SearchServiceOptions> = preferences[SEARCH_SERVICES]?.let {
+                // 必须显式多态类型：否则从 listOf(DEFAULT)=List<BingLocalOptions> 推断成具体类型，
+                // 忽略 type 判别符，导致所有服务都解码成 BingLocalOptions
+                JsonInstant.decodeFromString<List<SearchServiceOptions>>(it)
             } ?: listOf(SearchServiceOptions.DEFAULT)
             val rawSelectedIds = preferences[SEARCH_SELECTED_IDS]?.let {
                 runCatching { JsonInstant.decodeFromString<List<Uuid>>(it) }.getOrDefault(emptyList())
