@@ -284,6 +284,7 @@ private fun buildDeleteTool(
         val title = it.jsonObject.string("title") ?: error("title is required")
         val memory = readFn(title)
         val success = deleteFn(title)
+        if (!success) error("Memory not found: $title")
         listOf(UIMessagePart.Text(json.encodeToString(buildJsonObject {
             put("type", JsonPrimitive(toolName))
             put("title", title)

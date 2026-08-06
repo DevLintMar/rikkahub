@@ -24,3 +24,7 @@ fun inferToolState(parts: List<UIMessagePart>): ToolState {
     if (exitCode != null && exitCode != 0) return ToolState.FAILED
     return ToolState.SUCCEEDED
 }
+
+/** 工具错误消息：只保留原因本身，不暴露异常类名等堆栈细节 */
+fun toolErrorMessage(throwable: Throwable): String =
+    throwable.message ?: throwable.javaClass.simpleName

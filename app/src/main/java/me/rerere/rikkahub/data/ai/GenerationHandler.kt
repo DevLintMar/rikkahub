@@ -41,6 +41,7 @@ import me.rerere.rikkahub.data.ai.transformers.onGenerationFinish
 import me.rerere.rikkahub.data.ai.transformers.transforms
 import me.rerere.rikkahub.data.ai.transformers.visualTransforms
 import me.rerere.rikkahub.data.ai.tools.buildMemoryTools
+import me.rerere.rikkahub.data.ai.tools.toolErrorMessage
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findProvider
@@ -343,9 +344,7 @@ class GenerationHandler(
                                                 put("error", JsonPrimitive("error"))
                                                 put(
                                                     "message",
-                                                    JsonPrimitive(
-                                                        "[${it.javaClass.name}] ${it.message ?: it.javaClass.simpleName}"
-                                                    )
+                                                    JsonPrimitive(toolErrorMessage(it))
                                                 )
                                             }
                                         )
