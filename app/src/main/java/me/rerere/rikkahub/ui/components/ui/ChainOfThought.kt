@@ -248,6 +248,7 @@ interface ChainOfThoughtScope {
      * @param icon 步骤图标
      * @param label 步骤标题区域
      * @param extra 标题右侧的附加信息
+     * @param belowLabel 标题行下方的附加内容（如错误信息），缩进对齐展开内容
      * @param onClick 自定义点击行为；设置后优先于展开/折叠逻辑
      * @param collapsedAdaptiveWidth 是否在折叠且内容隐藏时使用自适应宽度
      * @param contentVisible 是否展示内容区域，可与 [expanded] 解耦
@@ -260,6 +261,7 @@ interface ChainOfThoughtScope {
         icon: (@Composable () -> Unit)? = null,
         label: (@Composable () -> Unit),
         extra: (@Composable () -> Unit)? = null,
+        belowLabel: (@Composable () -> Unit)? = null,
         onClick: (() -> Unit)? = null,
         collapsedAdaptiveWidth: Boolean = false,
         contentVisible: Boolean = expanded,
@@ -282,6 +284,7 @@ private class ChainOfThoughtScopeImpl : ChainOfThoughtScope {
             icon = icon,
             label = label,
             extra = extra,
+            belowLabel = null,
             onClick = onClick,
             collapsedAdaptiveWidth = collapsedAdaptiveWidth,
             expanded = expanded,
@@ -298,6 +301,7 @@ private class ChainOfThoughtScopeImpl : ChainOfThoughtScope {
         icon: @Composable (() -> Unit)?,
         label: @Composable (() -> Unit),
         extra: @Composable (() -> Unit)?,
+        belowLabel: @Composable (() -> Unit)?,
         onClick: (() -> Unit)?,
         collapsedAdaptiveWidth: Boolean,
         contentVisible: Boolean,
@@ -307,6 +311,7 @@ private class ChainOfThoughtScopeImpl : ChainOfThoughtScope {
             icon = icon,
             label = label,
             extra = extra,
+            belowLabel = belowLabel,
             onClick = onClick,
             collapsedAdaptiveWidth = collapsedAdaptiveWidth,
             expanded = expanded,
@@ -321,6 +326,7 @@ private class ChainOfThoughtScopeImpl : ChainOfThoughtScope {
         icon: @Composable (() -> Unit)?,
         label: @Composable (() -> Unit),
         extra: @Composable (() -> Unit)?,
+        belowLabel: @Composable (() -> Unit)?,
         onClick: (() -> Unit)?,
         collapsedAdaptiveWidth: Boolean,
         expanded: Boolean,
@@ -429,6 +435,23 @@ private class ChainOfThoughtScopeImpl : ChainOfThoughtScope {
                         modifier = Modifier.size(16.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+            }
+
+            // 标题行下方附加内容（如错误信息），缩进对齐展开内容
+            if (belowLabel != null) {
+                Box(
+                    modifier = Modifier
+                        .then(
+                            if (shouldFillMaxWidth) {
+                                Modifier.fillMaxWidth()
+                            } else {
+                                Modifier
+                            }
+                        )
+                        .padding(start = 32.dp)
+                ) {
+                    belowLabel()
                 }
             }
 

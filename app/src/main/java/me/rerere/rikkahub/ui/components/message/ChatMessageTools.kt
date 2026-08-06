@@ -166,7 +166,10 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
                     color = MaterialTheme.colorScheme.error,
                 )
             }
-        } else if (isFailed && !renderer.hasSummary(context)) {
+        } else {
+            null
+        },
+        belowLabel = if (isFailed && !renderer.hasSummary(context)) {
             {
                 val message = context.content.getStringContent("message")
                     ?: stringResource(R.string.chat_message_tool_failed, tool.toolName)

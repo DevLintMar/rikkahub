@@ -273,13 +273,13 @@ private fun ChainOfThoughtHeaderRow(content: @Composable () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box(
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(16.dp),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = HugeIcons.AiBrain02,
                 contentDescription = null,
-                modifier = Modifier.size(16.dp),
+                modifier = Modifier.size(13.dp),
                 tint = LocalContentColor.current.copy(alpha = 0.7f),
             )
         }
