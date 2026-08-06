@@ -78,7 +78,7 @@ fun buildMemoryTools(
         tools += buildWriteTool(
             json = json,
             toolName = "create_active_memory",
-            toolDescription = "Create a new active memory with the given title, optional description, and content. Active memories are injected into the system prompt as id + content. If an active memory with the same title already exists, you MUST explicitly pass overwrite=true to replace it; otherwise the write fails.",
+            toolDescription = "Create a new active memory with the given title, optional description, and content. Active memories are injected into the system prompt with their title, description and full content. If an active memory with the same title already exists, you MUST explicitly pass overwrite=true to replace it; otherwise the write fails.",
             titleDescription = "The title of the active memory. Must be unique among active memories.",
             scopeId = memoryAssistantId,
             writeFn = createActiveMemory,
