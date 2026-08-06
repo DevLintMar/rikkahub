@@ -73,8 +73,8 @@ import me.rerere.ai.ui.UIMessageAnnotation
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.isEmptyUIMessage
 import me.rerere.hugeicons.HugeIcons
-import me.rerere.hugeicons.stroke.AiBrain02
 import me.rerere.hugeicons.stroke.File02
+import me.rerere.hugeicons.stroke.MoonAngledRainZap
 import me.rerere.hugeicons.stroke.MusicNote03
 import me.rerere.hugeicons.stroke.Video01
 import me.rerere.rikkahub.R
@@ -265,7 +265,7 @@ fun ChatMessage(
     }
 }
 
-/** 聚合思考块头部共用行：[AiBrain02] + 左侧内容（完成态或执行中态）。紧凑比例参考 Agora；图标/文本色与工具列表行一致。 */
+/** 聚合思考块头部共用行：[MoonAngledRainZap] + 左侧内容（完成态或执行中态）。比例参考 Agora；图标/文本色与工具列表行一致。 */
 @Composable
 private fun ChainOfThoughtHeaderRow(content: @Composable () -> Unit) {
     Row(
@@ -273,13 +273,13 @@ private fun ChainOfThoughtHeaderRow(content: @Composable () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box(
-            modifier = Modifier.size(16.dp),
+            modifier = Modifier.size(20.dp),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                imageVector = HugeIcons.AiBrain02,
+                imageVector = HugeIcons.MoonAngledRainZap,
                 contentDescription = null,
-                modifier = Modifier.size(13.dp),
+                modifier = Modifier.size(16.dp),
                 tint = LocalContentColor.current.copy(alpha = 0.7f),
             )
         }
