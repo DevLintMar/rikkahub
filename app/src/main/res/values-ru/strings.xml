@@ -39,9 +39,7 @@
   <string name="assistant_importer_unsupported_file_type">Неподдерживаемый тип файла: %s</string>
   <string name="assistant_importer_unsupported_spec">Неподдерживаемая спецификация: %s</string>
   <string name="assistant_page_actions">Действия</string>
-  <string name="assistant_page_active_memory">Активная память</string>
-  <string name="assistant_page_active_memory_edit">Изменить активную память</string>
-  <string name="assistant_page_active_memory_empty">Активная память не задана</string>
+  <string name="assistant_page_active_memories">Активные памяти</string>
   <string name="assistant_page_add">Добавить</string>
   <string name="assistant_page_add_body">Добавить текст</string>
   <string name="assistant_page_add_header">Добавить заголовок</string>

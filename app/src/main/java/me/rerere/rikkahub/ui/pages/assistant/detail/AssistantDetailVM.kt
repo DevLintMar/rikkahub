@@ -79,16 +79,16 @@ class AssistantDetailVM(
             scope = viewModelScope, started = SharingStarted.Eagerly, initialValue = emptyList()
         )
 
-    val activeMemory = assistant
+    val activeMemories = assistant
         .flatMapLatest { currentAssistant ->
             if (currentAssistant.useGlobalMemory) {
-                memoryRepository.getActiveMemoryFlow(MemoryRepository.GLOBAL_MEMORY_ID)
+                memoryRepository.getActiveMemoriesFlow(MemoryRepository.GLOBAL_MEMORY_ID)
             } else {
-                memoryRepository.getActiveMemoryFlow(assistantId.toString())
+                memoryRepository.getActiveMemoriesFlow(assistantId.toString())
             }
         }
         .stateIn(
-            scope = viewModelScope, started = SharingStarted.Eagerly, initialValue = null
+            scope = viewModelScope, started = SharingStarted.Eagerly, initialValue = emptyList()
         )
 
     val providers = settingsStore
@@ -231,14 +231,50 @@ class AssistantDetailVM(
         }
     }
 
-    fun updateActiveMemory(content: String) {
+    fun addActiveMemory(memory: AssistantMemory) {
         viewModelScope.launch {
             val scope = if (assistant.value.useGlobalMemory) {
                 MemoryRepository.GLOBAL_MEMORY_ID
             } else {
                 assistantId.toString()
             }
-            memoryRepository.updateActiveMemory(assistantId = scope, content = content)
+            try {
+                memoryRepository.addMemory(
+                    assistantId = scope,
+                    title = memory.title,
+                    description = memory.description,
+                    content = memory.content,
+                    overwrite = false,
+                    isActive = true,
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "addActiveMemory failed", e)
+            }
+        }
+    }
+
+    fun updateActiveMemory(memory: AssistantMemory) {
+        viewModelScope.launch {
+            try {
+                memoryRepository.updateMemory(
+                    id = memory.id,
+                    title = memory.title,
+                    description = memory.description,
+                    content = memory.content,
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "updateActiveMemory failed", e)
+            }
+        }
+    }
+
+    fun deleteActiveMemory(memory: AssistantMemory) {
+        viewModelScope.launch {
+            memoryRepository.deleteMemory(memory.id)
         }
     }
 

@@ -39,9 +39,7 @@
   <string name="assistant_importer_unsupported_file_type">지원되지 않는 파일 형식: %s</string>
   <string name="assistant_importer_unsupported_spec">지원되지 않는 사양: %s</string>
   <string name="assistant_page_actions">작업</string>
-  <string name="assistant_page_active_memory">활성 기억</string>
-  <string name="assistant_page_active_memory_edit">활성 기억 편집</string>
-  <string name="assistant_page_active_memory_empty">설정된 활성 기억이 없습니다</string>
+  <string name="assistant_page_active_memories">활성 기억</string>
   <string name="assistant_page_add">추가</string>
   <string name="assistant_page_add_body">본문 추가</string>
   <string name="assistant_page_add_header">헤더 추가</string>

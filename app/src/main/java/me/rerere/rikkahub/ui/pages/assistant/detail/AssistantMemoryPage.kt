@@ -4,7 +4,6 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.PencilEdit01
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.Delete01
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -63,7 +62,7 @@ fun AssistantMemoryPage(id: String) {
     )
     val assistant by vm.assistant.collectAsStateWithLifecycle()
     val memories by vm.memories.collectAsStateWithLifecycle()
-    val activeMemory by vm.activeMemory.collectAsStateWithLifecycle()
+    val activeMemories by vm.activeMemories.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     Scaffold(
@@ -86,12 +85,14 @@ fun AssistantMemoryPage(id: String) {
             innerPadding = innerPadding,
             assistant = assistant,
             memories = memories,
-            activeMemory = activeMemory,
+            activeMemories = activeMemories,
             onUpdateAssistant = { vm.update(it) },
             onDeleteMemory = { vm.deleteMemory(it) },
             onAddMemory = { vm.addMemory(it) },
             onUpdateMemory = { vm.updateMemory(it) },
-            onUpdateActiveMemory = { vm.updateActiveMemory(it) }
+            onAddActiveMemory = { vm.addActiveMemory(it) },
+            onUpdateActiveMemory = { vm.updateActiveMemory(it) },
+            onDeleteActiveMemory = { vm.deleteActiveMemory(it) }
         )
     }
 }
@@ -101,12 +102,14 @@ private fun AssistantMemoryContent(
     innerPadding: PaddingValues,
     assistant: Assistant,
     memories: List<AssistantMemory>,
-    activeMemory: AssistantMemory?,
+    activeMemories: List<AssistantMemory>,
     onUpdateAssistant: (Assistant) -> Unit,
     onAddMemory: (AssistantMemory) -> Unit,
     onUpdateMemory: (AssistantMemory) -> Unit,
     onDeleteMemory: (AssistantMemory) -> Unit,
-    onUpdateActiveMemory: (String) -> Unit,
+    onAddActiveMemory: (AssistantMemory) -> Unit,
+    onUpdateActiveMemory: (AssistantMemory) -> Unit,
+    onDeleteActiveMemory: (AssistantMemory) -> Unit,
 ) {
     val memoryDialogState = useEditState<AssistantMemory> {
         if (it.id == 0) {
@@ -115,9 +118,15 @@ private fun AssistantMemoryContent(
             onUpdateMemory(it)
         }
     }
-    var activeMemoryEditing by remember { mutableStateOf(false) }
-    var activeMemoryDraft by remember { mutableStateOf("") }
+    val activeMemoryDialogState = useEditState<AssistantMemory> {
+        if (it.id == 0) {
+            onAddActiveMemory(it)
+        } else {
+            onUpdateActiveMemory(it)
+        }
+    }
     var pendingDeleteMemory by remember { mutableStateOf<AssistantMemory?>(null) }
+    var pendingDeleteActiveMemory by remember { mutableStateOf<AssistantMemory?>(null) }
 
     // 已保存记忆 添加/编辑对话框（标题 + 描述 + 内容）
     memoryDialogState.EditStateContent { memory, update ->
@@ -169,35 +178,49 @@ private fun AssistantMemoryContent(
         )
     }
 
-    // 活跃记忆编辑对话框（仅内容）
-    if (activeMemoryEditing) {
+    // 活跃记忆 添加/编辑对话框（标题 + 描述 + 内容，与已保存记忆同构）
+    activeMemoryDialogState.EditStateContent { memory, update ->
         AlertDialog(
-            onDismissRequest = { activeMemoryEditing = false },
+            onDismissRequest = { activeMemoryDialogState.dismiss() },
             title = {
-                Text(stringResource(R.string.assistant_page_active_memory_edit))
+                Text(stringResource(R.string.assistant_page_edit_memory))
             },
             text = {
-                OutlinedTextField(
-                    value = activeMemoryDraft,
-                    onValueChange = { activeMemoryDraft = it },
-                    label = { Text(stringResource(R.string.assistant_page_active_memory)) },
-                    minLines = 3,
-                    maxLines = 10,
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = memory.title,
+                        onValueChange = { update(memory.copy(title = it)) },
+                        label = { Text(stringResource(R.string.assistant_page_memory_title_hint)) },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = memory.description,
+                        onValueChange = { update(memory.copy(description = it)) },
+                        label = { Text(stringResource(R.string.assistant_page_memory_description_hint)) },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = memory.content,
+                        onValueChange = { update(memory.copy(content = it)) },
+                        label = { Text(stringResource(R.string.assistant_page_memory_content_hint)) },
+                        minLines = 2,
+                        maxLines = 8,
+                    )
+                }
             },
             confirmButton = {
                 TextButton(
-                    onClick = {
-                        onUpdateActiveMemory(activeMemoryDraft)
-                        activeMemoryEditing = false
-                    }
+                    onClick = { activeMemoryDialogState.confirm() },
+                    // 标题是活跃记忆的主键，必填；且同助手内活跃记忆标题唯一（仓库抛错须在 UI 拦截避免未捕获协程崩溃）
+                    enabled = memory.title.isNotBlank() &&
+                        activeMemories.none { it.id != memory.id && it.title == memory.title },
                 ) {
                     Text(stringResource(R.string.assistant_page_save))
                 }
             },
             dismissButton = {
                 TextButton(
-                    onClick = { activeMemoryEditing = false }
+                    onClick = { activeMemoryDialogState.dismiss() }
                 ) {
                     Text(stringResource(R.string.assistant_page_cancel))
                 }
@@ -300,55 +323,48 @@ private fun AssistantMemoryContent(
             )
         }
 
-        // 活跃记忆卡（始终显示）
-        Card(
+        // 活跃记忆区（多条）
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable {
-                    activeMemoryDraft = activeMemory?.content.orEmpty()
-                    activeMemoryEditing = true
-                },
-            colors = CustomColors.cardColorsOnSurfaceContainer
+                .padding(horizontal = 8.dp)
         ) {
-            Row(
+            Text(
+                text = stringResource(R.string.assistant_page_active_memories),
+                style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .padding(bottom = 8.dp)
+                    .align(Alignment.CenterStart)
+            )
+
+            IconButton(
+                onClick = {
+                    activeMemoryDialogState.open(AssistantMemory(0, "", "", "", isActive = true))
+                },
+                modifier = Modifier.align(Alignment.CenterEnd)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.assistant_page_active_memory),
-                        style = MaterialTheme.typography.titleMediumEmphasized,
-                    )
-                    Text(
-                        text = when {
-                            activeMemory == null ->
-                                stringResource(R.string.assistant_page_active_memory_empty)
-                            activeMemory.content.length > 100 ->
-                                activeMemory.content.take(100) + "..."
-                            else -> activeMemory.content
-                        },
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                IconButton(
-                    onClick = {
-                        activeMemoryDraft = activeMemory?.content.orEmpty()
-                        activeMemoryEditing = true
-                    }
-                ) {
-                    Icon(
-                        HugeIcons.PencilEdit01,
-                        stringResource(R.string.assistant_page_active_memory_edit)
-                    )
-                }
+                Icon(
+                    imageVector = HugeIcons.Add01,
+                    contentDescription = null
+                )
             }
         }
 
+        activeMemories.fastForEach { memory ->
+            key(memory.id) {
+                MemoryItem(
+                    memory = memory,
+                    onEditMemory = {
+                        activeMemoryDialogState.open(it)
+                    },
+                    onDeleteMemory = {
+                        pendingDeleteActiveMemory = it
+                    }
+                )
+            }
+        }
+
+        // 已保存记忆区（多条）
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -408,6 +424,25 @@ private fun AssistantMemoryContent(
             )
         }
     )
+
+    RikkaConfirmDialog(
+        show = pendingDeleteActiveMemory != null,
+        title = stringResource(R.string.confirm_delete),
+        confirmText = stringResource(R.string.confirm),
+        dismissText = stringResource(R.string.cancel),
+        onConfirm = {
+            pendingDeleteActiveMemory?.let(onDeleteActiveMemory)
+            pendingDeleteActiveMemory = null
+        },
+        onDismiss = { pendingDeleteActiveMemory = null },
+        text = {
+            Text(
+                text = pendingDeleteActiveMemory?.content.orEmpty(),
+                maxLines = 8,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    )
 }
 
 @Composable
@@ -448,6 +483,11 @@ private fun MemoryItem(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+                Text(
+                    text = "#${memory.id}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                )
                 Text(
                     text = memory.content,
                     maxLines = 5,

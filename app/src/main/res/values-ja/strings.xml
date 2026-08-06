@@ -39,9 +39,7 @@
   <string name="assistant_importer_unsupported_file_type">サポートされていないファイルタイプ: %s</string>
   <string name="assistant_importer_unsupported_spec">サポートされていない仕様: %s</string>
   <string name="assistant_page_actions">アクション</string>
-  <string name="assistant_page_active_memory">アクティブ記憶</string>
-  <string name="assistant_page_active_memory_edit">アクティブ記憶を編集</string>
-  <string name="assistant_page_active_memory_empty">アクティブ記憶は設定されていません</string>
+  <string name="assistant_page_active_memories">アクティブ記憶</string>
   <string name="assistant_page_add">追加</string>
   <string name="assistant_page_add_body">ボディを追加</string>
   <string name="assistant_page_add_header">ヘッダーを追加</string>

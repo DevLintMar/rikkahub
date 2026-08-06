@@ -39,9 +39,7 @@
   <string name="assistant_importer_unsupported_file_type">不支持的文件类型: %s</string>
   <string name="assistant_importer_unsupported_spec">不支持的规格: %s</string>
   <string name="assistant_page_actions">操作</string>
-  <string name="assistant_page_active_memory">活跃记忆</string>
-  <string name="assistant_page_active_memory_edit">编辑活跃记忆</string>
-  <string name="assistant_page_active_memory_empty">尚未设置活跃记忆</string>
+  <string name="assistant_page_active_memories">活跃记忆</string>
   <string name="assistant_page_add">添加</string>
   <string name="assistant_page_add_body">添加 Body</string>
   <string name="assistant_page_add_header">添加 Header</string>
