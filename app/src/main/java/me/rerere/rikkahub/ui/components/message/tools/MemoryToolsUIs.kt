@@ -21,39 +21,61 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.composables.icons.lucide.BookCheck
-import com.composables.icons.lucide.Lucide
 import com.dokar.sonner.ToastType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.intOrNull
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.BookmarkCheck02
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Eraser
 import me.rerere.hugeicons.stroke.PencilEdit01
 import me.rerere.hugeicons.stroke.QuillWrite01
+import me.rerere.hugeicons.stroke.Redo
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.utils.jsonPrimitiveOrNull
 import org.koin.compose.koinInject
 
-/** 详情页动作类型: 写/编辑/删除（保存与活跃两种记忆同构，差异在 isActive 标志与串） */
-private enum class MemoryDetailKind { WRITE, EDIT, DELETE }
+/** 详情页动作类型: 写/编辑/删除/读（保存与活跃两种记忆同构，差异在 isActive 标志与串） */
+private enum class MemoryDetailKind { WRITE, EDIT, DELETE, READ }
+
+/**
+ * 解析记忆工具概览标题: 信封 title → 入参 title → 内容前 40 字。
+ * 均取不到时返回无参标题串（titleResId 不含占位符）。
+ */
+@Composable
+private fun memoryToolTitle(context: ToolUIContext, titleResId: Int): String {
+    val title = context.content.getStringContent("title")
+        ?.takeIf { it.isNotBlank() }
+        ?: context.arguments.getStringContent("title")
+            ?.takeIf { it.isNotBlank() }
+        ?: context.content.getStringContent("content")
+            ?.trim()
+            ?.take(40)
+            ?.takeIf { it.isNotBlank() }
+    return if (title != null) {
+        stringResource(titleResId, title)
+    } else {
+        stringResource(titleResId)
+    }
+}
 
 /** 读记忆 */
 object ReadMemoryToolUI : ToolUIRenderer {
     override val toolName: String = "read_memory"
 
-    override fun icon(context: ToolUIContext): ImageVector = Lucide.BookCheck
+    override fun icon(context: ToolUIContext): ImageVector = HugeIcons.BookmarkCheck02
 
     @Composable
     override fun title(context: ToolUIContext): String =
-        stringResource(R.string.chat_message_tool_read_memory)
+        memoryToolTitle(context, R.string.chat_message_tool_read_memory)
 
     override fun hasSummary(context: ToolUIContext): Boolean =
         context.content.getStringContent("content") != null
@@ -70,6 +92,20 @@ object ReadMemoryToolUI : ToolUIRenderer {
             )
         }
     }
+
+    // 与 Preview 的 DefaultToolPreview fallback 保持一致
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean =
+        context.content != null && context.content.getStringContent("error") == null
+
+    @Composable
+    override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
+        MemoryDetailPreview(
+            context = context,
+            kind = MemoryDetailKind.READ,
+            isActive = false,
+            onDismissRequest = onDismissRequest,
+        )
+    }
 }
 
 /** 写入记忆 */
@@ -80,7 +116,7 @@ object WriteMemoryToolUI : ToolUIRenderer {
 
     @Composable
     override fun title(context: ToolUIContext): String =
-        stringResource(R.string.chat_message_tool_write_memory)
+        memoryToolTitle(context, R.string.chat_message_tool_write_memory)
 
     override fun hasSummary(context: ToolUIContext): Boolean =
         context.content.getStringContent("content") != null
@@ -121,7 +157,7 @@ object EditMemoryToolUI : ToolUIRenderer {
 
     @Composable
     override fun title(context: ToolUIContext): String =
-        stringResource(R.string.chat_message_tool_edit_memory)
+        memoryToolTitle(context, R.string.chat_message_tool_edit_memory)
 
     override fun hasSummary(context: ToolUIContext): Boolean =
         context.content.getStringContent("content") != null
@@ -162,7 +198,7 @@ object DeleteMemoryToolUI : ToolUIRenderer {
 
     @Composable
     override fun title(context: ToolUIContext): String =
-        stringResource(R.string.chat_message_tool_delete_memory)
+        memoryToolTitle(context, R.string.chat_message_tool_delete_memory)
 
     override fun hasSummary(context: ToolUIContext): Boolean = true
 
@@ -194,7 +230,7 @@ object CreateActiveMemoryToolUI : ToolUIRenderer {
 
     @Composable
     override fun title(context: ToolUIContext): String =
-        stringResource(R.string.chat_message_tool_create_active_memory)
+        memoryToolTitle(context, R.string.chat_message_tool_create_active_memory)
 
     override fun hasSummary(context: ToolUIContext): Boolean =
         context.content.getStringContent("content") != null
@@ -235,7 +271,7 @@ object EditActiveMemoryToolUI : ToolUIRenderer {
 
     @Composable
     override fun title(context: ToolUIContext): String =
-        stringResource(R.string.chat_message_tool_edit_active_memory)
+        memoryToolTitle(context, R.string.chat_message_tool_edit_active_memory)
 
     override fun hasSummary(context: ToolUIContext): Boolean =
         context.content.getStringContent("content") != null
@@ -276,7 +312,7 @@ object DeleteActiveMemoryToolUI : ToolUIRenderer {
 
     @Composable
     override fun title(context: ToolUIContext): String =
-        stringResource(R.string.chat_message_tool_delete_active_memory)
+        memoryToolTitle(context, R.string.chat_message_tool_delete_active_memory)
 
     override fun hasSummary(context: ToolUIContext): Boolean = true
 
@@ -300,24 +336,25 @@ object DeleteActiveMemoryToolUI : ToolUIRenderer {
     }
 }
 
-/** 删除类记忆的折叠摘要: 展示记忆标题 */
+/** 删除类记忆的折叠摘要: 展示记忆内容（旧数据/失败信封退回标题） */
 @Composable
 private fun MemoryDeletedSummary(context: ToolUIContext) {
-    val title = context.content.getStringContent("title")
-        ?: context.arguments.getStringContent("title")
-    title?.let {
+    val summary = context.content.getStringContent("content")
+        ?: context.arguments.getStringContent("content")
+        ?: context.content.getStringContent("title")
+    summary?.let {
         Text(
             text = it,
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 2,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
+            maxLines = 3,
             overflow = TextOverflow.Ellipsis,
         )
     }
 }
 
 /**
- * 记忆详情页（write/edit/delete 与 active 同构共用）。
+ * 记忆详情页（write/edit/read/delete 与 active 同构共用）。
  * 保存与活跃的差异只在恢复时的 isActive 标志；动作按钮与确认对话框复用 [MemoryDetailActions]。
  */
 @Composable
@@ -340,6 +377,22 @@ private fun MemoryDetailPreview(
     val scopeId = envelope.getStringContent("scope_id")
     Column(modifier = Modifier.fillMaxWidth()) {
         ToolDetailContainer {
+            // 共用头部: 标题加粗 + 描述斜体（空则省略），各 kind 在其下渲染各自内容块
+            title?.takeIf { it.isNotBlank() }?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            description?.takeIf { it.isNotBlank() }?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontStyle = FontStyle.Italic,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             when (kind) {
                 MemoryDetailKind.WRITE -> {
                     content?.takeIf { it.isNotBlank() }?.let {
@@ -369,13 +422,6 @@ private fun MemoryDetailPreview(
                     memoryId?.let { ToolPill(stringResource(R.string.tool_ui_memory_id, it)) }
                 }
                 MemoryDetailKind.DELETE -> {
-                    title?.takeIf { it.isNotBlank() }?.let {
-                        Text(
-                            text = it,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
                     content?.takeIf { it.isNotBlank() }?.let {
                         Text(
                             text = it,
@@ -383,6 +429,16 @@ private fun MemoryDetailPreview(
                             color = MaterialTheme.colorScheme.onSurface,
                         )
                     }
+                }
+                MemoryDetailKind.READ -> {
+                    content?.takeIf { it.isNotBlank() }?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                    memoryId?.let { ToolPill(stringResource(R.string.tool_ui_memory_id, it)) }
                 }
             }
         }
@@ -422,7 +478,7 @@ private fun MemoryDetailActions(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showRevertConfirm by remember { mutableStateOf(false) }
 
-    val canDelete = kind != MemoryDetailKind.DELETE && memoryId != null
+    val canDelete = kind != MemoryDetailKind.DELETE && kind != MemoryDetailKind.READ && memoryId != null
     val canRevert = kind == MemoryDetailKind.EDIT && memoryId != null && previousContent != null
     val canRestore = kind == MemoryDetailKind.DELETE && scopeId != null && content != null
     if (!canDelete && !canRevert && !canRestore) return
@@ -435,7 +491,7 @@ private fun MemoryDetailActions(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (canRestore) {
-            TextButton(
+            IconButton(
                 onClick = {
                     scope.launch {
                         try {
@@ -459,12 +515,18 @@ private fun MemoryDetailActions(
                     }
                 },
             ) {
-                Text(stringResource(R.string.tool_ui_restore_memory))
+                Icon(
+                    imageVector = HugeIcons.Redo,
+                    contentDescription = stringResource(R.string.tool_ui_restore_memory),
+                )
             }
         }
         if (canRevert) {
-            TextButton(onClick = { showRevertConfirm = true }) {
-                Text(stringResource(R.string.tool_ui_revert_edit))
+            IconButton(onClick = { showRevertConfirm = true }) {
+                Icon(
+                    imageVector = HugeIcons.Redo,
+                    contentDescription = stringResource(R.string.tool_ui_revert_edit),
+                )
             }
         }
         if (canDelete) {
