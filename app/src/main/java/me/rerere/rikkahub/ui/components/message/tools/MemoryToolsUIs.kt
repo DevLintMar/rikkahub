@@ -48,7 +48,7 @@ private enum class MemoryDetailKind { WRITE, EDIT, DELETE, READ }
 
 /**
  * 解析记忆工具概览标题: 信封 title → 入参 title → 内容前 40 字。
- * 均取不到时返回无参标题串（titleResId 不含占位符）。
+ * 均取不到时返回带空参的标题串（流式传参期 arguments 为空，零参会渲染字面占位符）。
  */
 @Composable
 private fun memoryToolTitle(context: ToolUIContext, titleResId: Int): String {
@@ -63,7 +63,7 @@ private fun memoryToolTitle(context: ToolUIContext, titleResId: Int): String {
     return if (title != null) {
         stringResource(titleResId, title)
     } else {
-        stringResource(titleResId)
+        stringResource(titleResId, "")
     }
 }
 
