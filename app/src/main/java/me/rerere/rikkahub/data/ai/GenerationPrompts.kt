@@ -3,17 +3,17 @@ package me.rerere.rikkahub.data.ai
 import me.rerere.rikkahub.data.model.AssistantMemory
 
 internal fun buildMemoryPrompt(
-    activeMemory: AssistantMemory?,
+    activeMemories: List<AssistantMemory>,
     savedMemories: List<AssistantMemory>,
 ) = buildString {
     appendLine()
     append("**Memories**")
     appendLine()
-    if (activeMemory != null && activeMemory.content.isNotBlank()) {
-        appendLine("Active memory:")
-        appendLine()
-        append(activeMemory.content)
-        appendLine()
+    if (activeMemories.isNotEmpty()) {
+        appendLine("Active memories:")
+        activeMemories.forEach { memory ->
+            appendLine("- [id ${memory.id}] ${memory.content}")
+        }
     }
     if (savedMemories.isNotEmpty()) {
         appendLine("Saved memories (use read_memory to read the full content of any):")

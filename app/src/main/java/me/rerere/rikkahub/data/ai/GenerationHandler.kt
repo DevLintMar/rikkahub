@@ -46,7 +46,6 @@ import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.AssistantMemory
-import me.rerere.rikkahub.data.repository.ActiveMemoryMode
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.utils.applyPlaceholders
 import java.util.Locale
@@ -77,7 +76,7 @@ class GenerationHandler(
         outputTransformers: List<OutputMessageTransformer> = emptyList(),
         assistant: Assistant,
         memories: List<AssistantMemory>? = null,
-        activeMemory: AssistantMemory? = null,
+        activeMemories: List<AssistantMemory> = emptyList(),
         tools: List<Tool> = emptyList(),
         maxSteps: Int = 256,
         processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
@@ -104,36 +103,23 @@ class GenerationHandler(
                     }
                     buildMemoryTools(
                         json = json,
-                        readMemoryByTitle = { title ->
-                            memoryRepo.getMemoryByTitle(memoryAssistantId, title)
-                        },
-                        updateActiveMemory = { content, mode, oldString, newString ->
-                            memoryRepo.updateActiveMemory(
-                                assistantId = memoryAssistantId,
-                                content = content,
-                                mode = ActiveMemoryMode.valueOf(mode.uppercase()),
-                                oldString = oldString,
-                                newString = newString,
-                            )
-                        },
+                        memoryAssistantId = memoryAssistantId,
+                        readMemoryByTitle = { title -> memoryRepo.getMemoryByTitle(memoryAssistantId, title) },
+                        readActiveMemoryByTitle = { title -> memoryRepo.getActiveMemoryByTitle(memoryAssistantId, title) },
                         writeMemory = { title, description, content, overwrite ->
-                            memoryRepo.addMemory(memoryAssistantId, title, description, content, overwrite)
+                            memoryRepo.addMemory(memoryAssistantId, title, description, content, overwrite, isActive = false)
                         },
                         editMemory = { title, newTitle, description, content, oldText, newText, replaceAll ->
-                            memoryRepo.editMemoryByTitle(
-                                assistantId = memoryAssistantId,
-                                title = title,
-                                newTitle = newTitle,
-                                description = description,
-                                content = content,
-                                oldText = oldText,
-                                newText = newText,
-                                replaceAll = replaceAll,
-                            )
+                            memoryRepo.editMemoryByTitle(memoryAssistantId, title, newTitle, description, content, oldText, newText, replaceAll, isActive = false)
                         },
-                        deleteMemoryByTitle = { title ->
-                            memoryRepo.deleteMemoryByTitle(memoryAssistantId, title)
+                        deleteMemoryByTitle = { title -> memoryRepo.deleteMemoryByTitle(memoryAssistantId, title, isActive = false) },
+                        createActiveMemory = { title, description, content, overwrite ->
+                            memoryRepo.addMemory(memoryAssistantId, title, description, content, overwrite, isActive = true)
                         },
+                        editActiveMemory = { title, newTitle, description, content, oldText, newText, replaceAll ->
+                            memoryRepo.editMemoryByTitle(memoryAssistantId, title, newTitle, description, content, oldText, newText, replaceAll, isActive = true)
+                        },
+                        deleteActiveMemoryByTitle = { title -> memoryRepo.deleteMemoryByTitle(memoryAssistantId, title, isActive = true) },
                         includeActiveEdit = assistant.enableEditActiveMemory,
                         includeSavedEdit = assistant.enableEditSavedMemories,
                     ).let(this::addAll)
@@ -180,7 +166,7 @@ class GenerationHandler(
                     provider = provider,
                     tools = toolsInternal,
                     memories = memories ?: emptyList(),
-                    activeMemory = activeMemory,
+                    activeMemories = activeMemories,
                     stream = assistant.streamOutput,
                     processingStatus = processingStatus,
                     conversationSystemPrompt = conversationSystemPrompt,
@@ -411,7 +397,7 @@ class GenerationHandler(
         provider: ProviderSetting,
         tools: List<Tool>,
         memories: List<AssistantMemory>,
-        activeMemory: AssistantMemory? = null,
+        activeMemories: List<AssistantMemory> = emptyList(),
         stream: Boolean,
         processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
         conversationSystemPrompt: String? = null,
@@ -434,7 +420,7 @@ class GenerationHandler(
                 // 记忆
                 if (assistant.enableMemory) {
                     appendLine()
-                    append(buildMemoryPrompt(activeMemory = activeMemory, savedMemories = memories))
+                    append(buildMemoryPrompt(activeMemories = activeMemories, savedMemories = memories))
                 }
                 // 工具prompt
                 tools.forEach { tool ->

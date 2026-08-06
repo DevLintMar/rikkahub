@@ -654,10 +654,10 @@ class ChatService(
                 conversationModeInjectionIds = conversation.modeInjectionIds,
                 conversationLorebookIds = conversation.lorebookIds,
                 workspaceCwd = conversation.workspaceCwd,
-                activeMemory = if (assistant.useGlobalMemory) {
-                    memoryRepository.getActiveMemory(MemoryRepository.GLOBAL_MEMORY_ID)
+                activeMemories = if (assistant.useGlobalMemory) {
+                    memoryRepository.getActiveMemories(MemoryRepository.GLOBAL_MEMORY_ID)
                 } else {
-                    memoryRepository.getActiveMemory(assistant.id.toString())
+                    memoryRepository.getActiveMemories(assistant.id.toString())
                 },
                 memories = if (assistant.useGlobalMemory) {
                     memoryRepository.getGlobalMemories()
