@@ -717,11 +717,25 @@ private fun ChainOfThoughtScope.ExportedToolStep(
     val memoryAction = runCatching {
         tool.inputAsJson().jsonObject["action"]?.jsonPrimitiveOrNull?.contentOrNull
     }.getOrNull()
+    // 旧数据回退: 信封 title → 入参 title → 信封 content 前 40 字 → 空串
+    val memoryArgsTitle = runCatching {
+        tool.inputAsJson().jsonObject["title"]?.jsonPrimitiveOrNull?.contentOrNull
+    }.getOrNull()
+    val memoryEnvelope = runCatching {
+        JsonInstantPretty.parseToJsonElement(
+            tool.output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
+        )
+    }.getOrNull()
+    val memoryEnvelopeJson = runCatching { memoryEnvelope?.jsonObject }.getOrNull()
+    val memoryTitle = memoryEnvelopeJson?.get("title")?.jsonPrimitiveOrNull?.contentOrNull
+        ?: memoryArgsTitle
+        ?: memoryEnvelopeJson?.get("content")?.jsonPrimitiveOrNull?.contentOrNull
+            ?.trim()?.take(40).orEmpty()
     val title = when (tool.toolName) {
         "memory_tool" -> when (memoryAction) {
             "create" -> stringResource(R.string.chat_message_tool_create_memory)
-            "edit" -> stringResource(R.string.chat_message_tool_edit_memory)
-            "delete" -> stringResource(R.string.chat_message_tool_delete_memory)
+            "edit" -> stringResource(R.string.chat_message_tool_edit_memory, memoryTitle)
+            "delete" -> stringResource(R.string.chat_message_tool_delete_memory, memoryTitle)
             else -> stringResource(R.string.chat_message_tool_call_generic, tool.toolName)
         }
 

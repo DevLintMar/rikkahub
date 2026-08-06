@@ -200,7 +200,8 @@ object DeleteMemoryToolUI : ToolUIRenderer {
     override fun title(context: ToolUIContext): String =
         memoryToolTitle(context, R.string.chat_message_tool_delete_memory)
 
-    override fun hasSummary(context: ToolUIContext): Boolean = true
+    override fun hasSummary(context: ToolUIContext): Boolean =
+        context.content.getStringContent("content") != null
 
     @Composable
     override fun Summary(context: ToolUIContext) {
@@ -314,7 +315,8 @@ object DeleteActiveMemoryToolUI : ToolUIRenderer {
     override fun title(context: ToolUIContext): String =
         memoryToolTitle(context, R.string.chat_message_tool_delete_active_memory)
 
-    override fun hasSummary(context: ToolUIContext): Boolean = true
+    override fun hasSummary(context: ToolUIContext): Boolean =
+        context.content.getStringContent("content") != null
 
     @Composable
     override fun Summary(context: ToolUIContext) {

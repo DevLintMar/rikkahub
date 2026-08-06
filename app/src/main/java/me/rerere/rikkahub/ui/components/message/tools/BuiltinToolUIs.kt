@@ -109,11 +109,17 @@ object MemoryToolUI : ToolUIRenderer {
     }
 
     @Composable
-    override fun title(context: ToolUIContext): String = when (action(context)) {
-        ACTION_CREATE -> stringResource(R.string.chat_message_tool_create_memory)
-        ACTION_EDIT -> stringResource(R.string.chat_message_tool_edit_memory)
-        ACTION_DELETE -> stringResource(R.string.chat_message_tool_delete_memory)
-        else -> stringResource(R.string.chat_message_tool_call_generic, toolName)
+    override fun title(context: ToolUIContext): String {
+        // 旧数据回退: 信封 title → 入参 title → 内容前 40 字 → 空串
+        val legacyTitle = context.content.getStringContent("title")
+            ?: context.arguments.getStringContent("title")
+            ?: context.content.getStringContent("content")?.trim()?.take(40).orEmpty()
+        return when (action(context)) {
+            ACTION_CREATE -> stringResource(R.string.chat_message_tool_create_memory)
+            ACTION_EDIT -> stringResource(R.string.chat_message_tool_edit_memory, legacyTitle)
+            ACTION_DELETE -> stringResource(R.string.chat_message_tool_delete_memory, legacyTitle)
+            else -> stringResource(R.string.chat_message_tool_call_generic, toolName)
+        }
     }
 
     override fun hasSummary(context: ToolUIContext): Boolean =
