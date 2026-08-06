@@ -33,8 +33,8 @@
 
 ## 3. git 状态 / CI
 
-- 分支 `master`；commit 链 e64141b → f0a0586；本文档提交后推送。
-- CI：推送后触发 `nightly-build-debug.yml`，判定用 `gh run list --workflow nightly-build-debug.yml --repo DevLintMar/rikkahub --limit 1 --json databaseId,headSha,status,conclusion` 并核对 headSha。
+- 分支 `master`，HEAD = `392b901`（含本文档），工作树干净
+- CI run 31078297074 ✅ success，headSha `392b901` 核对一致
 
 ## 4. 恢复地图
 
