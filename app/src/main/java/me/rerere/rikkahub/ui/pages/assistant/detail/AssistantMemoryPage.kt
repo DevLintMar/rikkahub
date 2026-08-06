@@ -18,7 +18,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
@@ -153,8 +152,9 @@ private fun AssistantMemoryContent(
             confirmButton = {
                 TextButton(
                     onClick = { memoryDialogState.confirm() },
-                    // 标题是已保存记忆的主键，必填（仓库 addMemory 对空标题抛错，须在 UI 拦截避免未捕获协程崩溃）
-                    enabled = memory.title.isNotBlank(),
+                    // 标题是已保存记忆的主键，必填；且同助手内标题唯一（仓库抛错须在 UI 拦截避免未捕获协程崩溃）
+                    enabled = memory.title.isNotBlank() &&
+                        memories.none { it.id != memory.id && it.title == memory.title },
                 ) {
                     Text(stringResource(R.string.assistant_page_save))
                 }

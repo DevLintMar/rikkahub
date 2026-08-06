@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -192,29 +193,41 @@ class AssistantDetailVM(
 
     fun addMemory(memory: AssistantMemory) {
         viewModelScope.launch {
-            val memoryAssistantId = if (assistant.value.useGlobalMemory) {
-                MemoryRepository.GLOBAL_MEMORY_ID
-            } else {
-                assistantId.toString()
+            try {
+                val memoryAssistantId = if (assistant.value.useGlobalMemory) {
+                    MemoryRepository.GLOBAL_MEMORY_ID
+                } else {
+                    assistantId.toString()
+                }
+                memoryRepository.addMemory(
+                    assistantId = memoryAssistantId,
+                    title = memory.title,
+                    description = memory.description,
+                    content = memory.content,
+                    overwrite = false,
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "addMemory failed", e)
             }
-            memoryRepository.addMemory(
-                assistantId = memoryAssistantId,
-                title = memory.title,
-                description = memory.description,
-                content = memory.content,
-                overwrite = false,
-            )
         }
     }
 
     fun updateMemory(memory: AssistantMemory) {
         viewModelScope.launch {
-            memoryRepository.updateMemory(
-                id = memory.id,
-                title = memory.title,
-                description = memory.description,
-                content = memory.content,
-            )
+            try {
+                memoryRepository.updateMemory(
+                    id = memory.id,
+                    title = memory.title,
+                    description = memory.description,
+                    content = memory.content,
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "updateMemory failed", e)
+            }
         }
     }
 

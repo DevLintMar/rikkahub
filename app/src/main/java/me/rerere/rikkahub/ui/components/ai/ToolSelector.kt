@@ -43,7 +43,6 @@ val ALL_BASE_TOOLS = listOf(
     "read_conversation",
     "sub_agent",
     "run_workflow",
-    "memory_tool",
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
