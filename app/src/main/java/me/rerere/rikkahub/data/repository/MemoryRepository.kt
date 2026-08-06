@@ -89,7 +89,11 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
     suspend fun updateMemory(id: Int, title: String, description: String, content: String): AssistantMemory {
         val old = memoryDAO.getMemoryById(id) ?: error("Memory record #$id not found")
         if (title.isNotBlank()) {
-            val conflict = memoryDAO.getMemoryByTitle(old.assistantId, title)
+            val conflict = if (old.isActive) {
+                memoryDAO.getActiveMemoryByTitle(old.assistantId, title)
+            } else {
+                memoryDAO.getMemoryByTitle(old.assistantId, title)
+            }
             require(conflict == null || conflict.id == id) {
                 "Another memory already uses title \"$title\""
             }

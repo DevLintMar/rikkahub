@@ -26,6 +26,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.composables.icons.lucide.BookCheck
 import com.composables.icons.lucide.Lucide
+import com.dokar.sonner.ToastType
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.intOrNull
@@ -36,6 +38,7 @@ import me.rerere.hugeicons.stroke.PencilEdit01
 import me.rerere.hugeicons.stroke.QuillWrite01
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.repository.MemoryRepository
+import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.utils.jsonPrimitiveOrNull
 import org.koin.compose.koinInject
 
@@ -414,6 +417,7 @@ private fun MemoryDetailActions(
     onDismissRequest: () -> Unit,
 ) {
     val memoryRepo: MemoryRepository = koinInject()
+    val toaster = LocalToaster.current
     val scope = rememberCoroutineScope()
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showRevertConfirm by remember { mutableStateOf(false) }
@@ -434,15 +438,24 @@ private fun MemoryDetailActions(
             TextButton(
                 onClick = {
                     scope.launch {
-                        memoryRepo.addMemory(
-                            assistantId = scopeId!!,
-                            title = title.orEmpty(),
-                            description = description.orEmpty(),
-                            content = content!!,
-                            overwrite = true,
-                            isActive = isActive,
-                        )
-                        onDismissRequest()
+                        try {
+                            memoryRepo.addMemory(
+                                assistantId = scopeId!!,
+                                title = title.orEmpty(),
+                                description = description.orEmpty(),
+                                content = content!!,
+                                overwrite = true,
+                                isActive = isActive,
+                            )
+                            onDismissRequest()
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            toaster.show(
+                                message = e.message ?: e.javaClass.simpleName,
+                                type = ToastType.Error,
+                            )
+                        }
                     }
                 },
             ) {
@@ -458,7 +471,7 @@ private fun MemoryDetailActions(
             IconButton(onClick = { showDeleteConfirm = true }) {
                 Icon(
                     imageVector = HugeIcons.Delete01,
-                    contentDescription = stringResource(R.string.tool_ui_delete_memory),
+                    contentDescription = stringResource(R.string.tool_ui_delete_this_memory),
                 )
             }
         }
@@ -473,8 +486,17 @@ private fun MemoryDetailActions(
                     onClick = {
                         showDeleteConfirm = false
                         scope.launch {
-                            memoryRepo.deleteMemory(memoryId!!)
-                            onDismissRequest()
+                            try {
+                                memoryRepo.deleteMemory(memoryId!!)
+                                onDismissRequest()
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                toaster.show(
+                                    message = e.message ?: e.javaClass.simpleName,
+                                    type = ToastType.Error,
+                                )
+                            }
                         }
                     },
                 ) {
@@ -504,13 +526,22 @@ private fun MemoryDetailActions(
                     onClick = {
                         showRevertConfirm = false
                         scope.launch {
-                            memoryRepo.updateMemory(
-                                id = memoryId!!,
-                                title = title.orEmpty(),
-                                description = description.orEmpty(),
-                                content = previousContent!!,
-                            )
-                            onDismissRequest()
+                            try {
+                                memoryRepo.updateMemory(
+                                    id = memoryId!!,
+                                    title = title.orEmpty(),
+                                    description = description.orEmpty(),
+                                    content = previousContent!!,
+                                )
+                                onDismissRequest()
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                toaster.show(
+                                    message = e.message ?: e.javaClass.simpleName,
+                                    type = ToastType.Error,
+                                )
+                            }
                         }
                     },
                 ) {
