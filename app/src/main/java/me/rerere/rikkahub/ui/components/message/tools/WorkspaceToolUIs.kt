@@ -35,13 +35,14 @@ import me.rerere.ai.ui.metadataAs
 import me.rerere.common.http.jsonObjectOrNull
 import me.rerere.highlight.HighlightText
 import androidx.compose.ui.res.stringResource
+import com.composables.icons.lucide.FolderSearch
+import com.composables.icons.lucide.Lucide
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ComputerTerminal01
 import me.rerere.hugeicons.stroke.FileAdd
 import me.rerere.hugeicons.stroke.FileEdit
 import me.rerere.hugeicons.stroke.FileView
 import me.rerere.hugeicons.stroke.Folder02
-import me.rerere.hugeicons.stroke.Search01
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.richtext.DiffAddedColor
 import me.rerere.rikkahub.ui.components.richtext.DiffRemovedColor
@@ -619,7 +620,7 @@ object GrepToolUI : ToolUIRenderer {
 
     override val toolName: String = "workspace_grep"
 
-    override fun icon(context: ToolUIContext): ImageVector = HugeIcons.Search01
+    override fun icon(context: ToolUIContext): ImageVector = Lucide.FolderSearch
 
     @Composable
     override fun title(context: ToolUIContext): String {

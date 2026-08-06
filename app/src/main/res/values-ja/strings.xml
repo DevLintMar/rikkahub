@@ -256,7 +256,9 @@
   <string name="chat_message_tool_failed">ツール実行失敗: %1$s</string>
   <string name="chat_message_tool_read_memory">記憶を読み取り</string>
   <string name="chat_message_tool_write_memory">記憶を書き込み</string>
-  <string name="chat_message_tool_update_active_memory">アクティブな記憶を更新</string>
+  <string name="chat_message_tool_create_active_memory">アクティブな記憶を作成</string>
+  <string name="chat_message_tool_edit_active_memory">アクティブな記憶を編集</string>
+  <string name="chat_message_tool_delete_active_memory">アクティブな記憶を削除</string>
   <string name="chat_message_tool_get_time">時刻情報を取得</string>
   <string name="chat_message_tool_scrape_prefix">ウェブサイトをスクレイピング: %1$s</string>
   <string name="chat_message_tool_scrape_web">ウェブページを取得</string>
@@ -1217,6 +1219,9 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="tool_ui_speaking">読み上げ</string>
   <string name="tool_ui_replay">リプレイ</string>
   <string name="tool_ui_delete_memory">メモリを削除</string>
+  <string name="tool_ui_restore_memory">復元</string>
+  <string name="tool_ui_revert_edit">編集を戻す</string>
+  <string name="tool_ui_delete_this_memory">この記憶を削除</string>
   <string name="tool_ui_file">ファイル</string>
   <string name="backup_page_s3_path_style">パス形式</string>
   <string name="backup_page_s3_path_style_desc">endpoint/bucket/object を使用します。オフにすると bucket.endpoint/object を使用します。</string>

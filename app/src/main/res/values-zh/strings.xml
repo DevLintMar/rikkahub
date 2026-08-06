@@ -265,7 +265,9 @@
   <string name="chat_message_tool_failed">工具执行失败：%1$s</string>
   <string name="chat_message_tool_read_memory">读取记忆</string>
   <string name="chat_message_tool_write_memory">写入记忆</string>
-  <string name="chat_message_tool_update_active_memory">更新活跃记忆</string>
+  <string name="chat_message_tool_create_active_memory">新建活跃记忆</string>
+  <string name="chat_message_tool_edit_active_memory">编辑活跃记忆</string>
+  <string name="chat_message_tool_delete_active_memory">删除活跃记忆</string>
   <string name="chat_message_tool_get_time">获取时间信息</string>
   <string name="chat_message_tool_read_conversation">阅读对话</string>
   <string name="chat_message_tool_scrape_prefix">抓取网站：%1$s</string>
@@ -1325,6 +1327,9 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="tool_ui_event_start">开始：%1$s</string>
   <string name="tool_ui_memory_deleted">记忆已删除</string>
   <string name="tool_ui_memory_id">id %1$d</string>
+  <string name="tool_ui_restore_memory">恢复</string>
+  <string name="tool_ui_revert_edit">回退编辑</string>
+  <string name="tool_ui_delete_this_memory">删除本条记忆</string>
   <string name="tool_ui_screen_empty">无屏幕时间</string>
   <string name="workspace_page_name_duplicate">名称已存在</string>
   <string name="setting_mcp_page_name_invalid">名称只能包含英文字母和数字</string>

@@ -256,7 +256,9 @@
   <string name="chat_message_tool_failed">工具執行失敗：%1$s</string>
   <string name="chat_message_tool_read_memory">讀取記憶</string>
   <string name="chat_message_tool_write_memory">寫入記憶</string>
-  <string name="chat_message_tool_update_active_memory">更新活躍記憶</string>
+  <string name="chat_message_tool_create_active_memory">新建活躍記憶</string>
+  <string name="chat_message_tool_edit_active_memory">編輯活躍記憶</string>
+  <string name="chat_message_tool_delete_active_memory">刪除活躍記憶</string>
   <string name="chat_message_tool_get_time">取得時間資訊</string>
   <string name="chat_message_tool_scrape_prefix">爬取網站：%1$s</string>
   <string name="chat_message_tool_scrape_web">爬取網頁</string>
@@ -1215,6 +1217,9 @@
   <string name="tool_ui_speaking">朗讀</string>
   <string name="tool_ui_replay">重播</string>
   <string name="tool_ui_delete_memory">刪除記憶</string>
+  <string name="tool_ui_restore_memory">恢復</string>
+  <string name="tool_ui_revert_edit">回退編輯</string>
+  <string name="tool_ui_delete_this_memory">刪除本條記憶</string>
   <string name="tool_ui_file">文件</string>
   <string name="backup_page_s3_path_style">路徑樣式</string>
   <string name="backup_page_s3_path_style_desc">使用 endpoint/bucket/object。關閉後使用 bucket.endpoint/object。</string>

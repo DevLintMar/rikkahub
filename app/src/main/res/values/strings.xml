@@ -265,7 +265,9 @@
   <string name="chat_message_tool_failed">Tool failed: %1$s</string>
   <string name="chat_message_tool_read_memory">Read memory</string>
   <string name="chat_message_tool_write_memory">Write memory</string>
-  <string name="chat_message_tool_update_active_memory">Update active memory</string>
+  <string name="chat_message_tool_create_active_memory">Create active memory</string>
+  <string name="chat_message_tool_edit_active_memory">Edit active memory</string>
+  <string name="chat_message_tool_delete_active_memory">Delete active memory</string>
   <string name="chat_message_tool_get_time">Get time info</string>
   <string name="chat_message_tool_read_conversation">Read conversation</string>
   <string name="chat_message_tool_scrape_prefix">Scrape website: %1$s</string>
@@ -1342,6 +1344,9 @@
   <string name="tool_ui_event_start">Start: %1$s</string>
   <string name="tool_ui_memory_deleted">Memory deleted</string>
   <string name="tool_ui_memory_id">id %1$d</string>
+  <string name="tool_ui_restore_memory">Restore</string>
+  <string name="tool_ui_revert_edit">Revert edit</string>
+  <string name="tool_ui_delete_this_memory">Delete this memory</string>
   <string name="tool_ui_screen_empty">No screen time</string>
   <string name="workspace_page_name_duplicate">Name already exists</string>
   <string name="setting_mcp_page_name_invalid">Name can only contain English letters and numbers</string>
