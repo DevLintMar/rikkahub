@@ -3,6 +3,8 @@ package me.rerere.rikkahub.ui.components.message.tools
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -146,6 +148,16 @@ fun DefaultToolPreview(
             val joinedText = remember(textParts) { textParts.joinToString("\n") { it.text } }
             val resultJson = remember(joinedText) {
                 runCatching { JsonInstant.parseToJsonElement(joinedText) }.getOrNull()
+            }
+            // 错误信封的 message 显示在结果区顶部, JSON 树仍保留供排查
+            val errorMessage = resultJson?.jsonObjectOrNull?.get("message")
+                ?.jsonPrimitiveOrNull?.contentOrNull
+            if (errorMessage != null) {
+                Text(
+                    text = errorMessage,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
             ToolJsonSection(
                 label = stringResource(R.string.chat_message_tool_call_result),

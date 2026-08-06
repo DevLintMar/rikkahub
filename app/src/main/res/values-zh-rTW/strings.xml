@@ -255,6 +255,7 @@
   <string name="chat_message_tool_deny_dialog_hint">原因（選填）</string>
   <string name="chat_message_tool_deny_dialog_title">拒絕工具執行</string>
   <string name="chat_message_tool_edit_memory">編輯記憶</string>
+  <string name="chat_message_tool_failed">工具執行失敗：%1$s</string>
   <string name="chat_message_tool_read_memory">讀取記憶</string>
   <string name="chat_message_tool_write_memory">寫入記憶</string>
   <string name="chat_message_tool_update_active_memory">更新活躍記憶</string>

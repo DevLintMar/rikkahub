@@ -255,6 +255,7 @@
   <string name="chat_message_tool_deny_dialog_hint">理由（任意）</string>
   <string name="chat_message_tool_deny_dialog_title">ツール実行を拒否</string>
   <string name="chat_message_tool_edit_memory">記憶を編集</string>
+  <string name="chat_message_tool_failed">ツール実行失敗: %1$s</string>
   <string name="chat_message_tool_read_memory">記憶を読み取り</string>
   <string name="chat_message_tool_write_memory">記憶を書き込み</string>
   <string name="chat_message_tool_update_active_memory">アクティブな記憶を更新</string>

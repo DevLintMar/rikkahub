@@ -41,6 +41,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.ai.ui.ToolApprovalState
+import me.rerere.ai.ui.ToolState
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.BubbleChatQuestion
@@ -51,6 +52,7 @@ import me.rerere.rikkahub.ui.components.message.tools.ToolDetailSheet
 import me.rerere.rikkahub.ui.components.message.tools.ToolJsonBody
 import me.rerere.rikkahub.ui.components.message.tools.ToolUIContext
 import me.rerere.rikkahub.ui.components.message.tools.ToolUIRegistry
+import me.rerere.rikkahub.ui.components.message.tools.getStringContent
 import me.rerere.rikkahub.ui.components.richtext.ZoomableAsyncImage
 import me.rerere.rikkahub.ui.components.ui.ChainOfThoughtScope
 import me.rerere.rikkahub.ui.components.ui.DotLoading
@@ -97,6 +99,7 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     var showDenyDialog by remember { mutableStateOf(false) }
     val isPending = tool.approvalState is ToolApprovalState.Pending
     val isDenied = tool.approvalState is ToolApprovalState.Denied
+    val isFailed = tool.toolState == ToolState.FAILED
     val hasExtraContent = renderer.hasSummary(context) || images.isNotEmpty()
     var expanded by remember { mutableStateOf(true) }
 
@@ -161,6 +164,18 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
                         if (reason.isNotBlank()) ": $reason" else "",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.error,
+                )
+            }
+        } else if (isFailed) {
+            {
+                val message = context.content.getStringContent("message")
+                    ?: stringResource(R.string.chat_message_tool_failed, tool.toolName)
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         } else {

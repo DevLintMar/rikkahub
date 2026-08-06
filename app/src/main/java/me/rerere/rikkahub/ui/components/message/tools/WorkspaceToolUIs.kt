@@ -80,10 +80,21 @@ object EditFileToolUI : ToolUIRenderer {
         return generateUnifiedDiff(oldText, newText, path)
     }
 
-    override fun hasSummary(context: ToolUIContext): Boolean = diffOf(context) != null
+    override fun hasSummary(context: ToolUIContext): Boolean =
+        context.content.getStringContent("error") != null || diffOf(context) != null
 
     @Composable
     override fun Summary(context: ToolUIContext) {
+        context.content.getStringContent("message")?.let { message ->
+            Text(
+                text = message,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+            return
+        }
         val diff = remember(context) { diffOf(context) } ?: return
         val stats = remember(diff) { parseDiffStats(diff) }
         Row(
@@ -171,10 +182,21 @@ object ReadFileToolUI : ToolUIRenderer {
     private fun textOf(context: ToolUIContext): String? =
         context.content.getStringContent("text")
 
-    override fun hasSummary(context: ToolUIContext): Boolean = textOf(context) != null
+    override fun hasSummary(context: ToolUIContext): Boolean =
+        context.content.getStringContent("error") != null || textOf(context) != null
 
     @Composable
     override fun Summary(context: ToolUIContext) {
+        context.content.getStringContent("message")?.let { message ->
+            Text(
+                text = message,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+            return
+        }
         val text = remember(context) { textOf(context) } ?: return
         FileContentSummary(
             text = text,
@@ -214,10 +236,21 @@ object WriteFileToolUI : ToolUIRenderer {
     private fun textOf(context: ToolUIContext): String? =
         context.arguments.getStringContent("text")
 
-    override fun hasSummary(context: ToolUIContext): Boolean = textOf(context) != null
+    override fun hasSummary(context: ToolUIContext): Boolean =
+        context.content.getStringContent("error") != null || textOf(context) != null
 
     @Composable
     override fun Summary(context: ToolUIContext) {
+        context.content.getStringContent("message")?.let { message ->
+            Text(
+                text = message,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+            return
+        }
         val text = remember(context) { textOf(context) } ?: return
         FileContentSummary(
             text = text,
@@ -314,6 +347,18 @@ object ShellToolUI : ToolUIRenderer {
     @Composable
     override fun Summary(context: ToolUIContext) {
         val content = context.content ?: return
+        // 异常信封(无 exitCode): 直接显示错误消息, 不再走 ShellExitStatus 的 "exit code ?" 分支
+        if (content.getStringContent("error") != null) {
+            Text(
+                text = content.getStringContent("message")
+                    ?: stringResource(R.string.chat_message_tool_failed, toolName),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+            return
+        }
         val combined = remember(content) {
             listOf(content.getStringContent("stdout"), content.getStringContent("stderr"))
                 .filterNot { it.isNullOrBlank() }

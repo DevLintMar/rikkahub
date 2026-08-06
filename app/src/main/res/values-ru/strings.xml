@@ -255,6 +255,7 @@
   <string name="chat_message_tool_deny_dialog_hint">Причина (необязательно)</string>
   <string name="chat_message_tool_deny_dialog_title">Отклонить выполнение инструмента</string>
   <string name="chat_message_tool_edit_memory">Редактировать память</string>
+  <string name="chat_message_tool_failed">Ошибка инструмента: %1$s</string>
   <string name="chat_message_tool_read_memory">Читать память</string>
   <string name="chat_message_tool_write_memory">Записать память</string>
   <string name="chat_message_tool_update_active_memory">Обновить активную память</string>

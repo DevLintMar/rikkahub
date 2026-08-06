@@ -264,6 +264,7 @@
   <string name="chat_message_tool_deny_dialog_hint">原因（可选）</string>
   <string name="chat_message_tool_deny_dialog_title">拒绝工具执行</string>
   <string name="chat_message_tool_edit_memory">编辑记忆</string>
+  <string name="chat_message_tool_failed">工具执行失败：%1$s</string>
   <string name="chat_message_tool_read_memory">读取记忆</string>
   <string name="chat_message_tool_write_memory">写入记忆</string>
   <string name="chat_message_tool_update_active_memory">更新活跃记忆</string>

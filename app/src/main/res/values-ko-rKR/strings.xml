@@ -255,6 +255,7 @@
   <string name="chat_message_tool_deny_dialog_hint">거절 사유(선택 사항)</string>
   <string name="chat_message_tool_deny_dialog_title">도구 실행 거부</string>
   <string name="chat_message_tool_edit_memory">기억 편집</string>
+  <string name="chat_message_tool_failed">도구 실행 실패: %1$s</string>
   <string name="chat_message_tool_read_memory">기억 읽기</string>
   <string name="chat_message_tool_write_memory">기억 쓰기</string>
   <string name="chat_message_tool_update_active_memory">활성 기억 업데이트</string>

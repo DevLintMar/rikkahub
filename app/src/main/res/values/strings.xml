@@ -264,6 +264,7 @@
   <string name="chat_message_tool_deny_dialog_hint">Reason (optional)</string>
   <string name="chat_message_tool_deny_dialog_title">Deny Tool Execution</string>
   <string name="chat_message_tool_edit_memory">Edit memory</string>
+  <string name="chat_message_tool_failed">Tool failed: %1$s</string>
   <string name="chat_message_tool_read_memory">Read memory</string>
   <string name="chat_message_tool_write_memory">Write memory</string>
   <string name="chat_message_tool_update_active_memory">Update active memory</string>
