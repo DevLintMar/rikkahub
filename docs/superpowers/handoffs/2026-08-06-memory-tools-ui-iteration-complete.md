@@ -33,8 +33,11 @@
 
 ## 3. git 状态 / CI
 
-- 分支 `master`，HEAD = `392b901`（含本文档），工作树干净
-- CI run 31078297074 ✅ success，headSha `392b901` 核对一致
+- 分支 `master`，HEAD = `8d0cb53`，工作树干净
+- CI run 31078297074 ✅（392b901 功能终点）；后续追加修复 3 个 commit：
+  - `6462125` create_active_memory 工具描述纠正注入格式为标题+描述+全内容（CI run 31081800256 ✅）
+  - `2e437bd` 记忆注入改序号分隔（`1. 标题` 替代 `- 标题`，解决内容以 - 开头条目混杂）
+  - `8d0cb53` memoryToolTitle 兜底改空参（流式传参期不再显示字面 %1$s）+ 六 locale 串去冒号前空格（CI run 31083315002 ✅，headSha 核对）
 
 ## 4. 恢复地图
 
