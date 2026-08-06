@@ -12,7 +12,13 @@ internal fun buildMemoryPrompt(
     if (activeMemories.isNotEmpty()) {
         appendLine("Active memories:")
         activeMemories.forEach { memory ->
-            appendLine("- [id ${memory.id}] ${memory.content}")
+            val title = memory.title.ifBlank { memory.content.trim().take(40) }
+            if (memory.description.isBlank()) {
+                appendLine("- $title")
+            } else {
+                appendLine("- $title — ${memory.description}")
+            }
+            appendLine("  ${memory.content}")
         }
     }
     if (savedMemories.isNotEmpty()) {
@@ -26,5 +32,7 @@ internal fun buildMemoryPrompt(
             }
         }
     }
-    append("Only the titles and descriptions of saved memories are listed here; call read_memory with a title to fetch its full content.")
+    append(
+        "Active memories above are listed with their full content; saved memories are listed by title and description only — call read_memory with a title to fetch the full content."
+    )
 }
