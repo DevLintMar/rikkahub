@@ -11,24 +11,24 @@ internal fun buildMemoryPrompt(
     appendLine()
     if (activeMemories.isNotEmpty()) {
         appendLine("Active memories:")
-        activeMemories.forEach { memory ->
+        activeMemories.forEachIndexed { index, memory ->
             val title = memory.title.ifBlank { memory.content.trim().take(40) }
             if (memory.description.isBlank()) {
-                appendLine("- $title")
+                appendLine("${index + 1}. $title")
             } else {
-                appendLine("- $title — ${memory.description}")
+                appendLine("${index + 1}. $title — ${memory.description}")
             }
             appendLine("  ${memory.content}")
         }
     }
     if (savedMemories.isNotEmpty()) {
         appendLine("Saved memories (use read_memory to read the full content of any):")
-        savedMemories.forEach { memory ->
+        savedMemories.forEachIndexed { index, memory ->
             val title = memory.title.ifBlank { memory.content.trim().take(40) }
             if (memory.description.isBlank()) {
-                appendLine("- $title")
+                appendLine("${index + 1}. $title")
             } else {
-                appendLine("- $title — ${memory.description}")
+                appendLine("${index + 1}. $title — ${memory.description}")
             }
         }
     }
