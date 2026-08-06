@@ -16,10 +16,13 @@ interface MemoryDAO {
     suspend fun getMemoriesOfAssistant(assistantId: String): List<MemoryEntity>
 
     @Query("SELECT * FROM memoryentity WHERE assistant_id = :assistantId AND is_active = 1")
-    suspend fun getActiveMemory(assistantId: String): MemoryEntity?
+    suspend fun getActiveMemories(assistantId: String): List<MemoryEntity>
 
     @Query("SELECT * FROM memoryentity WHERE assistant_id = :assistantId AND is_active = 1")
-    fun getActiveMemoryFlow(assistantId: String): Flow<MemoryEntity?>
+    fun getActiveMemoriesFlow(assistantId: String): Flow<List<MemoryEntity>>
+
+    @Query("SELECT * FROM memoryentity WHERE assistant_id = :assistantId AND is_active = 1 AND title = :title LIMIT 1")
+    suspend fun getActiveMemoryByTitle(assistantId: String, title: String): MemoryEntity?
 
     @Query("SELECT * FROM memoryentity WHERE assistant_id = :assistantId AND title = :title LIMIT 1")
     suspend fun getMemoryByTitle(assistantId: String, title: String): MemoryEntity?

@@ -7,8 +7,6 @@ import me.rerere.rikkahub.data.db.dao.MemoryDAO
 import me.rerere.rikkahub.data.db.entity.MemoryEntity
 import me.rerere.rikkahub.data.model.AssistantMemory
 
-enum class ActiveMemoryMode { REPLACE, APPEND, PREPEND, PATCH }
-
 class MemoryRepository(private val memoryDAO: MemoryDAO) {
     companion object {
         const val GLOBAL_MEMORY_ID = "__global__"
@@ -39,38 +37,15 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
     suspend fun getGlobalMemories(): List<AssistantMemory> =
         memoryDAO.getMemoriesOfAssistant(GLOBAL_MEMORY_ID).map { it.toModel() }
 
-    fun getActiveMemoryFlow(assistantId: String): Flow<AssistantMemory?> =
-        memoryDAO.getActiveMemoryFlow(assistantId).map { it?.toModel() }
+    fun getActiveMemoriesFlow(assistantId: String): Flow<List<AssistantMemory>> =
+        memoryDAO.getActiveMemoriesFlow(assistantId)
+            .map { entities -> entities.map { it.toModel() } }
 
-    suspend fun getActiveMemory(assistantId: String): AssistantMemory? =
-        memoryDAO.getActiveMemory(assistantId)?.toModel()
+    suspend fun getActiveMemories(assistantId: String): List<AssistantMemory> =
+        memoryDAO.getActiveMemories(assistantId).map { it.toModel() }
 
-    suspend fun updateActiveMemory(
-        assistantId: String,
-        content: String,
-        mode: ActiveMemoryMode = ActiveMemoryMode.REPLACE,
-        oldString: String = "",
-        newString: String = "",
-    ): AssistantMemory {
-        val current = memoryDAO.getActiveMemory(assistantId)
-        val newContent = when (mode) {
-            ActiveMemoryMode.REPLACE -> content
-            ActiveMemoryMode.APPEND -> (current?.content.orEmpty()) + content
-            ActiveMemoryMode.PREPEND -> content + current?.content.orEmpty()
-            ActiveMemoryMode.PATCH -> {
-                val base = current?.content ?: error("Active memory is empty; patch requires existing content")
-                require(oldString.isNotEmpty()) { "old_string is required for patch mode" }
-                val count = base.windowed(oldString.length).count { it == oldString }
-                require(count == 1) { "old_string matches $count locations in active memory; it must match exactly once" }
-                base.replace(oldString, newString)
-            }
-        }
-        val updated = current
-            ?.let { it.copy(content = newContent).also { memoryDAO.updateMemory(it) } }
-            ?: MemoryEntity(assistantId = assistantId, content = newContent, isActive = true)
-                .let { it.copy(id = memoryDAO.insertMemory(it).toInt()) }
-        return updated.toModel()
-    }
+    suspend fun getActiveMemoryByTitle(assistantId: String, title: String): AssistantMemory? =
+        memoryDAO.getActiveMemoryByTitle(assistantId, title)?.toModel()
 
     suspend fun getMemoryByTitle(assistantId: String, title: String): AssistantMemory? {
         memoryDAO.getMemoryByTitle(assistantId, title)?.let { return it.toModel() }
@@ -85,9 +60,14 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
         description: String,
         content: String,
         overwrite: Boolean,
+        isActive: Boolean = false,
     ): AssistantMemory {
         require(title.isNotBlank()) { "title is required" }
-        val existing = memoryDAO.getMemoryByTitle(assistantId, title)
+        val existing = if (isActive) {
+            memoryDAO.getActiveMemoryByTitle(assistantId, title)
+        } else {
+            memoryDAO.getMemoryByTitle(assistantId, title)
+        }
         if (existing != null) {
             if (!overwrite) {
                 error("A memory with title \"$title\" already exists; pass overwrite=true to replace it")
@@ -101,6 +81,7 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
             title = title,
             description = description,
             content = content,
+            isActive = isActive,
         )
         return entity.copy(id = memoryDAO.insertMemory(entity).toInt()).toModel()
     }
@@ -127,14 +108,23 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
         oldText: String?,
         newText: String?,
         replaceAll: Boolean,
+        isActive: Boolean = false,
     ): AssistantMemory {
-        val memory = memoryDAO.getMemoryByTitle(assistantId, title) ?: error("Memory not found: $title")
+        val memory = if (isActive) {
+            memoryDAO.getActiveMemoryByTitle(assistantId, title)
+        } else {
+            memoryDAO.getMemoryByTitle(assistantId, title)
+        } ?: error("Memory not found: $title")
         var updatedTitle = memory.title
         var updatedDesc = memory.description
         var updatedContent = memory.content
         if (newTitle != null) {
             require(newTitle.isNotBlank()) { "new_title must not be blank" }
-            val conflict = memoryDAO.getMemoryByTitle(assistantId, newTitle)
+            val conflict = if (isActive) {
+                memoryDAO.getActiveMemoryByTitle(assistantId, newTitle)
+            } else {
+                memoryDAO.getMemoryByTitle(assistantId, newTitle)
+            }
             require(conflict == null || conflict.id == memory.id) {
                 "Another memory already uses title \"$newTitle\""
             }
@@ -160,8 +150,12 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
         memoryDAO.deleteMemory(id)
     }
 
-    suspend fun deleteMemoryByTitle(assistantId: String, title: String): Boolean {
-        val memory = memoryDAO.getMemoryByTitle(assistantId, title) ?: return false
+    suspend fun deleteMemoryByTitle(assistantId: String, title: String, isActive: Boolean = false): Boolean {
+        val memory = if (isActive) {
+            memoryDAO.getActiveMemoryByTitle(assistantId, title)
+        } else {
+            memoryDAO.getMemoryByTitle(assistantId, title)
+        } ?: return false
         memoryDAO.deleteMemory(memory.id)
         return true
     }
