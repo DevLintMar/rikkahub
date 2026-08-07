@@ -1302,16 +1302,17 @@ private fun ScrapeWebPreview(content: JsonElement) {
                         }
                     }
                     if (images.isNotEmpty()) {
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(images) { imageUrl ->
                                 AsyncImage(
                                     model = imageUrl,
                                     contentDescription = null,
                                     contentScale = ContentScale.Crop,
+                                    // 与 SearchWebPreview 图片数组展示保持一致（120x160，圆角 12dp）
                                     modifier = Modifier
-                                        .height(72.dp)
-                                        .width(96.dp)
-                                        .clip(RoundedCornerShape(8.dp))
+                                        .height(120.dp)
+                                        .width(160.dp)
+                                        .clip(RoundedCornerShape(12.dp))
                                         .clickable { context.openUrl(imageUrl) },
                                 )
                             }
