@@ -189,15 +189,13 @@ fun <T> ChainOfThought(
                 // 卡片半透明（开启气泡透明度）时不画父级整段竖线，改用每个步骤单元级分段时间线
                 // （见 ChainOfThoughtStepContent），避免同色半透明遮罩二次合成变浅。
                 val timelineVisible = cardColors.containerColor.alpha >= 0.999f
-                // 聚合折叠头下紧邻首个步骤：步骤时间线不应画在聚合头图标与首行之间（视觉上
-                // 聚合头自身已代表首节点），故聚合模式下标记首步，由其单元级时间线跳过上方段。
-                val aggregateMode = header != null
-                // 只在有可见步骤时画时间线竖线——聚合折叠态（visibleSteps 空）不画，避免大脑图标处残留竖线
+                // 只在有可见步骤时画时间线竖线——聚合折叠态（visibleSteps 空）不画，避免大脑图标处残留竖线。
+                // 首步跳过图标上方段：聚合模式下聚合头紧邻首步（聚合头即首节点）无线，非聚合模式同样无线。
                 if (visibleSteps.isNotEmpty()) {
                     val stepsColumn: @Composable () -> Unit = {
                         Column {
                             visibleSteps.fastForEachIndexed { index, step ->
-                                scope.isFirstStep = aggregateMode || index == 0
+                                scope.isFirstStep = index == 0
                                 scope.isLastStep = index == visibleSteps.lastIndex
                                 scope.content(step)
                             }
