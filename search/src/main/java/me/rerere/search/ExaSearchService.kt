@@ -16,7 +16,6 @@ import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import me.rerere.ai.core.InputSchema
@@ -97,10 +96,6 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
                     put("type", "string")
                     put("description", "two-letter ISO country code for geo-targeting (e.g. 'US')")
                 })
-                put("max_age_hours", buildJsonObject {
-                    put("type", "integer")
-                    put("description", "max cache age in hours; 0 = always fetch fresh")
-                })
                 put("content_type", buildJsonObject {
                     put("type", "string")
                     put("description", "text = full page content; highlights = key excerpts only (saves tokens)")
@@ -160,14 +155,12 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
                 params["end_published_date"]?.jsonPrimitive?.contentOrNull?.let { put("endPublishedDate", it) }
                 params["user_location"]?.jsonPrimitive?.contentOrNull?.let { put("userLocation", it) }
                 val contentType = params["content_type"]?.jsonPrimitive?.contentOrNull
-                val maxAgeHours = params["max_age_hours"]?.jsonPrimitive?.intOrNull
                 put("contents", buildJsonObject {
                     if (contentType == "highlights") {
                         put("highlights", true)
                     } else {
                         put("text", true)
                     }
-                    maxAgeHours?.let { put("maxAgeHours", it) }
                 })
             }
             val apiKey = keyRoulette.next(serviceOptions.apiKey, serviceOptions.id.toString())
