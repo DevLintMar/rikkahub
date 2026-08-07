@@ -14,6 +14,8 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import me.rerere.ai.core.InputSchema
@@ -56,6 +58,56 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
                         add("deep")
                     })
                 })
+                put("category", buildJsonObject {
+                    put("type", "string")
+                    put("description", "news category to restrict results to")
+                    put("enum", buildJsonArray {
+                        add("company")
+                        add("publication")
+                        add("news")
+                        add("personal site")
+                        add("financial report")
+                        add("people")
+                    })
+                })
+                put("include_domains", buildJsonObject {
+                    put("type", "array")
+                    put("items", buildJsonObject {
+                        put("type", "string")
+                    })
+                    put("description", "only include results from these domains")
+                })
+                put("exclude_domains", buildJsonObject {
+                    put("type", "array")
+                    put("items", buildJsonObject {
+                        put("type", "string")
+                    })
+                    put("description", "exclude results from these domains")
+                })
+                put("start_published_date", buildJsonObject {
+                    put("type", "string")
+                    put("description", "earliest publish date, ISO 8601 (YYYY-MM-DD)")
+                })
+                put("end_published_date", buildJsonObject {
+                    put("type", "string")
+                    put("description", "latest publish date, ISO 8601 (YYYY-MM-DD)")
+                })
+                put("user_location", buildJsonObject {
+                    put("type", "string")
+                    put("description", "two-letter ISO country code for geo-targeting (e.g. 'US')")
+                })
+                put("max_age_hours", buildJsonObject {
+                    put("type", "integer")
+                    put("description", "max cache age in hours; 0 = always fetch fresh")
+                })
+                put("content_type", buildJsonObject {
+                    put("type", "string")
+                    put("description", "text = full page content; highlights = key excerpts only (saves tokens)")
+                    put("enum", buildJsonArray {
+                        add("text")
+                        add("highlights")
+                    })
+                })
             },
             required = listOf("query")
         )
@@ -82,8 +134,29 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
                 put("query", JsonPrimitive(query))
                 put("numResults", JsonPrimitive(commonOptions.resultSize))
                 put("type", JsonPrimitive(params["type"]?.jsonPrimitive?.content ?: "auto"))
+                params["category"]?.jsonPrimitive?.contentOrNull?.let { put("category", it) }
+                params["include_domains"].asSearchStringList()?.let { domains ->
+                    put("includeDomains", buildJsonArray {
+                        domains.forEach { add(JsonPrimitive(it)) }
+                    })
+                }
+                params["exclude_domains"].asSearchStringList()?.let { domains ->
+                    put("excludeDomains", buildJsonArray {
+                        domains.forEach { add(JsonPrimitive(it)) }
+                    })
+                }
+                params["start_published_date"]?.jsonPrimitive?.contentOrNull?.let { put("startPublishedDate", it) }
+                params["end_published_date"]?.jsonPrimitive?.contentOrNull?.let { put("endPublishedDate", it) }
+                params["user_location"]?.jsonPrimitive?.contentOrNull?.let { put("userLocation", it) }
+                val contentType = params["content_type"]?.jsonPrimitive?.contentOrNull
+                val maxAgeHours = params["max_age_hours"]?.jsonPrimitive?.intOrNull
                 put("contents", buildJsonObject {
-                    put("text", JsonPrimitive(true))
+                    if (contentType == "highlights") {
+                        put("highlights", true)
+                    } else {
+                        put("text", true)
+                    }
+                    maxAgeHours?.let { put("maxAgeHours", it) }
                 })
             }
             val apiKey = keyRoulette.next(serviceOptions.apiKey, serviceOptions.id.toString())
@@ -112,7 +185,7 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
                             SearchResultItem(
                                 title = it.title,
                                 url = it.url,
-                                text = it.text ?: ""
+                                text = if (it.highlights != null) it.highlights.joinToString("\n").ifBlank { it.text ?: "" } else it.text ?: ""
                             )
                         },
                         images = response.results.mapNotNull { it.image?.takeIf { url -> url.isNotBlank() } },
@@ -232,5 +305,7 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
         val text: String? = null,
         @SerialName("image")
         val image: String? = null,
+        @SerialName("highlights")
+        val highlights: List<String>? = null,
     )
 }
