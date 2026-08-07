@@ -10,8 +10,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import me.rerere.ai.core.InputSchema
@@ -63,7 +65,52 @@ object JinaSearchService : SearchService<SearchServiceOptions.JinaOptions> {
             properties = buildJsonObject {
                 put("url", buildJsonObject {
                     put("type", "string")
-                    put("description", "url to scrape")
+                    put("description", "url to scrape (single URL)")
+                })
+                put("respond_with", buildJsonObject {
+                    put("type", "string")
+                    put("description", "content format: content = readability-extracted text (default), markdown = raw markdown, html = raw HTML, text = plain body text")
+                    put("enum", buildJsonArray {
+                        add("content")
+                        add("markdown")
+                        add("html")
+                        add("text")
+                    })
+                })
+                put("target_selector", buildJsonObject {
+                    put("type", "string")
+                    put("description", "CSS selector to only extract content from matching elements (e.g. 'article', '.main-content')")
+                })
+                put("timeout", buildJsonObject {
+                    put("type", "integer")
+                    put("description", "max seconds to wait for page load (max 180)")
+                })
+                put("engine", buildJsonObject {
+                    put("type", "string")
+                    put("description", "auto (default) = hybrid; browser = headless Chrome with JS rendering; direct = lightweight no-JS")
+                    put("enum", buildJsonArray {
+                        add("auto")
+                        add("browser")
+                        add("direct")
+                    })
+                })
+                put("no_cache", buildJsonObject {
+                    put("type", "boolean")
+                    put("description", "bypass internal cache for fresh content (costs more quota)")
+                })
+                put("retain_links", buildJsonObject {
+                    put("type", "string")
+                    put("description", "link retention mode: all (default), none, text (anchor text only), gpt-oss (numbered citations + footnote list)")
+                    put("enum", buildJsonArray {
+                        add("all")
+                        add("none")
+                        add("text")
+                        add("gpt-oss")
+                    })
+                })
+                put("max_tokens", buildJsonObject {
+                    put("type", "integer")
+                    put("description", "truncate response to at most N tokens (min 500), a guardrail for long pages")
                 })
             },
             required = listOf("url")
@@ -123,7 +170,10 @@ object JinaSearchService : SearchService<SearchServiceOptions.JinaOptions> {
         serviceOptions: SearchServiceOptions.JinaOptions
     ): Result<ScrapedResult> = withContext(Dispatchers.IO) {
         runCatching {
-            val url = params["url"]?.jsonPrimitive?.content ?: error("urls is required")
+            // 三键一致性：schema 键(snake_case) = 本处读取键；Jina 参数全部走 X-* 请求头（不支持 query 参数）
+            val url = params["urls"].asSearchStringList()?.firstOrNull()
+                ?: params["url"]?.jsonPrimitive?.contentOrNull
+                ?: error("url is required")
 
             val body = buildJsonObject {
                 put("url", url)
@@ -134,15 +184,54 @@ object JinaSearchService : SearchService<SearchServiceOptions.JinaOptions> {
             val request = Request.Builder()
                 .url(scrapeUrl)
                 .post(body.toString().toRequestBody())
-                .addHeader("Authorization", "Bearer ${serviceOptions.apiKey}")
                 .addHeader("Accept", "application/json")
                 .addHeader("Content-Type", "application/json")
-                .addHeader("X-Return-Format", "markdown")
+                .apply {
+                    // 修 bug：免 key 时不要发空 Bearer 头（可能被当作非法凭据/触发异常限流路径）
+                    if (serviceOptions.apiKey.isNotBlank()) {
+                        addHeader("Authorization", "Bearer ${serviceOptions.apiKey}")
+                    }
+                    // 未传 respond_with 时不加该头，走官方默认 content（readability 提取正文）
+                    params["respond_with"]?.jsonPrimitive?.contentOrNull?.takeIf(String::isNotBlank)?.let {
+                        addHeader("X-Respond-With", it)
+                    }
+                    params["target_selector"]?.jsonPrimitive?.contentOrNull?.takeIf(String::isNotBlank)?.let {
+                        addHeader("X-Target-Selector", it)
+                    }
+                    params["timeout"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()?.let {
+                        addHeader("X-Timeout", it.toString())
+                    }
+                    params["engine"]?.jsonPrimitive?.contentOrNull?.takeIf(String::isNotBlank)?.let {
+                        addHeader("X-Engine", it)
+                    }
+                    if (params["no_cache"]?.jsonPrimitive?.booleanOrNull == true) {
+                        addHeader("X-No-Cache", "true")
+                    }
+                    params["retain_links"]?.jsonPrimitive?.contentOrNull?.takeIf(String::isNotBlank)?.let {
+                        addHeader("X-Retain-Links", it)
+                    }
+                    params["max_tokens"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()?.let {
+                        addHeader("X-Max-Tokens", it.toString())
+                    }
+                }
                 .build()
 
             val response = httpClient.newCall(request).await()
             if (!response.isSuccessful) {
-                error("response failed for url $url #${response.code}")
+                // 修 bug：解析官方错误 JSON（name/readableMessage），AI 拿具体失败原因
+                val bodyText = response.body.string()
+                val officialError = runCatching {
+                    val obj = json.parseToJsonElement(bodyText).jsonObject
+                    val name = obj["name"]?.jsonPrimitive?.contentOrNull
+                    val message = obj["readableMessage"]?.jsonPrimitive?.contentOrNull
+                        ?: obj["message"]?.jsonPrimitive?.contentOrNull
+                    when {
+                        name != null && message != null -> "$name: $message"
+                        name != null -> name
+                        else -> null
+                    }
+                }.getOrNull()
+                error(officialError ?: "response failed for url $url #${response.code}: $bodyText")
             }
             val responseData = response.body.string().let {
                 json.decodeFromString<JinaScrapeResponse>(it)
@@ -153,6 +242,7 @@ object JinaSearchService : SearchService<SearchServiceOptions.JinaOptions> {
                     ScrapedResultUrl(
                         url = responseData.data.url,
                         content = responseData.data.content,
+                        publishedDate = responseData.data.publishedTime,
                         metadata = ScrapedResultMetadata(
                             title = responseData.data.title,
                             description = responseData.data.description

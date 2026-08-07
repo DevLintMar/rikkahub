@@ -16,6 +16,7 @@ import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import me.rerere.ai.core.InputSchema
@@ -111,12 +112,38 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
     override fun scrapingParameters(options: SearchServiceOptions.ExaOptions): InputSchema? =
         InputSchema.Obj(
             properties = buildJsonObject {
-                put("url", buildJsonObject {
+                put("urls", buildJsonObject {
+                    put("type", "array")
+                    put("items", buildJsonObject { put("type", "string") })
+                    put("description", "URLs to fetch contents for (up to 100)")
+                })
+                put("content_type", buildJsonObject {
                     put("type", "string")
-                    put("description", "url to scrape")
+                    put("description", "text = full page markdown (default); highlights = key excerpts only (saves tokens); summary = LLM-generated summary")
+                    put("enum", buildJsonArray {
+                        add("text")
+                        add("highlights")
+                        add("summary")
+                    })
+                })
+                put("max_characters", buildJsonObject {
+                    put("type", "integer")
+                    put("description", "max characters per URL (1-10000), controls response size and cost")
+                })
+                put("max_age_hours", buildJsonObject {
+                    put("type", "integer")
+                    put("description", "max acceptable cache age in hours; 0 = always crawl live (fresh), -1 = cache only (fast), omit = cache when available else crawl")
+                })
+                put("summary_query", buildJsonObject {
+                    put("type", "string")
+                    put("description", "custom query guiding the LLM summary, only used when content_type=summary")
+                })
+                put("extract_links", buildJsonObject {
+                    put("type", "integer")
+                    put("description", "number of links to extract from each page (0-1000), returned per page")
                 })
             },
-            required = listOf("url")
+            required = listOf("urls")
         )
 
     override suspend fun search(
@@ -207,12 +234,30 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
         serviceOptions: SearchServiceOptions.ExaOptions
     ): Result<ScrapedResult> = withContext(Dispatchers.IO) {
         runCatching {
-            val url = params["url"]?.jsonPrimitive?.content ?: error("url is required")
+            // 三键一致性：schema 键(snake_case) = 本处读取键 = 聚合键；body 写入键按 Exa 原生 camelCase
+            val urls = params["urls"].asSearchStringList()?.takeIf { it.isNotEmpty() }
+                ?: error("urls is required")
+            val contentType = params["content_type"]?.jsonPrimitive?.contentOrNull
+            val maxCharacters = params["max_characters"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+            val maxAgeHours = params["max_age_hours"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+            val summaryQuery = params["summary_query"]?.jsonPrimitive?.contentOrNull
+            val extractLinks = params["extract_links"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+
             val body = buildJsonObject {
-                put("urls", buildJsonArray {
-                    add(JsonPrimitive(url))
-                })
-                put("text", JsonPrimitive(true))
+                put("urls", buildJsonArray { urls.forEach { add(JsonPrimitive(it)) } })
+                when (contentType) {
+                    "highlights" -> put("highlights", buildJsonObject {
+                        maxCharacters?.let { put("maxCharacters", it) }
+                    })
+                    "summary" -> put("summary", buildJsonObject {
+                        summaryQuery?.takeIf(String::isNotBlank)?.let { put("query", it) }
+                    })
+                    else -> put("text", buildJsonObject {
+                        maxCharacters?.let { put("maxCharacters", it) }
+                    })
+                }
+                maxAgeHours?.let { put("maxAgeHours", it) }
+                extractLinks?.takeIf { it > 0 }?.let { put("extras", buildJsonObject { put("links", it) }) }
             }
             val apiKey = keyRoulette.next(serviceOptions.apiKey, serviceOptions.id.toString())
 
@@ -233,22 +278,42 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
                     error("Failed to decode response: $bodyRaw")
                 }.getOrThrow()
 
-                return@withContext Result.success(
-                    ScrapedResult(
-                        urls = data.results.map {
+                // 成功项 + 失败项：statuses 是 HTTP 200 内上报的单 URL 失败，不能静默丢弃
+                val entries = buildList {
+                    data.results.forEach { item ->
+                        add(
                             ScrapedResultUrl(
-                                url = it.url,
-                                content = it.text ?: "",
+                                url = item.url,
+                                content = when (contentType) {
+                                    "highlights" -> item.highlights?.joinToString("\n").orEmpty()
+                                    "summary" -> item.summary.orEmpty()
+                                    else -> item.text.orEmpty()
+                                },
+                                images = item.image?.takeIf { it.isNotBlank() }?.let { listOf(it) } ?: emptyList(),
+                                publishedDate = item.publishedDate,
+                                author = item.author,
                                 metadata = ScrapedResultMetadata(
-                                    title = it.title,
-                                )
+                                    title = item.title,
+                                    favicon = item.favicon,
+                                ),
                             )
-                        }
-                    )
-                )
+                        )
+                    }
+                    data.statuses.filter { it.status == "error" }.forEach { status ->
+                        val tag = status.error?.tag ?: "CRAWL_UNKNOWN_ERROR"
+                        val code = status.error?.httpStatusCode?.let { " $it" } ?: ""
+                        add(ScrapedResultUrl(url = status.id, error = "$tag$code"))
+                    }
+                }
+
+                return@withContext Result.success(ScrapedResult(urls = entries))
             } else {
-                println(response.body.string())
-                error("response failed #${response.code}")
+                val bodyText = response.body.string()
+                val detail = runCatching {
+                    json.parseToJsonElement(bodyText).jsonObject["detail"]?.jsonPrimitive?.contentOrNull
+                }.getOrNull()
+                println(bodyText)
+                error(detail ?: "response failed #${response.code}: $bodyText")
             }
         }
     }
@@ -265,6 +330,8 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
         val results: List<ExaResult>,
         @SerialName("output")
         val output: ExaOutput? = null,
+        @SerialName("statuses")
+        val statuses: List<ExaStatus> = emptyList(),
     )
 
     @Serializable
@@ -311,6 +378,31 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
         val image: String? = null,
         @SerialName("highlights")
         val highlights: List<String>? = null,
+        @SerialName("summary")
+        val summary: String? = null,
+        @SerialName("favicon")
+        val favicon: String? = null,
+    )
+
+    /** /contents 单 URL 抓取状态：status=error 表示该 URL 失败（整体请求仍 200），必须检查 */
+    @Serializable
+    data class ExaStatus(
+        @SerialName("id")
+        val id: String,
+        @SerialName("status")
+        val status: String,
+        @SerialName("source")
+        val source: String? = null,
+        @SerialName("error")
+        val error: ExaStatusError? = null,
+    )
+
+    @Serializable
+    data class ExaStatusError(
+        @SerialName("tag")
+        val tag: String? = null,
+        @SerialName("httpStatusCode")
+        val httpStatusCode: Int? = null,
     )
 
     /** deep 模式综合答案提取：outputSchema 时 content 为 {"answer": ...}，旧模式为纯字符串 */

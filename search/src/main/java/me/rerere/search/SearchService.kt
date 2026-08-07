@@ -119,11 +119,21 @@ data class ScrapedResult(
     val urls: List<ScrapedResultUrl>,
 )
 
+/**
+ * 单条抓取结果。error 非空表示该 URL 抓取失败（失败时其余字段可能为空）。
+ * 新字段全部带默认值以兼容 CustomJs 脚本返回的 {url, content, metadata?} 精简结构。
+ */
 @Serializable
 data class ScrapedResultUrl(
     val url: String,
-    val content: String,
+    val content: String = "",
     val metadata: ScrapedResultMetadata? = null,
+    /** 抓取失败原因（原样透出渠道错误，如 "CRAWL_NOT_FOUND 404"）；null 表示成功 */
+    val error: String? = null,
+    val images: List<String> = emptyList(),
+    val statusCode: Int? = null,
+    val publishedDate: String? = null,
+    val author: String? = null,
 )
 
 @Serializable
@@ -131,6 +141,7 @@ data class ScrapedResultMetadata(
     val title: String? = null,
     val description: String? = null,
     val language: String? = null,
+    val favicon: String? = null,
 )
 
 @Serializable

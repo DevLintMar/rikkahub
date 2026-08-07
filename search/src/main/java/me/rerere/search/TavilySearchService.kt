@@ -17,6 +17,7 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import me.rerere.ai.core.InputSchema
@@ -110,12 +111,45 @@ object TavilySearchService : SearchService<SearchServiceOptions.TavilyOptions> {
     override fun scrapingParameters(options: SearchServiceOptions.TavilyOptions): InputSchema? =
         InputSchema.Obj(
             properties = buildJsonObject {
-                put("url", buildJsonObject {
+                put("urls", buildJsonObject {
+                    put("type", "array")
+                    put("items", buildJsonObject { put("type", "string") })
+                    put("description", "URLs to extract content from (up to 20)")
+                })
+                put("extract_depth", buildJsonObject {
                     put("type", "string")
-                    put("description", "url to scrape")
+                    put("description", "basic = default; advanced = more data (tables, embedded content), better for LinkedIn/protected sites, slightly slower")
+                    put("enum", buildJsonArray {
+                        add("basic")
+                        add("advanced")
+                    })
+                })
+                put("query", buildJsonObject {
+                    put("type", "string")
+                    put("description", "user intent to rerank extracted content chunks by relevance")
+                })
+                put("chunks_per_source", buildJsonObject {
+                    put("type", "integer")
+                    put("description", "max relevant chunks per source, only effective when query is provided (default 3)")
+                })
+                put("include_images", buildJsonObject {
+                    put("type", "boolean")
+                    put("description", "include image URLs extracted from each page")
+                })
+                put("include_favicon", buildJsonObject {
+                    put("type", "boolean")
+                    put("description", "include favicon URL for each result")
+                })
+                put("format", buildJsonObject {
+                    put("type", "string")
+                    put("description", "output format of extracted content (markdown default; text may increase latency)")
+                    put("enum", buildJsonArray {
+                        add("markdown")
+                        add("text")
+                    })
                 })
             },
-            required = listOf("url")
+            required = listOf("urls")
         )
 
     override suspend fun search(
@@ -192,11 +226,17 @@ object TavilySearchService : SearchService<SearchServiceOptions.TavilyOptions> {
         serviceOptions: SearchServiceOptions.TavilyOptions
     ): Result<ScrapedResult> = withContext(Dispatchers.IO) {
         runCatching {
-            val url = params["url"]?.jsonPrimitive?.content ?: error("url is required")
+            // 三键一致性：schema 键(snake_case) = 本处读取键 = 聚合键；Tavily body 本身就是 snake_case，直接透传
+            val urls = params["urls"].asSearchStringList()?.takeIf { it.isNotEmpty() }
+                ?: error("urls is required")
             val body = buildJsonObject {
-                put("urls", buildJsonArray {
-                    add(url)
-                })
+                put("urls", buildJsonArray { urls.forEach { add(JsonPrimitive(it)) } })
+                params["extract_depth"]?.jsonPrimitive?.contentOrNull?.takeIf(String::isNotBlank)?.let { put("extract_depth", it) }
+                params["query"]?.jsonPrimitive?.contentOrNull?.takeIf(String::isNotBlank)?.let { put("query", it) }
+                params["chunks_per_source"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()?.let { put("chunks_per_source", it) }
+                params["include_images"]?.jsonPrimitive?.booleanOrNull?.let { put("include_images", it) }
+                params["include_favicon"]?.jsonPrimitive?.booleanOrNull?.let { put("include_favicon", it) }
+                params["format"]?.jsonPrimitive?.contentOrNull?.takeIf(String::isNotBlank)?.let { put("format", it) }
             }
             val apiKey = keyRoulette.next(serviceOptions.apiKey, serviceOptions.id.toString())
             val request = Request.Builder()
@@ -209,18 +249,34 @@ object TavilySearchService : SearchService<SearchServiceOptions.TavilyOptions> {
                 val response = response.body.string().let {
                     json.decodeFromString<ScrapeResponse>(it)
                 }
-                return@withContext Result.success(
-                    ScrapedResult(
-                        urls = response.results.map {
+                val includeImages = params["include_images"]?.jsonPrimitive?.booleanOrNull ?: false
+                val includeFavicon = params["include_favicon"]?.jsonPrimitive?.booleanOrNull ?: false
+                // 成功项 + 失败项：failed_results 是 HTTP 200 内上报的单 URL 失败，不能静默丢弃
+                val entries = buildList {
+                    response.results.forEach { item ->
+                        add(
                             ScrapedResultUrl(
-                                url = it.url,
-                                content = it.rawContent,
+                                url = item.url,
+                                content = item.rawContent,
+                                images = if (includeImages) item.images else emptyList(),
+                                metadata = if (includeFavicon) {
+                                    ScrapedResultMetadata(favicon = item.favicon)
+                                } else null,
                             )
-                        }
-                    )
-                )
+                        )
+                    }
+                    response.failedResults.forEach { failed ->
+                        add(ScrapedResultUrl(url = failed.url, error = failed.error))
+                    }
+                }
+                return@withContext Result.success(ScrapedResult(urls = entries))
             } else {
-                error("response failed #${response.code}")
+                // 解析统一错误结构 {detail: {error}}，AI 拿到具体失败原因
+                val bodyText = response.body.string()
+                val detail = runCatching {
+                    json.parseToJsonElement(bodyText).jsonObject["detail"]?.jsonObject?.get("error")?.jsonPrimitive?.contentOrNull
+                }.getOrNull()
+                error(detail ?: "response failed #${response.code}: $bodyText")
             }
         }
     }
@@ -245,6 +301,8 @@ object TavilySearchService : SearchService<SearchServiceOptions.TavilyOptions> {
     @Serializable
     data class ScrapeResponse(
         val results: List<ScrapedResultItem>,
+        @SerialName("failed_results")
+        val failedResults: List<FailedResultItem> = emptyList(),
     )
 
     @Serializable
@@ -252,5 +310,13 @@ object TavilySearchService : SearchService<SearchServiceOptions.TavilyOptions> {
         val url: String,
         @SerialName("raw_content")
         val rawContent: String,
+        val images: List<String> = emptyList(),
+        val favicon: String? = null,
+    )
+
+    @Serializable
+    data class FailedResultItem(
+        val url: String,
+        val error: String? = null,
     )
 }
