@@ -10,7 +10,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -58,6 +60,50 @@ object TavilySearchService : SearchService<SearchServiceOptions.TavilyOptions> {
                         add("finance")
                     })
                 })
+                put("time_range", buildJsonObject {
+                    put("type", "string")
+                    put("enum", buildJsonArray {
+                        add("day")
+                        add("week")
+                        add("month")
+                        add("year")
+                    })
+                    put("description", "restrict results to this time range")
+                })
+                put("start_date", buildJsonObject {
+                    put("type", "string")
+                    put("description", "earliest publish date, format YYYY-MM-DD")
+                })
+                put("end_date", buildJsonObject {
+                    put("type", "string")
+                    put("description", "latest publish date, format YYYY-MM-DD")
+                })
+                put("include_domains", buildJsonObject {
+                    put("type", "array")
+                    put("items", buildJsonObject {
+                        put("type", "string")
+                    })
+                    put("description", "only include results from these domains")
+                })
+                put("exclude_domains", buildJsonObject {
+                    put("type", "array")
+                    put("items", buildJsonObject {
+                        put("type", "string")
+                    })
+                    put("description", "exclude results from these domains")
+                })
+                put("country", buildJsonObject {
+                    put("type", "string")
+                    put("description", "boost results from this country (full country name, e.g. 'Japan')")
+                })
+                put("exact_match", buildJsonObject {
+                    put("type", "boolean")
+                    put("description", "require the exact phrase")
+                })
+                put("include_raw_content", buildJsonObject {
+                    put("type", "boolean")
+                    put("description", "include full page content instead of snippet")
+                })
             },
             required = listOf("query")
         )
@@ -81,6 +127,7 @@ object TavilySearchService : SearchService<SearchServiceOptions.TavilyOptions> {
         runCatching {
             val query = params["query"]?.jsonPrimitive?.content ?: error("query is required")
             val topic = params["topic"]?.jsonPrimitive?.contentOrNull ?: "general"
+            val includeRawContent = params["include_raw_content"]?.jsonPrimitive?.booleanOrNull == true
 
             // Validate topic
             if (topic !in listOf("general", "news", "finance")) {
@@ -94,6 +141,22 @@ object TavilySearchService : SearchService<SearchServiceOptions.TavilyOptions> {
                 put("topic", topic)
                 put("include_answer", "advanced")
                 put("include_images", true)
+                params["time_range"]?.jsonPrimitive?.contentOrNull?.let { put("time_range", it) }
+                params["start_date"]?.jsonPrimitive?.contentOrNull?.let { put("start_date", it) }
+                params["end_date"]?.jsonPrimitive?.contentOrNull?.let { put("end_date", it) }
+                params["include_domains"].asSearchStringList()?.let { domains ->
+                    put("include_domains", buildJsonArray {
+                        domains.forEach { add(JsonPrimitive(it)) }
+                    })
+                }
+                params["exclude_domains"].asSearchStringList()?.let { domains ->
+                    put("exclude_domains", buildJsonArray {
+                        domains.forEach { add(JsonPrimitive(it)) }
+                    })
+                }
+                params["country"]?.jsonPrimitive?.contentOrNull?.let { put("country", it) }
+                params["exact_match"]?.jsonPrimitive?.booleanOrNull?.let { put("exact_match", it) }
+                params["include_raw_content"]?.jsonPrimitive?.booleanOrNull?.let { put("include_raw_content", it) }
             }
             val apiKey = keyRoulette.next(serviceOptions.apiKey, serviceOptions.id.toString())
 
@@ -115,7 +178,7 @@ object TavilySearchService : SearchService<SearchServiceOptions.TavilyOptions> {
                             SearchResultItem(
                                 title = it.title,
                                 url = it.url,
-                                text = it.content
+                                text = if (includeRawContent) it.rawContent ?: it.content else it.content
                             )
                         },
                         images = response.images,
