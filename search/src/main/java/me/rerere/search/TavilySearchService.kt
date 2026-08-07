@@ -68,15 +68,15 @@ object TavilySearchService : SearchService<SearchServiceOptions.TavilyOptions> {
                         add("month")
                         add("year")
                     })
-                    put("description", "restrict results to this time range")
+                    put("description", "restrict results to this time range (recommended together with topic=news)")
                 })
                 put("start_date", buildJsonObject {
                     put("type", "string")
-                    put("description", "earliest publish date, format YYYY-MM-DD")
+                    put("description", "earliest publish date, format YYYY-MM-DD (recommended together with topic=news)")
                 })
                 put("end_date", buildJsonObject {
                     put("type", "string")
-                    put("description", "latest publish date, format YYYY-MM-DD")
+                    put("description", "latest publish date, format YYYY-MM-DD (recommended together with topic=news)")
                 })
                 put("include_domains", buildJsonObject {
                     put("type", "array")
@@ -94,11 +94,11 @@ object TavilySearchService : SearchService<SearchServiceOptions.TavilyOptions> {
                 })
                 put("country", buildJsonObject {
                     put("type", "string")
-                    put("description", "boost results from this country (full country name, e.g. 'Japan')")
+                    put("description", "boost results from this country (full country name, e.g. 'Japan'); boosts relevance rather than filtering")
                 })
                 put("exact_match", buildJsonObject {
                     put("type", "boolean")
-                    put("description", "require the exact phrase")
+                    put("description", "Require exact phrase match; the query must contain the phrase in double quotes, e.g. \"John Smith\" CEO (otherwise the API rejects the request)")
                 })
                 put("include_raw_content", buildJsonObject {
                     put("type", "boolean")
