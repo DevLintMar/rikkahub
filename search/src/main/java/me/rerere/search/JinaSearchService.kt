@@ -9,7 +9,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import me.rerere.ai.core.InputSchema
@@ -44,6 +46,14 @@ object JinaSearchService : SearchService<SearchServiceOptions.JinaOptions> {
                     put("type", "string")
                     put("description", "search keyword")
                 })
+                put("gl", buildJsonObject {
+                    put("type", "string")
+                    put("description", "two-letter country code for search localization (e.g. 'jp')")
+                })
+                put("hl", buildJsonObject {
+                    put("type", "string")
+                    put("description", "two-letter language code (e.g. 'ja')")
+                })
             },
             required = listOf("query")
         )
@@ -69,6 +79,9 @@ object JinaSearchService : SearchService<SearchServiceOptions.JinaOptions> {
 
             val body = buildJsonObject {
                 put("q", query)
+                put("num", JsonPrimitive(commonOptions.resultSize))
+                params["gl"]?.jsonPrimitive?.contentOrNull?.takeIf(String::isNotBlank)?.let { put("gl", it) }
+                params["hl"]?.jsonPrimitive?.contentOrNull?.takeIf(String::isNotBlank)?.let { put("hl", it) }
             }
 
             val searchUrl = serviceOptions.searchUrl.ifBlank { DEFAULT_SEARCH_URL }
