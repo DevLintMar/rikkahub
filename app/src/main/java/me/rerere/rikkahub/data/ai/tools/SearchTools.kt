@@ -40,7 +40,7 @@ fun createSearchTools(settings: Settings): Set<Tool> {
     // 渠道特有参数：从各已选渠道 parameters() 提取（排除通用参数 query/service/num_results），按参数名聚合。
     // execute 会把整个 args.jsonObject 透传给 service.search，各渠道自行读取认识的键，因此同名参数无运行时冲突。
     val commonSearchParams = setOf("query", "service", "num_results")
-    val perServiceExtra = LinkedHashMap<String, Pair<JsonObject, MutableList<String>>>()
+    val perServiceExtra = LinkedHashMap<String, JsonObject>()
     selected.forEach { options ->
         val schema = SearchService.getService(options).parameters(options)
         (schema as? InputSchema.Obj)?.properties?.forEach { (key, value) ->
@@ -52,13 +52,13 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                 val tagged = value.jsonObject.toMutableMap().apply {
                     this["description"] = JsonPrimitive("$serviceLabel $desc".trim())
                 }
-                perServiceExtra[key] = JsonObject(tagged) to mutableListOf(options.displayName)
+                perServiceExtra[key] = JsonObject(tagged)
             } else {
-                val old = existing.first["description"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                val merged = existing.first.toMutableMap().apply {
+                val old = existing["description"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                val merged = existing.toMutableMap().apply {
                     this["description"] = JsonPrimitive("$old / $serviceLabel $desc".trim())
                 }
-                perServiceExtra[key] = JsonObject(merged) to existing.second.apply { add(options.displayName) }
+                perServiceExtra[key] = JsonObject(merged)
             }
         }
     }
@@ -72,11 +72,7 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                     appendLine("Use this when the user asks for the latest news, current facts, or needs verification.")
                     appendLine("Available search services: ${selected.joinToString(", ") { it.displayName }}.")
                     if (perServiceExtra.isNotEmpty()) {
-                        appendLine("Extra parameters (each only applies to its listed service):")
-                        perServiceExtra.forEach { (key, pair) ->
-                            val desc = pair.first["description"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                            appendLine("  - $key: $desc")
-                        }
+                        appendLine("Each search service supports its own extra parameters, marked with [Service] in the parameter descriptions below.")
                     }
                     appendLine("Choose one via the `service` parameter (must be one of the listed values);")
                     appendLine("`num_results` controls how many results to return (default: 10).")
@@ -116,7 +112,7 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                                 put("type", "integer")
                                 put("description", "Number of results to return (default: 10)")
                             })
-                            perServiceExtra.forEach { (key, pair) -> put(key, pair.first) }
+                            perServiceExtra.forEach { (key, value) -> put(key, value) }
                         },
                         required = listOf("query")
                     )
