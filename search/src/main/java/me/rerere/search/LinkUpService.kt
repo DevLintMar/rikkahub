@@ -99,14 +99,14 @@ object LinkUpService : SearchService<SearchServiceOptions.LinkUpOptions> {
                 put("depth", JsonPrimitive(serviceOptions.depth))
                 put("outputType", JsonPrimitive("sourcedAnswer"))
                 put("includeImages", JsonPrimitive("false"))
-                params["fromDate"]?.jsonPrimitive?.contentOrNull?.takeIf(String::isNotBlank)?.let { put("fromDate", it) }
-                params["toDate"]?.jsonPrimitive?.contentOrNull?.takeIf(String::isNotBlank)?.let { put("toDate", it) }
-                params["includeDomains"].asSearchStringList()?.takeIf { it.isNotEmpty() }?.let { domains ->
+                params["from_date"]?.jsonPrimitive?.contentOrNull?.takeIf(String::isNotBlank)?.let { put("fromDate", it) }
+                params["to_date"]?.jsonPrimitive?.contentOrNull?.takeIf(String::isNotBlank)?.let { put("toDate", it) }
+                params["include_domains"].asSearchStringList()?.takeIf { it.isNotEmpty() }?.let { domains ->
                     put("includeDomains", buildJsonArray {
                         domains.forEach { add(JsonPrimitive(it)) }
                     })
                 }
-                params["excludeDomains"].asSearchStringList()?.takeIf { it.isNotEmpty() }?.let { domains ->
+                params["exclude_domains"].asSearchStringList()?.takeIf { it.isNotEmpty() }?.let { domains ->
                     put("excludeDomains", buildJsonArray {
                         domains.forEach { add(JsonPrimitive(it)) }
                     })
