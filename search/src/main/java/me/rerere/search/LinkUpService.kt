@@ -11,7 +11,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import me.rerere.ai.core.InputSchema
@@ -46,6 +49,28 @@ object LinkUpService : SearchService<SearchServiceOptions.LinkUpOptions> {
                     put("type", "string")
                     put("description", "search keyword")
                 })
+                put("from_date", buildJsonObject {
+                    put("type", "string")
+                    put("description", "ISO date YYYY-MM-DD")
+                })
+                put("to_date", buildJsonObject {
+                    put("type", "string")
+                    put("description", "ISO date YYYY-MM-DD")
+                })
+                put("include_domains", buildJsonObject {
+                    put("type", "array")
+                    put("items", buildJsonObject {
+                        put("type", "string")
+                    })
+                    put("description", "only include results from these domains")
+                })
+                put("exclude_domains", buildJsonObject {
+                    put("type", "array")
+                    put("items", buildJsonObject {
+                        put("type", "string")
+                    })
+                    put("description", "exclude results from these domains")
+                })
             },
             required = listOf("query")
         )
@@ -70,9 +95,22 @@ object LinkUpService : SearchService<SearchServiceOptions.LinkUpOptions> {
             val query = params["query"]?.jsonPrimitive?.content ?: error("query is required")
             val body = buildJsonObject {
                 put("q", JsonPrimitive(query))
+                put("maxResults", JsonPrimitive(commonOptions.resultSize))
                 put("depth", JsonPrimitive(serviceOptions.depth))
                 put("outputType", JsonPrimitive("sourcedAnswer"))
                 put("includeImages", JsonPrimitive("false"))
+                params["fromDate"]?.jsonPrimitive?.contentOrNull?.takeIf(String::isNotBlank)?.let { put("fromDate", it) }
+                params["toDate"]?.jsonPrimitive?.contentOrNull?.takeIf(String::isNotBlank)?.let { put("toDate", it) }
+                params["includeDomains"].asSearchStringList()?.takeIf { it.isNotEmpty() }?.let { domains ->
+                    put("includeDomains", buildJsonArray {
+                        domains.forEach { add(JsonPrimitive(it)) }
+                    })
+                }
+                params["excludeDomains"].asSearchStringList()?.takeIf { it.isNotEmpty() }?.let { domains ->
+                    put("excludeDomains", buildJsonArray {
+                        domains.forEach { add(JsonPrimitive(it)) }
+                    })
+                }
             }
             val apiKey = keyRoulette.next(serviceOptions.apiKey, serviceOptions.id.toString())
 
@@ -98,7 +136,7 @@ object LinkUpService : SearchService<SearchServiceOptions.LinkUpOptions> {
                             SearchResultItem(
                                 title = it.name,
                                 url = it.url,
-                                text = it.snippet
+                                text = it.snippet ?: ""
                             )
                         }
                     )
@@ -155,7 +193,7 @@ object LinkUpService : SearchService<SearchServiceOptions.LinkUpOptions> {
 
     @Serializable
     data class LinkUpSearchResponse(
-        val answer: String,
+        val answer: String? = null,
         val sources: List<Source>
     )
 
@@ -163,7 +201,8 @@ object LinkUpService : SearchService<SearchServiceOptions.LinkUpOptions> {
     data class Source(
         val name: String,
         val url: String,
-        val snippet: String
+        val snippet: String? = null,
+        val favicon: String? = null
     )
 
     @Serializable
