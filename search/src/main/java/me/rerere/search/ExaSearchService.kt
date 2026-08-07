@@ -130,17 +130,18 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
     ): Result<SearchResult> = withContext(Dispatchers.IO) {
         runCatching {
             val query = params["query"]?.jsonPrimitive?.content ?: error("query is required")
+            val useHighlights = params["content_type"]?.jsonPrimitive?.contentOrNull == "highlights"
             val body = buildJsonObject {
                 put("query", JsonPrimitive(query))
                 put("numResults", JsonPrimitive(commonOptions.resultSize))
                 put("type", JsonPrimitive(params["type"]?.jsonPrimitive?.content ?: "auto"))
                 params["category"]?.jsonPrimitive?.contentOrNull?.let { put("category", it) }
-                params["include_domains"].asSearchStringList()?.let { domains ->
+                params["include_domains"].asSearchStringList()?.takeIf { it.isNotEmpty() }?.let { domains ->
                     put("includeDomains", buildJsonArray {
                         domains.forEach { add(JsonPrimitive(it)) }
                     })
                 }
-                params["exclude_domains"].asSearchStringList()?.let { domains ->
+                params["exclude_domains"].asSearchStringList()?.takeIf { it.isNotEmpty() }?.let { domains ->
                     put("excludeDomains", buildJsonArray {
                         domains.forEach { add(JsonPrimitive(it)) }
                     })
@@ -185,7 +186,7 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
                             SearchResultItem(
                                 title = it.title,
                                 url = it.url,
-                                text = if (it.highlights != null) it.highlights.joinToString("\n").ifBlank { it.text ?: "" } else it.text ?: ""
+                                text = if (useHighlights && it.highlights != null) it.highlights.joinToString("\n").ifBlank { it.text ?: "" } else it.text ?: ""
                             )
                         },
                         images = response.results.mapNotNull { it.image?.takeIf { url -> url.isNotBlank() } },

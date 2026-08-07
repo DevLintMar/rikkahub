@@ -144,12 +144,12 @@ object TavilySearchService : SearchService<SearchServiceOptions.TavilyOptions> {
                 params["time_range"]?.jsonPrimitive?.contentOrNull?.let { put("time_range", it) }
                 params["start_date"]?.jsonPrimitive?.contentOrNull?.let { put("start_date", it) }
                 params["end_date"]?.jsonPrimitive?.contentOrNull?.let { put("end_date", it) }
-                params["include_domains"].asSearchStringList()?.let { domains ->
+                params["include_domains"].asSearchStringList()?.takeIf { it.isNotEmpty() }?.let { domains ->
                     put("include_domains", buildJsonArray {
                         domains.forEach { add(JsonPrimitive(it)) }
                     })
                 }
-                params["exclude_domains"].asSearchStringList()?.let { domains ->
+                params["exclude_domains"].asSearchStringList()?.takeIf { it.isNotEmpty() }?.let { domains ->
                     put("exclude_domains", buildJsonArray {
                         domains.forEach { add(JsonPrimitive(it)) }
                     })
