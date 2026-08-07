@@ -51,7 +51,7 @@ object FirecrawlSearchService : SearchService<SearchServiceOptions.FirecrawlOpti
                 })
                 put("sources", buildJsonObject {
                     put("type", "array")
-                    put("description", "Optional list of sources: `web`, `news`, default value is `web`")
+                    put("description", "Optional list of sources: `web`, `news`, `images`, default value is `web`")
                     put("items", buildJsonObject {
                         put("type", "string")
                     })
@@ -65,6 +65,38 @@ object FirecrawlSearchService : SearchService<SearchServiceOptions.FirecrawlOpti
                     put("items", buildJsonObject {
                         put("type", "string")
                     })
+                })
+                put("include_domains", buildJsonObject {
+                    put("type", "array")
+                    put(
+                        "description",
+                        "Optional list of domains to include in search results, mutually exclusive with the other"
+                    )
+                    put("items", buildJsonObject {
+                        put("type", "string")
+                    })
+                })
+                put("exclude_domains", buildJsonObject {
+                    put("type", "array")
+                    put(
+                        "description",
+                        "Optional list of domains to exclude from search results, mutually exclusive with the other"
+                    )
+                    put("items", buildJsonObject {
+                        put("type", "string")
+                    })
+                })
+                put("tbs", buildJsonObject {
+                    put("type", "string")
+                    put("description", "time filter: qdr:h/d/w/m/y or cdr:1,cd_min:MM/DD/YYYY,cd_max:MM/DD/YYYY")
+                })
+                put("location", buildJsonObject {
+                    put("type", "string")
+                    put("description", "geo location, e.g. 'San Francisco,California,United States'")
+                })
+                put("country", buildJsonObject {
+                    put("type", "string")
+                    put("description", "two-letter country code, default US")
                 })
             },
             required = listOf("query")
@@ -95,6 +127,11 @@ object FirecrawlSearchService : SearchService<SearchServiceOptions.FirecrawlOpti
 
             val sources = params["sources"].asStringList()
             val categories = params["categories"].asStringList()
+            val includeDomains = params["include_domains"].asStringList()
+            val excludeDomains = params["exclude_domains"].asStringList()
+            val tbs = params["tbs"]?.jsonPrimitive?.contentOrNull
+            val location = params["location"]?.jsonPrimitive?.contentOrNull
+            val country = params["country"]?.jsonPrimitive?.contentOrNull
 
             val body = buildJsonObject {
                 put("query", query)
@@ -109,6 +146,19 @@ object FirecrawlSearchService : SearchService<SearchServiceOptions.FirecrawlOpti
                         list.forEach { add(it) }
                     })
                 }
+                includeDomains?.takeIf { it.isNotEmpty() }?.let { list ->
+                    put("includeDomains", buildJsonArray {
+                        list.forEach { add(it) }
+                    })
+                }
+                excludeDomains?.takeIf { it.isNotEmpty() }?.let { list ->
+                    put("excludeDomains", buildJsonArray {
+                        list.forEach { add(it) }
+                    })
+                }
+                tbs?.takeIf { it.isNotBlank() }?.let { put("tbs", it) }
+                location?.takeIf { it.isNotBlank() }?.let { put("location", it) }
+                country?.takeIf { it.isNotBlank() }?.let { put("country", it) }
             }
 
             val request = Request.Builder()
@@ -150,7 +200,8 @@ object FirecrawlSearchService : SearchService<SearchServiceOptions.FirecrawlOpti
                 }
             }
             SearchResult(
-                items = result
+                items = result,
+                images = resultData.images?.mapNotNull { it.imageUrl.takeIf(String::isNotBlank) } ?: emptyList()
             )
         }
     }
@@ -242,9 +293,17 @@ data class FirecrawlSearchResultNewsItem(
 )
 
 @Serializable
+data class FirecrawlSearchResultImageItem(
+    val title: String? = null,
+    val imageUrl: String,
+    val url: String? = null,
+)
+
+@Serializable
 data class FirecrawlSearchResultData(
     val web: List<FirecrawlSearchResultWebItem>? = emptyList(),
     val news: List<FirecrawlSearchResultNewsItem>? = emptyList(),
+    val images: List<FirecrawlSearchResultImageItem>? = emptyList(),
 )
 
 
