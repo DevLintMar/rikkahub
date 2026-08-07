@@ -28,6 +28,13 @@ import kotlin.uuid.Uuid
 
 private const val MAX_SCRAPE_TEXT_CHARS = 32 * 1024
 
+/** 读取抓取入参中的 URL 列表：兼容 JSON 数组与逗号分隔字符串；空白元素剔除，整体缺失返回 null */
+private fun kotlinx.serialization.json.JsonElement?.asUrlList(): List<String>? = when (this) {
+    is JsonArray -> mapNotNull { it.jsonPrimitive.contentOrNull?.takeIf(String::isNotBlank) }
+    is JsonPrimitive -> contentOrNull?.split(',')?.mapNotNull { it.trim().takeIf(String::isNotEmpty) }
+    else -> null
+}
+
 fun createSearchTools(settings: Settings): Set<Tool> {
     val selected = settings.selectedSearchServices
     val selectedByName = selected.associateBy { it.displayName }
@@ -35,6 +42,32 @@ fun createSearchTools(settings: Settings): Set<Tool> {
         SearchService.getService(it).scrapingParameters(it) != null
     }
     val scrapeCapableByName = scrapeCapable.associateBy { it.displayName }
+
+    // 抓取渠道特有参数：从各 scrapeCapable 渠道 scrapingParameters() 提取（排除通用 url/urls/service），按参数名聚合。
+    // 与 search_web 同款机制：execute 把渠道参数透传给 service.scrape，各渠道自行读取认识的键。
+    val commonScrapeParams = setOf("url", "urls", "service")
+    val perScrapeExtra = LinkedHashMap<String, JsonObject>()
+    scrapeCapable.forEach { options ->
+        val schema = SearchService.getService(options).scrapingParameters(options)
+        (schema as? InputSchema.Obj)?.properties?.forEach { (key, value) ->
+            if (key in commonScrapeParams) return@forEach
+            val desc = value.jsonObject["description"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            val serviceLabel = "[${options.displayName}]"
+            val existing = perScrapeExtra[key]
+            if (existing == null) {
+                val tagged = value.jsonObject.toMutableMap().apply {
+                    this["description"] = JsonPrimitive("$serviceLabel $desc".trim())
+                }
+                perScrapeExtra[key] = JsonObject(tagged)
+            } else {
+                val old = existing["description"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                val merged = existing.toMutableMap().apply {
+                    this["description"] = JsonPrimitive("$old / $serviceLabel $desc".trim())
+                }
+                perScrapeExtra[key] = JsonObject(merged)
+            }
+        }
+    }
 
     // 渠道特有参数：从各已选渠道 parameters() 提取（排除通用参数 query/service/num_results），按参数名聚合。
     // execute 会把整个 args.jsonObject 透传给 service.search，各渠道自行读取认识的键，因此同名参数无运行时冲突。
@@ -158,60 +191,75 @@ fun createSearchTools(settings: Settings): Set<Tool> {
             add(
                 Tool(
                     name = "scrape_web",
-                    description = """
-                        Scrape a URL for detailed page content.
-                        Use this when the user requests content from a specific page or when search snippets are insufficient.
-                        Available scraping services: ${scrapeCapable.joinToString(", ") { it.displayName }}.
-                        """.trimIndent(),
+                    description = buildString {
+                        appendLine("Scrape URL(s) for detailed page content.")
+                        appendLine("Use this when the user requests content from specific pages or when search snippets are insufficient.")
+                        appendLine("Available scraping services: ${scrapeCapable.joinToString(", ") { it.displayName }}.")
+                        if (perScrapeExtra.isNotEmpty()) {
+                            appendLine("Each service supports its own extra parameters, marked with [Service] in the parameter descriptions below.")
+                        }
+                        appendLine("Pass one or more URLs via `urls` (Tavily/Exa accept multiple; single-URL services use the first).")
+                        appendLine("Responses include per-URL metadata (title, status, published date); failed URLs are reported with their error.")
+                    }.trimEnd(),
                     parameters = {
                         InputSchema.Obj(
                             properties = buildJsonObject {
-                                put("url", buildJsonObject {
-                                    put("type", "string")
-                                    put("description", "URL to scrape")
+                                put("urls", buildJsonObject {
+                                    put("type", "array")
+                                    put("items", buildJsonObject {
+                                        put("type", "string")
+                                    })
+                                    put("description", "URLs to scrape (Tavily up to 20, Exa up to 100; single-URL services use the first)")
                                 })
                                 put("service", buildJsonObject {
                                     put("type", "string")
-                                    put("description", "Search service to use for scraping")
+                                    put("description", "Scraping service to use; one of the listed available services")
                                     put("enum", buildJsonArray { scrapeCapable.forEach { add(it.displayName) } })
                                 })
+                                perScrapeExtra.forEach { (key, value) -> put(key, value) }
                             },
-                            required = listOf("url")
+                            required = listOf("urls", "service")
                         )
                     },
                     execute = { args ->
                         val options = args.jsonObject["service"]?.jsonPrimitive?.contentOrNull
                             ?.let { name -> scrapeCapableByName[name] }
-                            ?: scrapeCapable.first()
+                            ?: error("service is required and must be one of: ${scrapeCapable.joinToString(", ") { it.displayName }}")
                         val service = SearchService.getService(options)
-                        // 归一化 url/urls 参数：CustomJs 需要 urls(数组)，其余 scrape 服务读 url，多余的键会被忽略
-                        val scrapeUrl = args.jsonObject["url"]?.jsonPrimitive?.contentOrNull ?: ""
-                        val scrapeParams = buildJsonObject {
-                            put("url", JsonPrimitive(scrapeUrl))
-                            put("urls", buildJsonArray { add(scrapeUrl) })
+                        val urls = args.jsonObject["urls"].asUrlList()?.takeIf { it.isNotEmpty() }
+                            ?: error("urls is required")
+                        // 归一化 url/urls：多 URL 渠道读 urls，单 URL 渠道取第一个，未改造渠道读 url，多余的键被各渠道忽略
+                        val scrapeParams = args.jsonObject.toMutableMap().apply {
+                            put("url", JsonPrimitive(urls.first()))
+                            put("urls", JsonArray(urls.map { JsonPrimitive(it) }))
                         }
                         val result = retryOnQuota(options) { o ->
-                            service.scrape(scrapeParams, settings.searchCommonOptions, o)
+                            service.scrape(JsonObject(scrapeParams), settings.searchCommonOptions, o)
                         }
                         val payload = JsonInstantPretty.encodeToJsonElement(result.getOrThrow()).jsonObject
-                        val urls = payload["urls"]?.jsonArray.orEmpty()
-                        val url = args.jsonObject["url"]?.jsonPrimitive?.contentOrNull
-                            ?: urls.firstOrNull()?.jsonObject?.get("url")?.jsonPrimitive?.contentOrNull
-                            ?: ""
-                        // 聚合所有 URL 的正文 (scrape 服务支持一次传入多个 URL), 避免只返回第一个 URL 的内容
-                        val fullText = urls.joinToString("\n\n") { entry ->
-                            entry.jsonObject["content"]?.jsonPrimitive?.contentOrNull ?: ""
-                        }
-                        val totalChars = fullText.length
-                        val truncated = totalChars > MAX_SCRAPE_TEXT_CHARS
-                        val clippedText = if (truncated) fullText.take(MAX_SCRAPE_TEXT_CHARS) else fullText
+                        val entries = payload["urls"]?.jsonArray.orEmpty()
+                        // 每 URL 独立截断：预算均分，避免多 URL 时总量失控；truncated/totalChars 全局汇总
+                        val perUrlBudget = (MAX_SCRAPE_TEXT_CHARS / urls.size.coerceAtLeast(1)).coerceAtLeast(1024)
+                        var totalChars = 0L
+                        var truncatedAny = false
+                        val clipped = JsonArray(entries.map { entry ->
+                            val obj = entry.jsonObject.toMutableMap()
+                            val content = obj["content"]?.jsonPrimitive?.contentOrNull ?: ""
+                            totalChars += content.length
+                            val clippedText = if (content.length > perUrlBudget) {
+                                truncatedAny = true
+                                content.take(perUrlBudget)
+                            } else content
+                            obj["content"] = JsonPrimitive(clippedText)
+                            JsonObject(obj)
+                        })
                         listOf(
                             UIMessagePart.Text(
                                 buildJsonObject {
                                     put("type", JsonPrimitive("web_fetch"))
-                                    put("url", JsonPrimitive(url))
-                                    put("text", JsonPrimitive(clippedText))
-                                    put("truncated", JsonPrimitive(truncated))
+                                    put("service", JsonPrimitive(options.displayName))
+                                    put("urls", clipped)
+                                    put("truncated", JsonPrimitive(truncatedAny))
                                     put("totalChars", JsonPrimitive(totalChars))
                                 }.toString()
                             )
