@@ -335,8 +335,16 @@ object FirecrawlSearchService : SearchService<SearchServiceOptions.FirecrawlOpti
             val statusCode = metadata?.get("statusCode")?.jsonPrimitive?.contentOrNull?.toIntOrNull()
             val title = metadata?.get("title")?.jsonPrimitive?.contentOrNull
             val markdown = data["markdown"]?.jsonPrimitive?.contentOrNull ?: ""
+            // images 格式返回形态不固定：兼容字符串数组与 {imageUrl,url} 对象数组
             val images = data["images"]?.jsonArray
-                ?.mapNotNull { it.jsonPrimitive.contentOrNull }
+                ?.mapNotNull { el ->
+                    when (el) {
+                        is JsonPrimitive -> el.contentOrNull
+                        is JsonObject -> el["imageUrl"]?.jsonPrimitive?.contentOrNull
+                            ?: el["url"]?.jsonPrimitive?.contentOrNull
+                        else -> null
+                    }
+                }
                 ?.filter { it.isNotBlank() }
                 ?: emptyList()
 

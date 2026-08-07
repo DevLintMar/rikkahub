@@ -307,12 +307,24 @@ object ScrapeWebToolUI : ToolUIRenderer {
     private fun failedCount(entries: List<JsonElement>): Int =
         entries.count { it.jsonObjectOrNull?.getStringContent("error") != null }
 
-    override fun hasSummary(context: ToolUIContext): Boolean = entries(context).isNotEmpty()
+    override fun hasSummary(context: ToolUIContext): Boolean =
+        entries(context).isNotEmpty() || context.arguments.getStringContent("url") != null
 
     @Composable
     override fun Summary(context: ToolUIContext) {
         val entries = entries(context)
-        if (entries.isEmpty()) return
+        // 旧信封兼容：无 urls 数组时回退显示 URL
+        if (entries.isEmpty()) {
+            val legacyUrl = context.arguments.getStringContent("url")
+            if (legacyUrl != null) {
+                Text(
+                    text = legacyUrl,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                )
+            }
+            return
+        }
         Column(
             verticalArrangement = Arrangement.spacedBy(2.dp),
             modifier = Modifier.shimmer(isLoading = context.loading),

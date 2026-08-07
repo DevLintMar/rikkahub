@@ -252,9 +252,12 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
                     "summary" -> put("summary", buildJsonObject {
                         summaryQuery?.takeIf(String::isNotBlank)?.let { put("query", it) }
                     })
-                    else -> put("text", buildJsonObject {
-                        maxCharacters?.let { put("maxCharacters", it) }
-                    })
+                    // text 默认：未传 max_characters 时用官方默认 true，否则用对象控制体积
+                    else -> if (maxCharacters != null) {
+                        put("text", buildJsonObject { put("maxCharacters", maxCharacters) })
+                    } else {
+                        put("text", JsonPrimitive(true))
+                    }
                 }
                 maxAgeHours?.let { put("maxAgeHours", it) }
                 extractLinks?.takeIf { it > 0 }?.let { put("extras", buildJsonObject { put("links", it) }) }
