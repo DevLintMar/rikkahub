@@ -6,7 +6,11 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.ai.core.InputSchema
 import me.rerere.ai.util.KeyRoulette
 import okhttp3.Call
@@ -366,6 +370,13 @@ private val SEARCH_KEY_SPLIT_REGEX = "[\\s,]+".toRegex()
 /** 将逗号/空格/换行分隔的 API key 字符串拆分为去重列表 */
 fun splitApiKeys(keys: String): List<String> =
     keys.split(SEARCH_KEY_SPLIT_REGEX).map { it.trim() }.filter { it.isNotBlank() }.distinct()
+
+/** 读取工具入参中的字符串数组：兼容 JSON 数组与逗号分隔字符串；空白元素剔除，整体缺失返回 null */
+internal fun kotlinx.serialization.json.JsonElement?.asSearchStringList(): List<String>? = when (this) {
+    is JsonArray -> mapNotNull { it.jsonPrimitive.contentOrNull?.takeIf(String::isNotBlank) }
+    is JsonPrimitive -> contentOrNull?.split(',')?.mapNotNull { it.trim().takeIf(String::isNotEmpty) }
+    else -> null
+}
 
 /**
  * 生成只含单个 key 的 options 副本（用于多 key 轮询重试）。
