@@ -98,7 +98,7 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
                 })
                 put("content_type", buildJsonObject {
                     put("type", "string")
-                    put("description", "text = full page content; highlights = key excerpts only (saves tokens)")
+                    put("description", "highlights = key excerpts only (default, saves tokens); text = full page content")
                     put("enum", buildJsonArray {
                         add("text")
                         add("highlights")
@@ -126,7 +126,8 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
     ): Result<SearchResult> = withContext(Dispatchers.IO) {
         runCatching {
             val query = params["query"]?.jsonPrimitive?.content ?: error("query is required")
-            val useHighlights = params["content_type"]?.jsonPrimitive?.contentOrNull == "highlights"
+            val contentType = params["content_type"]?.jsonPrimitive?.contentOrNull
+            val useHighlights = contentType != "text"
             val searchType = params["type"]?.jsonPrimitive?.content ?: "auto"
             val body = buildJsonObject {
                 put("query", JsonPrimitive(query))
@@ -154,9 +155,8 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
                 params["start_published_date"]?.jsonPrimitive?.contentOrNull?.let { put("startPublishedDate", it) }
                 params["end_published_date"]?.jsonPrimitive?.contentOrNull?.let { put("endPublishedDate", it) }
                 params["user_location"]?.jsonPrimitive?.contentOrNull?.let { put("userLocation", it) }
-                val contentType = params["content_type"]?.jsonPrimitive?.contentOrNull
                 put("contents", buildJsonObject {
-                    if (contentType == "highlights") {
+                    if (useHighlights) {
                         put("highlights", true)
                     } else {
                         put("text", true)
