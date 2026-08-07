@@ -15,6 +15,7 @@ import me.rerere.rikkahub.data.datastore.migration.SettingsJsonMigrator
 import me.rerere.rikkahub.data.model.Avatar
 import me.rerere.rikkahub.data.sync.RestorePathRebaser
 import me.rerere.rikkahub.utils.fileSizeToString
+import me.rerere.common.android.Logging
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -141,6 +142,11 @@ class WebDavSync(
             backupFile.delete()
         }
 
+        // 备份诊断：记录 zip 里的 upload 文件数，确认备份包是否含附件/头像文件
+        var uploadFileCount = 0
+        val imageAvatarCount =
+            settingsStore.settingsFlow.value.assistants.count { it.avatar is Avatar.Image }
+
         // Create zip file and backup data
         ZipOutputStream(FileOutputStream(backupFile)).use { zipOut ->
             addVirtualFileToZip(
@@ -175,6 +181,7 @@ class WebDavSync(
                     uploadFolder.listFiles()?.forEach { file ->
                         if (file.isFile) {
                             addFileToZip(zipOut, file, "${FileFolders.UPLOAD}/${file.name}")
+                            uploadFileCount++
                         }
                     }
                 } else {
@@ -211,6 +218,11 @@ class WebDavSync(
         Log.i(
             TAG,
             "prepareBackupFile: Created backup file ${backupFile.name} (${backupFile.length().fileSizeToString()})"
+        )
+        Logging.log(
+            TAG,
+            "prepareBackupFile: items=${config.items} uploadFiles=$uploadFileCount " +
+                "imageAssistantAvatars=$imageAvatarCount zipBytes=${backupFile.length()}"
         )
         backupFile
     }
