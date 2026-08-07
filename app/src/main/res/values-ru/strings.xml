@@ -262,6 +262,8 @@
   <string name="chat_message_tool_get_time">Получить информацию о времени</string>
   <string name="chat_message_tool_scrape_prefix">Собрать данные с сайта: %1$s</string>
   <string name="chat_message_tool_scrape_web">Собрать данные со страницы</string>
+  <string name="chat_message_tool_scrape_urls">Получено %1$d стр.</string>
+  <string name="chat_message_tool_scrape_failed">%1$d ошибок</string>
   <string name="chat_message_tool_search_results_count">%1$d результатов</string>
   <string name="chat_message_tool_search_web">Поиск в интернете: %1$s</string>
   <string name="chat_message_tool_submit">Отправить</string>
@@ -1258,6 +1260,10 @@
   <string name="assistant_page_local_tools_screen_time_permission_required">Пожалуйста, предоставьте разрешение Доступ к использованию в настройках, чтобы использовать экранное время</string>
   <string name="chat_message_tool_screen_time">Чтение экранного времени</string>
   <string name="tool_ui_screen_time_total">Общее время экрана</string>
+  <string name="tool_ui_scrape_truncated">…обрезано, всего %1$d символов</string>
+  <string name="tool_ui_scrape_status">HTTP %1$d</string>
+  <string name="tool_ui_scrape_published">Опубликовано: %1$s</string>
+  <string name="tool_ui_scrape_author">Автор: %1$s</string>
   <string name="permission_calendar_read">Чтение календаря</string>
   <string name="permission_calendar_read_desc">Чтение событий календаря для ответов на вопросы о вашем расписании.</string>
   <string name="permission_calendar_write">Запись в календарь</string>

@@ -262,6 +262,8 @@
   <string name="chat_message_tool_get_time">時刻情報を取得</string>
   <string name="chat_message_tool_scrape_prefix">ウェブサイトをスクレイピング: %1$s</string>
   <string name="chat_message_tool_scrape_web">ウェブページを取得</string>
+  <string name="chat_message_tool_scrape_urls">%1$d ページを取得</string>
+  <string name="chat_message_tool_scrape_failed">%1$d 件失敗</string>
   <string name="chat_message_tool_search_results_count">%1$d件の結果</string>
   <string name="chat_message_tool_search_web">ウェブ検索: %1$s</string>
   <string name="chat_message_tool_submit">送信</string>
@@ -1258,6 +1260,10 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="assistant_page_local_tools_screen_time_permission_required">スクリーンタイムを使用するには、設定で「使用状況へのアクセス」許可を付与してください</string>
   <string name="chat_message_tool_screen_time">スクリーンタイムを読み取る</string>
   <string name="tool_ui_screen_time_total">総画面時間</string>
+  <string name="tool_ui_scrape_truncated">…%1$d 文字で切捨て</string>
+  <string name="tool_ui_scrape_status">HTTP %1$d</string>
+  <string name="tool_ui_scrape_published">公開：%1$s</string>
+  <string name="tool_ui_scrape_author">著者：%1$s</string>
   <string name="permission_calendar_read">カレンダーの読み取り</string>
   <string name="permission_calendar_read_desc">カレンダーのイベントを読み取り、スケジュール関連の質問に回答します。</string>
   <string name="permission_calendar_write">カレンダーへの書き込み</string>

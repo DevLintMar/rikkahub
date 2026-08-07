@@ -262,6 +262,8 @@
   <string name="chat_message_tool_get_time">시간 정보 가져오기</string>
   <string name="chat_message_tool_scrape_prefix">웹사이트 긁어오기: %1$s</string>
   <string name="chat_message_tool_scrape_web">웹 페이지 긁어오기</string>
+  <string name="chat_message_tool_scrape_urls">페이지 %1$d개 가져오기</string>
+  <string name="chat_message_tool_scrape_failed">%1$d개 실패</string>
   <string name="chat_message_tool_search_results_count">%1$d개 결과</string>
   <string name="chat_message_tool_search_web">웹 검색: %1$s</string>
   <string name="chat_message_tool_submit">제출</string>
@@ -1258,6 +1260,10 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="assistant_page_local_tools_screen_time_permission_required">스크린 시간을 사용하려면 설정에서 사용 액세스 권한을 허용해 주세요.</string>
   <string name="chat_message_tool_screen_time">화면 시간 읽기</string>
   <string name="tool_ui_screen_time_total">전체 화면 시간</string>
+  <string name="tool_ui_scrape_truncated">…%1$d자에서 잘림</string>
+  <string name="tool_ui_scrape_status">HTTP %1$d</string>
+  <string name="tool_ui_scrape_published">게시: %1$s</string>
+  <string name="tool_ui_scrape_author">작성자: %1$s</string>
   <string name="permission_calendar_read">캘린더 읽기</string>
   <string name="permission_calendar_read_desc">일정 관련 질문에 답변하기 위해 캘린더 이벤트를 읽습니다.</string>
   <string name="permission_calendar_write">캘린더 쓰기</string>

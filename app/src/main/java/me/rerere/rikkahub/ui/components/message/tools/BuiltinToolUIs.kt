@@ -290,7 +290,7 @@ object SearchWebToolUI : ToolUIRenderer {
 }
 
 /**
- * 网页抓取: 摘要显示 URL, 详情为各网页的 Markdown 内容
+ * 网页抓取: 摘要显示抓取页数与失败数, 详情为各 URL 的独立卡片（元信息/图片/失败项）
  */
 object ScrapeWebToolUI : ToolUIRenderer {
     override val toolName: String = "scrape_web"
@@ -301,16 +301,45 @@ object ScrapeWebToolUI : ToolUIRenderer {
     override fun title(context: ToolUIContext): String =
         stringResource(R.string.chat_message_tool_scrape_web)
 
-    override fun hasSummary(context: ToolUIContext): Boolean =
-        context.arguments.getStringContent("url") != null
+    private fun entries(context: ToolUIContext): List<JsonElement> =
+        context.content?.jsonObjectOrNull?.get("urls")?.jsonArray ?: emptyList()
+
+    private fun failedCount(entries: List<JsonElement>): Int =
+        entries.count { it.jsonObjectOrNull?.getStringContent("error") != null }
+
+    override fun hasSummary(context: ToolUIContext): Boolean = entries(context).isNotEmpty()
 
     @Composable
     override fun Summary(context: ToolUIContext) {
-        Text(
-            text = context.arguments.getStringContent("url") ?: "",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
-        )
+        val entries = entries(context)
+        if (entries.isEmpty()) return
+        Column(
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier.shimmer(isLoading = context.loading),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                FaviconRow(
+                    urls = entries.mapNotNull { it.jsonObjectOrNull?.getStringContent("url") },
+                    size = 18.dp,
+                )
+                Text(
+                    text = stringResource(R.string.chat_message_tool_scrape_urls, entries.size),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                )
+            }
+            val failed = failedCount(entries)
+            if (failed > 0) {
+                Text(
+                    text = stringResource(R.string.chat_message_tool_scrape_failed, failed),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
     }
 
     // 与 Preview 的 DefaultToolPreview fallback 保持一致
@@ -1166,8 +1195,146 @@ private fun SearchWebPreview(content: JsonElement) {
     }
 }
 
+/**
+ * 网页抓取详情: 每个 URL 独立卡片——favicon + 标题 + URL + HTTP 状态码 + 发布时间/作者 pill，
+ * 失败项红色展示错误原因，成功项展示图片缩略图与 Markdown 正文。
+ */
 @Composable
 private fun ScrapeWebPreview(content: JsonElement) {
+    val urlEntries = content.jsonObjectOrNull?.get("urls")?.jsonArray
+
+    // 兼容旧信封（无 urls 数组的老数据 {url, text, truncated, totalChars}）回退原渲染
+    if (urlEntries == null || urlEntries.isEmpty()) {
+        LegacyScrapeWebPreview(content)
+        return
+    }
+
+    val truncated = content.jsonObjectOrNull
+        ?.get("truncated")?.jsonPrimitiveOrNull?.booleanOrNull ?: false
+    val totalChars = content.jsonObjectOrNull
+        ?.get("totalChars")?.jsonPrimitiveOrNull?.longOrNull ?: 0L
+    val context = LocalContext.current
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        urlEntries.forEach { entry ->
+            val obj = entry.jsonObjectOrNull ?: return@forEach
+            val url = obj.getStringContent("url") ?: return@forEach
+            val error = obj.getStringContent("error")
+            val title = obj.jsonObjectOrNull?.get("metadata")?.jsonObjectOrNull?.getStringContent("title")
+                ?: obj.getStringContent("title")
+            val statusCode = obj.jsonObjectOrNull?.get("statusCode")?.jsonPrimitiveOrNull?.intOrNull
+            val publishedDate = obj.getStringContent("publishedDate")
+            val author = obj.getStringContent("author")
+            val images = obj.jsonObjectOrNull?.get("images")?.jsonArray
+                ?.mapNotNull { it.jsonPrimitive.contentOrNull }
+                ?.filter { it.isNotBlank() }
+                ?: emptyList()
+            val text = obj.getStringContent("content")
+
+            Card(
+                onClick = { context.openUrl(url) },
+                colors = CardDefaults.cardColors(
+                    containerColor = if (error != null) {
+                        MaterialTheme.colorScheme.errorContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    }
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Favicon(url = url, modifier = Modifier.size(20.dp))
+                        Text(
+                            text = title?.takeIf { it.isNotBlank() } ?: url,
+                            style = MaterialTheme.typography.titleSmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        statusCode?.let { ToolPill(stringResource(R.string.tool_ui_scrape_status, it)) }
+                    }
+                    Text(
+                        text = url,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (error != null) {
+                        Text(
+                            text = error,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                        return@Column
+                    }
+                    if (publishedDate != null || author != null) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            publishedDate?.takeIf { it.isNotBlank() }?.let {
+                                ToolPill(stringResource(R.string.tool_ui_scrape_published, it))
+                            }
+                            author?.takeIf { it.isNotBlank() }?.let {
+                                ToolPill(stringResource(R.string.tool_ui_scrape_author, it))
+                            }
+                        }
+                    }
+                    if (images.isNotEmpty()) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(images) { imageUrl ->
+                                AsyncImage(
+                                    model = imageUrl,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .height(72.dp)
+                                        .width(96.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { context.openUrl(imageUrl) },
+                                )
+                            }
+                        }
+                    }
+                    if (!text.isNullOrBlank()) {
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surface
+                            )
+                        ) {
+                            MarkdownBlock(
+                                content = text,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        if (truncated) {
+            Text(
+                text = stringResource(R.string.tool_ui_scrape_truncated, totalChars),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f),
+            )
+        }
+    }
+}
+
+/** 旧版 scrape 信封（{url, text, truncated, totalChars}）渲染，供历史消息回退 */
+@Composable
+private fun LegacyScrapeWebPreview(content: JsonElement) {
     val url = content.getStringContent("url")
     val text = content.getStringContent("text")
     val truncated = content.jsonObjectOrNull

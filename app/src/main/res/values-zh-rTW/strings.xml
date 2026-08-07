@@ -262,6 +262,8 @@
   <string name="chat_message_tool_get_time">取得時間資訊</string>
   <string name="chat_message_tool_scrape_prefix">爬取網站：%1$s</string>
   <string name="chat_message_tool_scrape_web">爬取網頁</string>
+  <string name="chat_message_tool_scrape_urls">爬取 %1$d 個頁面</string>
+  <string name="chat_message_tool_scrape_failed">%1$d 個失敗</string>
   <string name="chat_message_tool_search_results_count">共 %1$d 條結果</string>
   <string name="chat_message_tool_search_web">搜尋網頁: %1$s</string>
   <string name="chat_message_tool_submit">提交</string>
@@ -1256,6 +1258,10 @@
   <string name="assistant_page_local_tools_screen_time_permission_required">請在設定中授予「使用記錄存取權」權限，以使用螢幕時間</string>
   <string name="chat_message_tool_screen_time">讀取螢幕時間</string>
   <string name="tool_ui_screen_time_total">總螢幕使用時間</string>
+  <string name="tool_ui_scrape_truncated">…已截斷，共 %1$d 字元</string>
+  <string name="tool_ui_scrape_status">HTTP %1$d</string>
+  <string name="tool_ui_scrape_published">發布於：%1$s</string>
+  <string name="tool_ui_scrape_author">作者：%1$s</string>
   <string name="permission_calendar_read">讀取日曆</string>
   <string name="permission_calendar_read_desc">讀取日曆事件，以回答您與行程相關的問題</string>
   <string name="permission_calendar_write">寫入日曆</string>

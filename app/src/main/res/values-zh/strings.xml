@@ -272,6 +272,8 @@
   <string name="chat_message_tool_read_conversation">阅读对话</string>
   <string name="chat_message_tool_scrape_prefix">抓取网站：%1$s</string>
   <string name="chat_message_tool_scrape_web">抓取网页</string>
+  <string name="chat_message_tool_scrape_urls">抓取 %1$d 个页面</string>
+  <string name="chat_message_tool_scrape_failed">%1$d 个失败</string>
   <string name="chat_message_tool_search_results_count">共 %1$d 条结果</string>
   <string name="chat_message_tool_search_web">搜索网页: %1$s</string>
   <string name="chat_message_tool_sub_agent">运行子代理</string>
@@ -1300,6 +1302,9 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="tool_ui_view_style">查看样式</string>
   <string name="tool_ui_arguments">参数</string>
   <string name="tool_ui_scrape_truncated">…已截断，共 %1$d 字符</string>
+  <string name="tool_ui_scrape_status">HTTP %1$d</string>
+  <string name="tool_ui_scrape_published">发布于：%1$s</string>
+  <string name="tool_ui_scrape_author">作者：%1$s</string>
   <string name="tool_ui_delete_memory">删除记忆</string>
   <string name="tool_ui_delete_memory_title">删除记忆？</string>
   <string name="tool_ui_delete_memory_message">该记忆将被永久删除，是否继续？</string>
