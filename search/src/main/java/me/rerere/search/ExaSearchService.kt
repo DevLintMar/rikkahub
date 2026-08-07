@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
@@ -51,7 +52,7 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
                 })
                 put("type", buildJsonObject {
                     put("type", "string")
-                    put("description", "Search type: fast (quick results), auto (default, balanced), deep (synthesized answer with citations)")
+                    put("description", "Search type: fast (quick results), auto (default, balanced), deep (synthesized answer with citations, slower)")
                     put("enum", buildJsonArray {
                         add("fast")
                         add("auto")
@@ -131,10 +132,19 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
         runCatching {
             val query = params["query"]?.jsonPrimitive?.content ?: error("query is required")
             val useHighlights = params["content_type"]?.jsonPrimitive?.contentOrNull == "highlights"
+            val searchType = params["type"]?.jsonPrimitive?.content ?: "auto"
             val body = buildJsonObject {
                 put("query", JsonPrimitive(query))
                 put("numResults", JsonPrimitive(commonOptions.resultSize))
-                put("type", JsonPrimitive(params["type"]?.jsonPrimitive?.content ?: "auto"))
+                put("type", JsonPrimitive(searchType))
+                if (searchType == "deep") {
+                    put("outputSchema", buildJsonObject {
+                        put("type", "object")
+                        put("properties", buildJsonObject {
+                            put("answer", buildJsonObject { put("type", "string") })
+                        })
+                    })
+                }
                 params["category"]?.jsonPrimitive?.contentOrNull?.let { put("category", it) }
                 params["include_domains"].asSearchStringList()?.takeIf { it.isNotEmpty() }?.let { domains ->
                     put("includeDomains", buildJsonArray {
@@ -181,7 +191,7 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
 
                 return@withContext Result.success(
                     SearchResult(
-                        answer = response.output?.content,
+                        answer = extractOutputAnswer(response.output),
                         items = response.results.map {
                             SearchResultItem(
                                 title = it.title,
@@ -267,7 +277,7 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
     @Serializable
     data class ExaOutput(
         @SerialName("content")
-        val content: String? = null,
+        val content: JsonElement? = null,
         @SerialName("grounding")
         val grounding: List<ExaGrounding> = emptyList(),
     )
@@ -309,4 +319,14 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
         @SerialName("highlights")
         val highlights: List<String>? = null,
     )
+
+    /** deep 模式综合答案提取：outputSchema 时 content 为 {"answer": ...}，旧模式为纯字符串 */
+    private fun extractOutputAnswer(output: ExaOutput?): String? {
+        val content = output?.content ?: return null
+        return when (content) {
+            is JsonPrimitive -> content.contentOrNull
+            is JsonObject -> content["answer"]?.jsonPrimitive?.contentOrNull
+            else -> null
+        }
+    }
 }
