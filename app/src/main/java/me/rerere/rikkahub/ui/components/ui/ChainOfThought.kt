@@ -185,25 +185,35 @@ fun <T> ChainOfThought(
 
                 val lineColor = MaterialTheme.colorScheme.outlineVariant
                 val scope = remember { ChainOfThoughtScopeImpl() }
+                // 卡片半透明（开启气泡透明度）时不画时间线竖线：同色半透明图标遮罩会在卡片上二次合成
+                // 变浅形成"浅色白底"，且无法再遮住竖线。此时竖线与遮罩一并去掉，图标直接浮在半透明卡片上。
+                val timelineVisible = cardColors.containerColor.alpha >= 0.999f
                 // 只在有可见步骤时画时间线竖线——聚合折叠态（visibleSteps 空）不画，避免大脑图标处残留竖线
                 if (visibleSteps.isNotEmpty()) {
-                    Box(
-                        modifier = Modifier.drawBehind {
-                            val x = 12.dp.toPx()
-                            val offsetPx = 18.dp.toPx()
-                            drawLine(
-                                color = lineColor,
-                                start = Offset(x, offsetPx),
-                                end = Offset(x, size.height - offsetPx),
-                                strokeWidth = 1.dp.toPx()
-                            )
-                        }
-                    ) {
+                    val stepsColumn: @Composable () -> Unit = {
                         Column {
                             visibleSteps.fastForEach { step ->
                                 scope.content(step)
                             }
                         }
+                    }
+                    if (timelineVisible) {
+                        Box(
+                            modifier = Modifier.drawBehind {
+                                val x = 12.dp.toPx()
+                                val offsetPx = 18.dp.toPx()
+                                drawLine(
+                                    color = lineColor,
+                                    start = Offset(x, offsetPx),
+                                    end = Offset(x, size.height - offsetPx),
+                                    strokeWidth = 1.dp.toPx()
+                                )
+                            }
+                        ) {
+                            stepsColumn()
+                        }
+                    } else {
+                        stepsColumn()
                     }
                 }
             }
@@ -373,7 +383,8 @@ private class ChainOfThoughtScopeImpl : ChainOfThoughtScope {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Icon（不透明背景遮住背后的连线）
+                // Icon（卡片不透明时用同色背景遮住背后的连线；半透明时去掉该遮罩，
+                // 否则同色半透明背景在卡片上二次合成变浅，图标出现"浅色白底"）
                 Box(
                     modifier = Modifier.width(24.dp),
                     contentAlignment = Alignment.Center,
@@ -381,7 +392,13 @@ private class ChainOfThoughtScopeImpl : ChainOfThoughtScope {
                     Box(
                         modifier = Modifier
                             .size(20.dp)
-                            .background(LocalCardColor.current),
+                            .then(
+                                if (LocalCardColor.current.alpha >= 0.999f) {
+                                    Modifier.background(LocalCardColor.current)
+                                } else {
+                                    Modifier
+                                }
+                            ),
                         contentAlignment = Alignment.Center,
                     ) {
                         if (icon != null) {
