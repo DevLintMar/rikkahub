@@ -192,7 +192,7 @@ class RikkaHubApp : Application() {
                         if (foreign > 0) {
                             db.execSQL(
                                 "UPDATE message_node SET messages = ? WHERE id = ?",
-                                arrayOf(RestorePathRebaser.rebase(messages, filesDir), id)
+                                arrayOf<Any>(RestorePathRebaser.rebase(messages, filesDir), id)
                             )
                             updatedNodes++
                             totalRefs += foreign
@@ -208,7 +208,7 @@ class RikkaHubApp : Application() {
                         if (foreign > 0) {
                             db.execSQL(
                                 "UPDATE GenMediaEntity SET source_paths = ? WHERE id = ?",
-                                arrayOf(RestorePathRebaser.rebase(sourcePaths, filesDir), id)
+                                arrayOf<Any>(RestorePathRebaser.rebase(sourcePaths, filesDir), id)
                             )
                             updatedMedia++
                             totalRefs += foreign
