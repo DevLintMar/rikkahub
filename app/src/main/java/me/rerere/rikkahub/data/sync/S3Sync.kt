@@ -11,6 +11,7 @@ import me.rerere.rikkahub.data.files.SkillPaths
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.migration.SettingsJsonMigrator
+import me.rerere.rikkahub.data.model.Avatar
 import me.rerere.rikkahub.data.sync.RestorePathRebaser
 import me.rerere.rikkahub.data.sync.s3.S3Client
 import me.rerere.rikkahub.data.sync.s3.S3Config
@@ -194,6 +195,12 @@ class S3Sync(
     private suspend fun restoreFromBackupFile(backupFile: File, config: S3Config) = withContext(Dispatchers.IO) {
         Log.i(TAG, "restoreFromBackupFile: Starting restore from ${backupFile.absolutePath}")
 
+        // 恢复诊断：写入 noBackupFilesDir/restore_diag.txt，启动时由 RikkaHubApp 回放进日志页
+        // （恢复会 exitProcess 重启，进程内 Logging 会丢失，必须落盘）
+        val diag = StringBuilder()
+        diag.appendLine("restore: ${backupFile.name} items=${config.items}")
+        var restoredUploadFiles = 0
+
         ZipInputStream(FileInputStream(backupFile)).use { zipIn ->
             var entry: ZipEntry?
             while (zipIn.nextEntry.also { entry = it } != null) {
@@ -222,6 +229,12 @@ class S3Sync(
                                 }
                                 val settings = json.decodeFromString<Settings>(rebasedJson)
                                 settingsStore.update(settings)
+                                val imageAvatarCount = settings.assistants.count { it.avatar is Avatar.Image }
+                                diag.appendLine(
+                                    "settings: rebaseCount=$foreignCount " +
+                                        "userAvatar=${settings.displaySetting.userAvatar::class.simpleName} " +
+                                        "imageAssistantAvatars=$imageAvatarCount/${settings.assistants.size}"
+                                )
                                 Log.i(TAG, "restoreFromBackupFile: Settings restored successfully")
                             } catch (e: Exception) {
                                 Log.e(TAG, "restoreFromBackupFile: Failed to restore settings", e)
@@ -294,6 +307,7 @@ class S3Sync(
                                         FileOutputStream(targetFile).use { outputStream ->
                                             zipIn.copyTo(outputStream)
                                         }
+                                        restoredUploadFiles++
                                         Log.i(
                                             TAG,
                                             "restoreFromBackupFile: Restored ${zipEntry.name} (${targetFile.length()} bytes)"
@@ -332,6 +346,12 @@ class S3Sync(
                 }
             }
         }
+
+        diag.appendLine("restore: restoredUploadFiles=$restoredUploadFiles")
+        runCatching {
+            File(context.noBackupFilesDir, "restore_diag.txt").writeText(diag.toString())
+            Log.i(TAG, "restoreFromBackupFile: wrote restore diagnostics (${diag.length} chars)")
+        }.onFailure { Log.e(TAG, "restoreFromBackupFile: failed to write restore diagnostics", it) }
 
         Log.i(TAG, "restoreFromBackupFile: Restore completed successfully")
     }
