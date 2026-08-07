@@ -98,11 +98,10 @@ object TavilySearchService : SearchService<SearchServiceOptions.TavilyOptions> {
                 })
                 put("exact_match", buildJsonObject {
                     put("type", "boolean")
-                    put("description", "Require exact phrase match; the query must contain the phrase in double quotes, e.g. \"John Smith\" CEO (otherwise the API rejects the request)")
-                })
-                put("include_raw_content", buildJsonObject {
-                    put("type", "boolean")
-                    put("description", "include full page content instead of snippet")
+                    put(
+                        "description",
+                        "Require exact phrase match. The query MUST contain the target phrase wrapped in double quotes, e.g. query=\"\\\"John Smith\\\" CEO\" — without a quoted phrase the API rejects the request. Only set to true when the query already includes quoted phrases."
+                    )
                 })
             },
             required = listOf("query")
@@ -127,7 +126,6 @@ object TavilySearchService : SearchService<SearchServiceOptions.TavilyOptions> {
         runCatching {
             val query = params["query"]?.jsonPrimitive?.content ?: error("query is required")
             val topic = params["topic"]?.jsonPrimitive?.contentOrNull ?: "general"
-            val includeRawContent = params["include_raw_content"]?.jsonPrimitive?.booleanOrNull == true
 
             // Validate topic
             if (topic !in listOf("general", "news", "finance")) {
@@ -156,7 +154,6 @@ object TavilySearchService : SearchService<SearchServiceOptions.TavilyOptions> {
                 }
                 params["country"]?.jsonPrimitive?.contentOrNull?.let { put("country", it) }
                 params["exact_match"]?.jsonPrimitive?.booleanOrNull?.let { put("exact_match", it) }
-                params["include_raw_content"]?.jsonPrimitive?.booleanOrNull?.let { put("include_raw_content", it) }
             }
             val apiKey = keyRoulette.next(serviceOptions.apiKey, serviceOptions.id.toString())
 
@@ -178,7 +175,7 @@ object TavilySearchService : SearchService<SearchServiceOptions.TavilyOptions> {
                             SearchResultItem(
                                 title = it.title,
                                 url = it.url,
-                                text = if (includeRawContent) it.rawContent ?: it.content else it.content
+                                text = it.content
                             )
                         },
                         images = response.images,
@@ -243,7 +240,6 @@ object TavilySearchService : SearchService<SearchServiceOptions.TavilyOptions> {
         val url: String,
         val content: String,
         val score: Double,
-        val rawContent: String? = null
     )
 
     @Serializable
