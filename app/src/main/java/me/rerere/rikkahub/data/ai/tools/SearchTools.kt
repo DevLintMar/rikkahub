@@ -37,36 +37,69 @@ fun createSearchTools(settings: Settings): Set<Tool> {
     }
     val scrapeCapableByName = scrapeCapable.associateBy { it.displayName }
 
+    // 渠道特有参数：从各已选渠道 parameters() 提取（排除通用参数 query/service/num_results），按参数名聚合。
+    // execute 会把整个 args.jsonObject 透传给 service.search，各渠道自行读取认识的键，因此同名参数无运行时冲突。
+    val commonSearchParams = setOf("query", "service", "num_results")
+    val perServiceExtra = LinkedHashMap<String, Pair<JsonObject, MutableList<String>>>()
+    selected.forEach { options ->
+        val schema = SearchService.getService(options).parameters(options)
+        (schema as? InputSchema.Obj)?.properties?.forEach { (key, value) ->
+            if (key in commonSearchParams) return@forEach
+            val desc = value.jsonObject["description"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            val serviceLabel = "[${options.displayName}]"
+            val existing = perServiceExtra[key]
+            if (existing == null) {
+                val tagged = value.jsonObject.toMutableMap().apply {
+                    this["description"] = JsonPrimitive("$serviceLabel $desc".trim())
+                }
+                perServiceExtra[key] = JsonObject(tagged) to mutableListOf(options.displayName)
+            } else {
+                val old = existing.first["description"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                val merged = existing.first.toMutableMap().apply {
+                    this["description"] = JsonPrimitive("$old / $serviceLabel $desc".trim())
+                }
+                perServiceExtra[key] = JsonObject(merged) to existing.second.apply { add(options.displayName) }
+            }
+        }
+    }
+
     return buildSet {
         add(
             Tool(
                 name = "search_web",
-                description = """
-                    Search the web for up-to-date or specific information.
-                    Use this when the user asks for the latest news, current facts, or needs verification.
-                    Available search services: ${selected.joinToString(", ") { it.displayName }}.
-                    Choose one via the `service` parameter (must be one of the listed values);
-                    `num_results` controls how many results to return (default: 10).
-                    Today is ${LocalDate.now().toLocalString(true)}.
-
-                    Response format:
-                    - items[].id (short id), title, url, text
-                    - images[]: image urls related to the query (may be empty)
-
-                    Citations:
-                    - After using results, add `[citation,domain](id)` after the sentence.
-                    - Multiple citations are allowed.
-                    - If no results are cited, omit citations.
-
-                    Images:
-                    - When images help the user understand the answer, embed relevant ones using Markdown: `![](url)`.
-                    - Embed 2 to 4 images, and only use urls from `images[]` (never fabricate or alter urls).
-                    - Usually place the images at the very beginning of your reply; skip them entirely if none are relevant.
-
-                    Example:
-                    The capital of France is Paris. [citation,example.com](abc123)
-                    The population is about 2.1 million. [citation,example.com](abc123) [citation,example2.com](def456)
-                """.trimIndent(),
+                description = buildString {
+                    appendLine("Search the web for up-to-date or specific information.")
+                    appendLine("Use this when the user asks for the latest news, current facts, or needs verification.")
+                    appendLine("Available search services: ${selected.joinToString(", ") { it.displayName }}.")
+                    if (perServiceExtra.isNotEmpty()) {
+                        appendLine("Extra parameters (each only applies to its listed service):")
+                        perServiceExtra.forEach { (key, pair) ->
+                            val desc = pair.first["description"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                            appendLine("  - $key: $desc")
+                        }
+                    }
+                    appendLine("Choose one via the `service` parameter (must be one of the listed values);")
+                    appendLine("`num_results` controls how many results to return (default: 10).")
+                    appendLine("Today is ${LocalDate.now().toLocalString(true)}.")
+                    appendLine()
+                    appendLine("Response format:")
+                    appendLine("- items[].id (short id), title, url, text")
+                    appendLine("- images[]: image urls related to the query (may be empty)")
+                    appendLine()
+                    appendLine("Citations:")
+                    appendLine("- After using results, add `[citation,domain](id)` after the sentence.")
+                    appendLine("- Multiple citations are allowed.")
+                    appendLine("- If no results are cited, omit citations.")
+                    appendLine()
+                    appendLine("Images:")
+                    appendLine("- When images help the user understand the answer, embed relevant ones using Markdown: `![](url)`.")
+                    appendLine("- Embed 2 to 4 images, and only use urls from `images[]` (never fabricate or alter urls).")
+                    appendLine("- Usually place the images at the very beginning of your reply; skip them entirely if none are relevant.")
+                    appendLine()
+                    appendLine("Example:")
+                    appendLine("The capital of France is Paris. [citation,example.com](abc123)")
+                    appendLine("The population is about 2.1 million. [citation,example.com](abc123) [citation,example2.com](def456)")
+                }.trimEnd(),
                 parameters = {
                     InputSchema.Obj(
                         properties = buildJsonObject {
@@ -83,6 +116,7 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                                 put("type", "integer")
                                 put("description", "Number of results to return (default: 10)")
                             })
+                            perServiceExtra.forEach { (key, pair) -> put(key, pair.first) }
                         },
                         required = listOf("query")
                     )
