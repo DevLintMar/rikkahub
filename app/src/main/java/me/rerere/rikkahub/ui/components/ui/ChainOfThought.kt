@@ -40,7 +40,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.util.fastForEach
+import androidx.compose.ui.util.fastForEachIndexed
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.ArrowRight01
@@ -185,14 +185,16 @@ fun <T> ChainOfThought(
 
                 val lineColor = MaterialTheme.colorScheme.outlineVariant
                 val scope = remember { ChainOfThoughtScopeImpl() }
-                // 卡片半透明（开启气泡透明度）时不画时间线竖线：同色半透明图标遮罩会在卡片上二次合成
-                // 变浅形成"浅色白底"，且无法再遮住竖线。此时竖线与遮罩一并去掉，图标直接浮在半透明卡片上。
+                // 卡片半透明（开启气泡透明度）时不画父级整段竖线，改用每个步骤图标两侧的
+                // 分段时间线（见 ChainOfThoughtStepContent），避免同色半透明遮罩二次合成变浅。
                 val timelineVisible = cardColors.containerColor.alpha >= 0.999f
                 // 只在有可见步骤时画时间线竖线——聚合折叠态（visibleSteps 空）不画，避免大脑图标处残留竖线
                 if (visibleSteps.isNotEmpty()) {
                     val stepsColumn: @Composable () -> Unit = {
                         Column {
-                            visibleSteps.fastForEach { step ->
+                            visibleSteps.fastForEachIndexed { index, step ->
+                                scope.isFirstStep = index == 0
+                                scope.isLastStep = index == visibleSteps.lastIndex
                                 scope.content(step)
                             }
                         }
@@ -280,6 +282,10 @@ interface ChainOfThoughtScope {
 }
 
 private class ChainOfThoughtScopeImpl : ChainOfThoughtScope {
+    /** 迭代时的首/末步骤标记，供半透明模式下绘制分段时间线（避让首末图标） */
+    var isFirstStep: Boolean = false
+    var isLastStep: Boolean = false
+
     @Composable
     override fun ChainOfThoughtStep(
         icon: @Composable (() -> Unit)?,
@@ -383,17 +389,49 @@ private class ChainOfThoughtScopeImpl : ChainOfThoughtScope {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Icon（卡片不透明时用同色背景遮住背后的连线；半透明时去掉该遮罩，
-                // 否则同色半透明背景在卡片上二次合成变浅，图标出现"浅色白底"）
+                // Icon（卡片不透明时用同色背景遮住背后的父级竖线；半透明时去掉该遮罩——
+                // 同色半透明背景在卡片上二次合成变浅形成"浅色白底"——改在图标两侧画分段时间线）
+                val opaque = LocalCardColor.current.alpha >= 0.999f
+                val stepLineColor = MaterialTheme.colorScheme.outlineVariant
                 Box(
                     modifier = Modifier.width(24.dp),
                     contentAlignment = Alignment.Center,
                 ) {
+                    if (!opaque) {
+                        // 分段时间线：在图标(20dp)上方/下方各画一段，相邻步骤段在行边界衔接成连续竖线
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .drawBehind {
+                                    val x = 12.dp.toPx()
+                                    val iconSize = 20.dp.toPx()
+                                    val iconTop = (size.height - iconSize) / 2f
+                                    val iconBottom = iconTop + iconSize
+                                    val gap = 2.dp.toPx()
+                                    if (!isFirstStep) {
+                                        drawLine(
+                                            color = stepLineColor,
+                                            start = Offset(x, 0f),
+                                            end = Offset(x, iconTop - gap),
+                                            strokeWidth = 1.dp.toPx()
+                                        )
+                                    }
+                                    if (!isLastStep) {
+                                        drawLine(
+                                            color = stepLineColor,
+                                            start = Offset(x, iconBottom + gap),
+                                            end = Offset(x, size.height),
+                                            strokeWidth = 1.dp.toPx()
+                                        )
+                                    }
+                                }
+                        ) {}
+                    }
                     Box(
                         modifier = Modifier
                             .size(20.dp)
                             .then(
-                                if (LocalCardColor.current.alpha >= 0.999f) {
+                                if (opaque) {
                                     Modifier.background(LocalCardColor.current)
                                 } else {
                                     Modifier
