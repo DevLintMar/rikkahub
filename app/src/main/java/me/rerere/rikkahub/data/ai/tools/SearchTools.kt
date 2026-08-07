@@ -22,7 +22,6 @@ import me.rerere.rikkahub.data.datastore.selectedSearchServices
 import me.rerere.rikkahub.utils.JsonInstantPretty
 import me.rerere.rikkahub.utils.toLocalString
 import me.rerere.search.SearchService
-import me.rerere.search.SearchServiceOptions
 import me.rerere.search.retryOnQuota
 import java.time.LocalDate
 import kotlin.uuid.Uuid
@@ -114,13 +113,13 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                             })
                             perServiceExtra.forEach { (key, value) -> put(key, value) }
                         },
-                        required = listOf("query")
+                        required = listOf("query", "service")
                     )
                 },
                 execute = { args ->
                     val options = args.jsonObject["service"]?.jsonPrimitive?.contentOrNull
                         ?.let { name -> selectedByName[name] }
-                        ?: selected.firstOrNull() ?: SearchServiceOptions.DEFAULT
+                        ?: error("service is required and must be one of: ${selected.joinToString(", ") { it.displayName }}")
                     val service = SearchService.getService(options)
                     val numResults = (args.jsonObject["num_results"]?.jsonPrimitive?.intOrNull ?: 10).coerceIn(1, 50)
                     val commonOptions = settings.searchCommonOptions.copy(resultSize = numResults)
