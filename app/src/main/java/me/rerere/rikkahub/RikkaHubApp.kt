@@ -29,6 +29,8 @@ import me.rerere.rikkahub.di.appModule
 import me.rerere.rikkahub.di.dataSourceModule
 import me.rerere.rikkahub.di.repositoryModule
 import me.rerere.rikkahub.di.viewModelModule
+import me.rerere.rikkahub.data.db.AppDatabase
+import me.rerere.rikkahub.data.sync.RestorePathRebaser
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.service.WebServerService
@@ -87,6 +89,9 @@ class RikkaHubApp : Application() {
 
         // sync upload files to DB
         syncManagedFiles()
+
+        // 跨包名恢复：DB 恢复后一次性重写绝对 file:// URI 到当前包
+        rewriteRestoredFileUris()
 
         // Start WebServer if enabled in settings
         startWebServerIfEnabled()
@@ -156,6 +161,69 @@ class RikkaHubApp : Application() {
                 get<FilesManager>().syncFolder()
             }.onFailure {
                 Log.e(TAG, "syncManagedFiles failed", it)
+            }
+        }
+    }
+
+    /**
+     * 跨包名恢复的一次性 URI 重写：恢复进不同包名（debug/.pre/旧包名）的 distribution 后，DB 内
+     * message_node.messages 与 GenMediaEntity.source_paths 存的是绝对 file:///data/user/0/<旧包>/files/... 路径。
+     * 恢复流程在重启前写哨兵文件，本方法在下次启动时把它们重定位到当前包，然后删除哨兵。
+     */
+    private fun rewriteRestoredFileUris() {
+        get<AppScope>().launch(Dispatchers.IO) {
+            runCatching {
+                val marker = RestorePathRebaser.markerFile(this@RikkaHubApp)
+                if (!marker.exists()) {
+                    return@runCatching
+                }
+                val db = get<AppDatabase>().openHelper.writableDatabase
+                val filesDir = this@RikkaHubApp.filesDir
+
+                var updatedNodes = 0
+                var updatedMedia = 0
+                var totalRefs = 0
+
+                db.query("SELECT id, messages FROM message_node").use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val id = cursor.getString(0)
+                        val messages = cursor.getString(1)
+                        val foreign = RestorePathRebaser.foreignPrefixCount(messages, filesDir)
+                        if (foreign > 0) {
+                            db.execSQL(
+                                "UPDATE message_node SET messages = ? WHERE id = ?",
+                                arrayOf(RestorePathRebaser.rebase(messages, filesDir), id)
+                            )
+                            updatedNodes++
+                            totalRefs += foreign
+                        }
+                    }
+                }
+
+                db.query("SELECT id, source_paths FROM GenMediaEntity WHERE source_paths IS NOT NULL").use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val id = cursor.getInt(0)
+                        val sourcePaths = cursor.getString(1)
+                        val foreign = RestorePathRebaser.foreignPrefixCount(sourcePaths, filesDir)
+                        if (foreign > 0) {
+                            db.execSQL(
+                                "UPDATE GenMediaEntity SET source_paths = ? WHERE id = ?",
+                                arrayOf(RestorePathRebaser.rebase(sourcePaths, filesDir), id)
+                            )
+                            updatedMedia++
+                            totalRefs += foreign
+                        }
+                    }
+                }
+
+                marker.delete()
+                Log.i(
+                    TAG,
+                    "rewriteRestoredFileUris: rebased $totalRefs foreign file:// refs " +
+                        "across $updatedNodes message nodes and $updatedMedia gen_media rows"
+                )
+            }.onFailure {
+                Log.e(TAG, "rewriteRestoredFileUris failed", it)
             }
         }
     }
