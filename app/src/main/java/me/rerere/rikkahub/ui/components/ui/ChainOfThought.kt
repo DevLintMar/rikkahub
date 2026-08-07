@@ -37,6 +37,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -352,15 +353,50 @@ private class ChainOfThoughtScopeImpl : ChainOfThoughtScope {
     ) {
         val hasContent = content != null
         val shouldFillMaxWidth = !collapsedAdaptiveWidth || contentVisible
+        // 半透明卡片（开启气泡透明度）：去掉图标遮罩后，改在步骤单元级画分段时间线，
+        // 跳过图标 20dp、贯穿内容区（belowLabel/content），复刻不透明遮罩模式的连续竖线效果。
+        val opaque = LocalCardColor.current.alpha >= 0.999f
+        val stepLineColor = MaterialTheme.colorScheme.outlineVariant
+        // 图标行下方是否还有实际渲染的内容——末步且下方无内容时收尾（图标下方无线）
+        val shouldDrawBelow = !isLastStep || belowLabel != null || (contentVisible && hasContent)
+        // 图标行高度（onGloballyPositioned 测量），用于在单元级竖线上跳过图标区域
+        var iconRowHeight by remember { mutableStateOf(0) }
 
         Column(
-            modifier = Modifier.then(
-                if (shouldFillMaxWidth) {
-                    Modifier.fillMaxWidth()
-                } else {
-                    Modifier
+            modifier = Modifier
+                .then(
+                    if (shouldFillMaxWidth) {
+                        Modifier.fillMaxWidth()
+                    } else {
+                        Modifier
+                    }
+                )
+                .drawBehind {
+                    if (!opaque && iconRowHeight > 0) {
+                        val x = 12.dp.toPx()
+                        val iconSize = 20.dp.toPx()
+                        val iconTop = (iconRowHeight.toFloat() - iconSize) / 2f
+                        val iconBottom = iconTop + iconSize
+                        // 图标上方段：首步不画（对应遮罩模式首图标上方留白）
+                        if (!isFirstStep) {
+                            drawLine(
+                                color = stepLineColor,
+                                start = Offset(x, 0f),
+                                end = Offset(x, iconTop),
+                                strokeWidth = 1.dp.toPx()
+                            )
+                        }
+                        // 图标下方段：贯穿下方内容到单元底；末步无下方内容时不画
+                        if (shouldDrawBelow) {
+                            drawLine(
+                                color = stepLineColor,
+                                start = Offset(x, iconBottom),
+                                end = Offset(x, size.height),
+                                strokeWidth = 1.dp.toPx()
+                            )
+                        }
+                    }
                 }
-            ),
         ) {
             // Label 行：Icon + Label + Extra + 指示器
             Row(
@@ -385,48 +421,17 @@ private class ChainOfThoughtScopeImpl : ChainOfThoughtScope {
                             Modifier
                         }
                     )
+                    .onGloballyPositioned { iconRowHeight = it.size.height }
                     .padding(vertical = 5.5.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // Icon（卡片不透明时用同色背景遮住背后的父级竖线；半透明时去掉该遮罩——
-                // 同色半透明背景在卡片上二次合成变浅形成"浅色白底"——改在图标两侧画分段时间线）
-                val opaque = LocalCardColor.current.alpha >= 0.999f
-                val stepLineColor = MaterialTheme.colorScheme.outlineVariant
+                // 同色半透明背景在卡片上二次合成变浅形成"浅色白底"，竖线由步骤单元级分段绘制）
                 Box(
                     modifier = Modifier.width(24.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (!opaque) {
-                        // 分段时间线：在图标(20dp)上方/下方各画一段，相邻步骤段在行边界衔接成连续竖线
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .drawBehind {
-                                    val x = 12.dp.toPx()
-                                    val iconSize = 20.dp.toPx()
-                                    val iconTop = (size.height - iconSize) / 2f
-                                    val iconBottom = iconTop + iconSize
-                                    val gap = 2.dp.toPx()
-                                    if (!isFirstStep) {
-                                        drawLine(
-                                            color = stepLineColor,
-                                            start = Offset(x, 0f),
-                                            end = Offset(x, iconTop - gap),
-                                            strokeWidth = 1.dp.toPx()
-                                        )
-                                    }
-                                    if (!isLastStep) {
-                                        drawLine(
-                                            color = stepLineColor,
-                                            start = Offset(x, iconBottom + gap),
-                                            end = Offset(x, size.height),
-                                            strokeWidth = 1.dp.toPx()
-                                        )
-                                    }
-                                }
-                        ) {}
-                    }
                     Box(
                         modifier = Modifier
                             .size(20.dp)
