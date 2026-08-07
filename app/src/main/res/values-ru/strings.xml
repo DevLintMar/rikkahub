@@ -819,6 +819,7 @@
   <string name="setting_page_search_add_provider">Добавить поставщика</string>
   <string name="setting_page_search_config">Конфигурация</string>
   <string name="setting_page_search_delete_provider">Удалить поставщика</string>
+  <string name="setting_page_search_delete_message">Удалить сервис «%1$s»?</string>
   <string name="setting_page_search_service">Служба поиска</string>
   <string name="setting_page_search_service_desc">Настроить службу поиска</string>
   <string name="setting_page_search_test">Тест поиска</string>

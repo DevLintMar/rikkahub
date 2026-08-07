@@ -264,6 +264,7 @@ private fun SearchProviderCard(
     modifier: Modifier = Modifier,
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
 
     Card(
         modifier = modifier,
@@ -317,7 +318,7 @@ private fun SearchProviderCard(
                         text = { Text(stringResource(R.string.delete)) },
                         onClick = {
                             showMenu = false
-                            onDelete()
+                            if (canDelete) showDeleteConfirm = true
                         },
                         leadingIcon = {
                             Icon(HugeIcons.Delete01, contentDescription = null)
@@ -328,6 +329,27 @@ private fun SearchProviderCard(
             }
 
         }
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text(stringResource(R.string.confirm_delete)) },
+            text = { Text(stringResource(R.string.setting_page_search_delete_message, service.displayName)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirm = false
+                        onDelete()
+                    }
+                ) { Text(stringResource(R.string.confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
     }
 }
 

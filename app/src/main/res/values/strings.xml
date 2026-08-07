@@ -911,6 +911,7 @@
   <string name="setting_page_search_add_provider">Add Provider</string>
   <string name="setting_page_search_config">Configuration</string>
   <string name="setting_page_search_delete_provider">Delete Provider</string>
+  <string name="setting_page_search_delete_message">Are you sure you want to delete \"%1$s\"?</string>
   <string name="setting_page_search_service">Search Service</string>
   <string name="setting_page_search_service_desc">Set up search service</string>
   <string name="setting_page_search_test">Test Search</string>
