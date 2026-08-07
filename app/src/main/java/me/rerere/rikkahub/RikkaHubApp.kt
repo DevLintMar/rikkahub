@@ -33,6 +33,10 @@ import me.rerere.rikkahub.data.db.AppDatabase
 import me.rerere.rikkahub.data.sync.RestorePathRebaser
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.datastore.SettingsStore
+import me.rerere.rikkahub.data.model.Avatar
+import me.rerere.common.android.Logging
+import androidx.core.net.toFile
+import androidx.core.net.toUri
 import me.rerere.rikkahub.service.WebServerService
 import me.rerere.rikkahub.utils.CrashHandler
 import me.rerere.rikkahub.utils.DatabaseUtil
@@ -92,6 +96,12 @@ class RikkaHubApp : Application() {
 
         // 跨包名恢复：DB 恢复后一次性重写绝对 file:// URI 到当前包
         rewriteRestoredFileUris()
+
+        // 跨包名恢复：把恢复时落盘的 restore_diag.txt 回放进日志页（进程重启后可见）
+        replayRestoreDiagnostics()
+
+        // 头像/背景文件存在性诊断：每次启动记录，便于定位恢复后头像丢失的环节
+        logAvatarDiagnostics()
 
         // Start WebServer if enabled in settings
         startWebServerIfEnabled()
@@ -224,6 +234,69 @@ class RikkaHubApp : Application() {
                 )
             }.onFailure {
                 Log.e(TAG, "rewriteRestoredFileUris failed", it)
+            }
+        }
+    }
+
+    /**
+     * 恢复诊断回放：恢复流程把 restore_diag.txt 写入 noBackupFilesDir（恢复会 exitProcess
+     * 重启，进程内 Logging 会丢失），本方法在下次启动时读回并逐行写进日志页，随后删除。
+     */
+    private fun replayRestoreDiagnostics() {
+        get<AppScope>().launch(Dispatchers.IO) {
+            runCatching {
+                val diagFile = File(noBackupFilesDir, "restore_diag.txt")
+                if (!diagFile.exists()) {
+                    return@runCatching
+                }
+                val lines = diagFile.readText().lineSequence().filter { it.isNotBlank() }.toList()
+                lines.forEach { Logging.log(TAG, it) }
+                diagFile.delete()
+                Log.i(TAG, "replayRestoreDiagnostics: replayed ${lines.size} restore diagnostic lines")
+            }.onFailure {
+                Log.e(TAG, "replayRestoreDiagnostics failed", it)
+            }
+        }
+    }
+
+    /**
+     * 头像/背景文件存在性诊断：每次启动记录到日志页，用于排查"恢复后没有头像"的环节。
+     * 对每个 Avatar.Image / 背景 URL 输出：scheme、是否已 rebase 到当前包、文件是否存在。
+     */
+    private fun logAvatarDiagnostics() {
+        get<AppScope>().launch(Dispatchers.IO) {
+            runCatching {
+                val settings = get<SettingsStore>().settingsFlowRaw.first()
+                val currentPrefix = "file://${filesDir.absolutePath}/"
+                fun check(label: String, url: String) {
+                    val uri = runCatching { url.toUri() }.getOrNull()
+                    val scheme = uri?.scheme ?: "?"
+                    val fileExists = if (uri?.scheme == "file") {
+                        runCatching { uri.toFile().exists() }.getOrDefault(false)
+                    } else {
+                        false
+                    }
+                    val rebased = url.startsWith(currentPrefix)
+                    Logging.log(
+                        TAG,
+                        "avatar: $label scheme=$scheme rebased=$rebased fileExists=$fileExists url=$url"
+                    )
+                }
+                val userAvatar = settings.displaySetting.userAvatar
+                if (userAvatar is Avatar.Image) {
+                    check("userAvatar", userAvatar.url)
+                } else {
+                    Logging.log(TAG, "avatar: userAvatar type=${userAvatar::class.simpleName}")
+                }
+                settings.assistants.forEach { assistant ->
+                    val avatar = assistant.avatar
+                    if (avatar is Avatar.Image) {
+                        check("assistant[${assistant.name}]", avatar.url)
+                    }
+                    assistant.background?.let { check("assistant[${assistant.name}].background", it) }
+                }
+            }.onFailure {
+                Log.e(TAG, "logAvatarDiagnostics failed", it)
             }
         }
     }
