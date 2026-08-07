@@ -212,6 +212,20 @@ class WebDavSync(
                 } else {
                     Log.w(TAG, "prepareBackupFile: Fonts folder does not exist or is not a directory")
                 }
+
+                // AI 生成图片：GenMediaEntity.path 为相对 "images/xxx"，恢复时一并写入
+                val imagesFolder = File(context.filesDir, "images")
+                if (imagesFolder.exists() && imagesFolder.isDirectory) {
+                    Log.i(TAG, "prepareBackupFile: Backing up images from ${imagesFolder.absolutePath}")
+                    imagesFolder.listFiles()?.forEach { file ->
+                        if (file.isFile) {
+                            addFileToZip(zipOut, file, "images/${file.name}")
+                            uploadFileCount++
+                        }
+                    }
+                } else {
+                    Log.w(TAG, "prepareBackupFile: Images folder does not exist or is not a directory")
+                }
             }
         }
 
@@ -363,6 +377,21 @@ class WebDavSync(
                                 if (fileName.isNotEmpty() && !fileName.contains('/')) {
                                     val fontsFolder = File(context.filesDir, FileFolders.FONTS).apply { mkdirs() }
                                     val targetFile = File(fontsFolder, fileName)
+                                    FileOutputStream(targetFile).use { outputStream ->
+                                        zipIn.copyTo(outputStream)
+                                    }
+                                    Log.i(
+                                        TAG,
+                                        "restoreFromBackupFile: Restored ${zipEntry.name} (${targetFile.length()} bytes)"
+                                    )
+                                }
+                            } else if (config.items.contains(WebDavConfig.BackupItem.FILES) &&
+                                zipEntry.name.startsWith("images/")
+                            ) {
+                                val fileName = zipEntry.name.substringAfter("images/")
+                                if (fileName.isNotEmpty() && !fileName.contains('/')) {
+                                    val imagesFolder = File(context.filesDir, "images").apply { mkdirs() }
+                                    val targetFile = File(imagesFolder, fileName)
                                     FileOutputStream(targetFile).use { outputStream ->
                                         zipIn.copyTo(outputStream)
                                     }
