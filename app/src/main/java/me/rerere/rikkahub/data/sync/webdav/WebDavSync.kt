@@ -12,6 +12,7 @@ import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.WebDavConfig
 import me.rerere.rikkahub.data.datastore.migration.SettingsJsonMigrator
+import me.rerere.rikkahub.data.sync.RestorePathRebaser
 import me.rerere.rikkahub.utils.fileSizeToString
 import java.io.File
 import java.io.FileInputStream
@@ -228,7 +229,21 @@ class WebDavSync(
                             Log.i(TAG, "restoreFromBackupFile: Restoring settings")
                             try {
                                 val migratedJson = SettingsJsonMigrator.migrate(settingsJson)
-                                val settings = json.decodeFromString<Settings>(migratedJson)
+                                // 跨包名恢复：把 settings.json 里绝对 file:// 路径重定位到当前包
+                                val foreignCount =
+                                    RestorePathRebaser.foreignPrefixCount(migratedJson, context.filesDir)
+                                val rebasedJson = if (foreignCount > 0) {
+                                    RestorePathRebaser.rebase(migratedJson, context.filesDir)
+                                } else {
+                                    migratedJson
+                                }
+                                if (foreignCount > 0) {
+                                    Log.i(
+                                        TAG,
+                                        "restoreFromBackupFile: rebased $foreignCount foreign file:// refs in settings.json"
+                                    )
+                                }
+                                val settings = json.decodeFromString<Settings>(rebasedJson)
                                 settingsStore.update(settings)
                                 Log.i(TAG, "restoreFromBackupFile: Settings restored successfully")
                             } catch (e: Exception) {
@@ -267,6 +282,15 @@ class WebDavSync(
                                         TAG,
                                         "restoreFromBackupFile: Restored ${zipEntry.name} (${targetFile.length()} bytes)"
                                     )
+                                    // 跨包名恢复：DB 已替换，标记下次启动执行 message_node/gen_media 内绝对 file:// URI 重写
+                                    if (zipEntry.name == "rikka_hub.db") {
+                                        runCatching {
+                                            RestorePathRebaser.markerFile(context).writeText("1")
+                                            Log.i(TAG, "restoreFromBackupFile: wrote path-rebase marker for next launch")
+                                        }.onFailure {
+                                            Log.e(TAG, "restoreFromBackupFile: failed to write path-rebase marker", it)
+                                        }
+                                    }
                                 }
                             }
                         }
