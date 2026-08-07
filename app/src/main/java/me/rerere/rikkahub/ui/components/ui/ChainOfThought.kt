@@ -26,6 +26,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -51,6 +52,18 @@ import me.rerere.hugeicons.stroke.Sparkles
 import me.rerere.rikkahub.R
 
 private val LocalCardColor = staticCompositionLocalOf { Color.White }
+
+/**
+ * 步骤时间线首/末标记。通过 CompositionLocal 注入每个步骤（见 [ChainOfThought] 的遍历处），
+ * 让 [ChainOfThoughtScopeImpl.ChainOfThoughtStepContent] 在组合期读到本步骤稳定的值——
+ * 不能放在共享可变 var 上：drawBehind 在绘制阶段执行，共享 var 会被最后一步的赋值覆盖，
+ * 导致所有步骤都画成首步/末步（竖线上半/下半段丢失、聚合头下方错出线）。
+ */
+private data class StepTimelineFlags(val first: Boolean, val last: Boolean)
+
+private val LocalStepTimelineFlags = staticCompositionLocalOf {
+    StepTimelineFlags(first = true, last = true)
+}
 
 /**
  * 以时间线/步骤卡片的形式展示一组思考过程。
@@ -195,9 +208,18 @@ fun <T> ChainOfThought(
                     val stepsColumn: @Composable () -> Unit = {
                         Column {
                             visibleSteps.fastForEachIndexed { index, step ->
-                                scope.isFirstStep = index == 0
-                                scope.isLastStep = index == visibleSteps.lastIndex
-                                scope.content(step)
+                                key(index) {
+                                    // 每步注入稳定的首/末标记：CompositionLocal 在组合期固化，
+                                    // 后续该步骤的重组/重绘都读到本步骤的值
+                                    CompositionLocalProvider(
+                                        LocalStepTimelineFlags provides StepTimelineFlags(
+                                            first = index == 0,
+                                            last = index == visibleSteps.lastIndex,
+                                        )
+                                    ) {
+                                        scope.content(step)
+                                    }
+                                }
                             }
                         }
                     }
@@ -284,10 +306,6 @@ interface ChainOfThoughtScope {
 }
 
 private class ChainOfThoughtScopeImpl : ChainOfThoughtScope {
-    /** 迭代时的首/末步骤标记，供半透明模式下绘制分段时间线（避让首末图标） */
-    var isFirstStep: Boolean = false
-    var isLastStep: Boolean = false
-
     @Composable
     override fun ChainOfThoughtStep(
         icon: @Composable (() -> Unit)?,
@@ -358,8 +376,10 @@ private class ChainOfThoughtScopeImpl : ChainOfThoughtScope {
         // 跳过图标 20dp、贯穿内容区（belowLabel/content），复刻不透明遮罩模式的连续竖线效果。
         val opaque = LocalCardColor.current.alpha >= 0.999f
         val stepLineColor = MaterialTheme.colorScheme.outlineVariant
+        // 本步骤的首/末标记：组合期读取 CompositionLocal（稳定值，不会串成其他步骤）
+        val stepFlags = LocalStepTimelineFlags.current
         // 图标行下方是否还有实际渲染的内容——末步且下方无内容时收尾（图标下方无线）
-        val shouldDrawBelow = !isLastStep || belowLabel != null || (contentVisible && hasContent)
+        val shouldDrawBelow = !stepFlags.last || belowLabel != null || (contentVisible && hasContent)
         // 图标行高度（onGloballyPositioned 测量），用于在单元级竖线上跳过图标区域
         var iconRowHeight by remember { mutableStateOf(0) }
 
@@ -378,8 +398,8 @@ private class ChainOfThoughtScopeImpl : ChainOfThoughtScope {
                         val iconSize = 20.dp.toPx()
                         val iconTop = (iconRowHeight.toFloat() - iconSize) / 2f
                         val iconBottom = iconTop + iconSize
-                        // 图标上方段：首步不画（对应遮罩模式首图标上方留白）
-                        if (!isFirstStep) {
+                        // 图标上方段：首步不画（对应遮罩模式首图标上方留白，聚合头下方无线）
+                        if (!stepFlags.first) {
                             drawLine(
                                 color = stepLineColor,
                                 start = Offset(x, 0f),
