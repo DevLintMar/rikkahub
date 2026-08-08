@@ -1,5 +1,7 @@
 package me.rerere.rikkahub.ui.pages.extensions.workspace
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
@@ -30,19 +33,26 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.dokar.sonner.ToastType
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.Delete01
+import me.rerere.hugeicons.stroke.Download01
 import me.rerere.hugeicons.stroke.Edit01
 import me.rerere.hugeicons.stroke.File02
+import me.rerere.hugeicons.stroke.FileImport
 import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
@@ -51,9 +61,12 @@ import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.RikkaConfirmDialog
 import me.rerere.rikkahub.ui.context.LocalNavController
+import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.utils.plus
 import org.koin.androidx.compose.koinViewModel
+import java.io.File
+import java.io.FileOutputStream
 
 @Composable
 fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
@@ -63,6 +76,79 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
     var editTarget by remember { mutableStateOf<WorkspaceEntity?>(null) }
     var deleteTarget by remember { mutableStateOf<WorkspaceEntity?>(null) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val toaster = LocalToaster.current
+
+    // 工作区导出/导入状态
+    var exportTarget by remember { mutableStateOf<WorkspaceEntity?>(null) }
+    var isExporting by remember { mutableStateOf(false) }
+    var isImporting by remember { mutableStateOf(false) }
+
+    // 导出：SAF 保存 zip（先在后台打临时包，再复制到用户选择位置）
+    val createDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        uri?.let { targetUri ->
+            val workspace = exportTarget ?: return@let
+            scope.launch {
+                isExporting = true
+                try {
+                    val exportFile = vm.exportWorkspace(workspace.id)
+                    context.contentResolver.openOutputStream(targetUri)?.use { output ->
+                        exportFile.inputStream().use { input -> input.copyTo(output) }
+                    }
+                    exportFile.delete()
+                    toaster.show(
+                        context.getString(R.string.workspace_page_export_success),
+                        type = ToastType.Success
+                    )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    toaster.show(
+                        context.getString(R.string.workspace_page_export_failed, e.message ?: ""),
+                        type = ToastType.Error
+                    )
+                }
+                exportTarget = null
+                isExporting = false
+            }
+        }
+    }
+
+    // 导入：SAF 选 zip → 复制到 cache 临时文件 → 后台导入为新工作区
+    val openDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let { sourceUri ->
+            scope.launch {
+                isImporting = true
+                try {
+                    val tempFile = File(context.cacheDir, "workspace_import_${System.currentTimeMillis()}.zip")
+                    context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                        FileOutputStream(tempFile).use { output -> input.copyTo(output) }
+                    }
+                    vm.importWorkspace(tempFile)
+                    tempFile.delete()
+                    toaster.show(
+                        context.getString(R.string.workspace_page_import_success),
+                        type = ToastType.Success
+                    )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    toaster.show(
+                        context.getString(R.string.workspace_page_import_failed, e.message ?: ""),
+                        type = ToastType.Error
+                    )
+                }
+                isImporting = false
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -71,6 +157,21 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
                 navigationIcon = { BackButton() },
                 scrollBehavior = scrollBehavior,
                 colors = CustomColors.topBarColors,
+                actions = {
+                    IconButton(
+                        onClick = {
+                            if (!isImporting) {
+                                openDocumentLauncher.launch(arrayOf("application/zip"))
+                            }
+                        },
+                    ) {
+                        if (isImporting) {
+                            CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(HugeIcons.FileImport, contentDescription = stringResource(R.string.workspace_page_import))
+                        }
+                    }
+                },
             )
         },
         floatingActionButton = {
@@ -98,6 +199,15 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
                     onRename = { editTarget = workspace },
                     onDelete = { deleteTarget = workspace },
                     onOpen = { navController.navigate(Screen.WorkspaceDetail(workspace.id)) },
+                    onExport = {
+                        if (!isExporting) {
+                            exportTarget = workspace
+                            createDocumentLauncher.launch(
+                                "workspace_export_${System.currentTimeMillis()}.zip"
+                            )
+                        }
+                    },
+                    isExporting = isExporting,
                 )
             }
         }
@@ -178,6 +288,8 @@ private fun WorkspaceCard(
     onRename: () -> Unit,
     onDelete: () -> Unit,
     onOpen: () -> Unit,
+    onExport: () -> Unit,
+    isExporting: Boolean = false,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
 
@@ -236,6 +348,29 @@ private fun WorkspaceCard(
                             onClick = {
                                 menuExpanded = false
                                 onRename()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    if (isExporting) {
+                                        stringResource(R.string.workspace_page_exporting)
+                                    } else {
+                                        stringResource(R.string.workspace_page_export)
+                                    }
+                                )
+                            },
+                            leadingIcon = {
+                                if (isExporting) {
+                                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                } else {
+                                    Icon(HugeIcons.Download01, contentDescription = null)
+                                }
+                            },
+                            enabled = !isExporting,
+                            onClick = {
+                                menuExpanded = false
+                                onExport()
                             },
                         )
                         DropdownMenuItem(

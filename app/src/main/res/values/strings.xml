@@ -1355,6 +1355,14 @@
   <string name="tool_ui_delete_this_memory">Delete this memory</string>
   <string name="tool_ui_screen_empty">No screen time</string>
   <string name="workspace_page_name_duplicate">Name already exists</string>
+  <string name="workspace_page_export">Export Workspace</string>
+  <string name="workspace_page_import">Import Workspace</string>
+  <string name="workspace_page_exporting">Exporting...</string>
+  <string name="workspace_page_importing">Importing...</string>
+  <string name="workspace_page_export_success">Workspace exported</string>
+  <string name="workspace_page_import_success">Workspace imported. A new workspace was created, rootfs included.</string>
+  <string name="workspace_page_export_failed">Export failed: %1$s</string>
+  <string name="workspace_page_import_failed">Import failed: %1$s</string>
   <string name="setting_mcp_page_name_invalid">Name can only contain English letters and numbers</string>
   <string name="log_page_record_requests">Record requests</string>
   <string name="log_page_record_requests_desc">Capture request headers, bodies, and response metadata</string>

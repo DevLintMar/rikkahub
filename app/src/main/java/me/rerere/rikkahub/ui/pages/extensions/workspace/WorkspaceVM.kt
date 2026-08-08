@@ -36,4 +36,11 @@ class WorkspaceVM(
             repository.delete(workspace.id)
         }
     }
+
+    /** 导出工作区为 zip（含 rootfs），返回 cacheDir 临时文件 */
+    suspend fun exportWorkspace(id: String): java.io.File = repository.exportWorkspace(id)
+
+    /** 导入工作区备份，返回新建的工作区 */
+    suspend fun importWorkspace(zipFile: java.io.File): WorkspaceEntity =
+        repository.importWorkspace(zipFile)
 }

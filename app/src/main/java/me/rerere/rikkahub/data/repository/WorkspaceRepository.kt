@@ -10,6 +10,7 @@ import kotlinx.coroutines.withContext
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.db.dao.WorkspaceDAO
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
+import me.rerere.rikkahub.data.sync.WorkspaceBackup
 import me.rerere.rikkahub.utils.JsonInstant
 import me.rerere.workspace.RootfsInstallProgress
 import me.rerere.workspace.RootfsInstaller
@@ -20,8 +21,10 @@ import me.rerere.workspace.WorkspaceSearchMatch
 import me.rerere.workspace.WorkspaceShellStatus
 import me.rerere.workspace.WorkspaceStorageArea
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
+import java.util.zip.ZipFile
 import kotlin.uuid.Uuid
 
 class WorkspaceRepository(
@@ -29,6 +32,7 @@ class WorkspaceRepository(
     private val manager: WorkspaceManager,
     private val rootfsInstaller: RootfsInstaller,
     private val settingsStore: SettingsStore,
+    private val cacheDir: File,
 ) {
     fun listFlow(): Flow<List<WorkspaceEntity>> = dao.listFlow()
 
@@ -356,6 +360,52 @@ class WorkspaceRepository(
         }
         cleanupAssistantReferences(id)
         return true
+    }
+
+    /**
+     * 导出工作区为 zip（含 files/ + rootfs），返回 cacheDir 中的临时 zip 文件。
+     * 调用方负责把文件复制到用户选择的位置后删除临时文件。
+     */
+    suspend fun exportWorkspace(id: String): File {
+        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        val target = File(cacheDir, "workspace_export_${System.currentTimeMillis()}.zip")
+        withContext(Dispatchers.IO) {
+            WorkspaceBackup.export(manager, workspace, target)
+        }
+        return target
+    }
+
+    /**
+     * 从 zip 导入工作区：解析元信息 → 创建新工作区（新 UUID id/root，重名自动加序号）→
+     * 解压 files/ + linux/ → 注册 DB（恢复 toolApprovals/shellStatus；rootfs 完整，启动 checkIntegrity 兜底校正）。
+     */
+    suspend fun importWorkspace(zipFile: File): WorkspaceEntity = withContext(Dispatchers.IO) {
+        val meta = ZipFile(zipFile).use { WorkspaceBackup.parseMeta(it) }
+        // 重名自动加序号：name (2)、name (3)…
+        val baseName = meta.name.ifBlank { "Workspace" }
+        var name = baseName
+        var suffix = 2
+        while (dao.getAll().any { it.name.trim() == name }) {
+            name = "$baseName ($suffix)"
+            suffix++
+        }
+        val now = System.currentTimeMillis()
+        val workspace = WorkspaceEntity(
+            id = Uuid.random().toString(),
+            name = name,
+            root = Uuid.random().toString(),
+            shellStatus = meta.shellStatus,
+            createdAt = now,
+            updatedAt = now,
+            lastAccessAt = null,
+            toolApprovals = meta.toolApprovals,
+        )
+        manager.ensureWorkspace(workspace.root)
+        ZipFile(zipFile).use { zip ->
+            WorkspaceBackup.extractTo(zip, manager.workspaceDir(workspace.root))
+        }
+        dao.upsert(workspace)
+        workspace
     }
 
     private suspend fun cleanupAssistantReferences(workspaceId: String) {

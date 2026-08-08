@@ -1229,6 +1229,14 @@
   <string name="backup_page_s3_path_style">Стиль пути</string>
   <string name="backup_page_s3_path_style_desc">Используйте endpoint/bucket/object. Отключите, чтобы использовать bucket.endpoint/object.</string>
   <string name="workspace_page_name_duplicate">Такое имя уже существует</string>
+  <string name="workspace_page_export">Экспорт рабочей области</string>
+  <string name="workspace_page_import">Импорт рабочей области</string>
+  <string name="workspace_page_exporting">Экспорт...</string>
+  <string name="workspace_page_importing">Импорт...</string>
+  <string name="workspace_page_export_success">Рабочая область экспортирована</string>
+  <string name="workspace_page_import_success">Рабочая область импортирована. Создана новая рабочая область (включая rootfs)</string>
+  <string name="workspace_page_export_failed">Ошибка экспорта: %1$s</string>
+  <string name="workspace_page_import_failed">Ошибка импорта: %1$s</string>
   <string name="setting_mcp_page_name_invalid">Имя может содержать только латинские буквы и цифры</string>
   <string name="error_mcp_invalid_server_name">Недопустимое имя сервера MCP (допускаются только буквенно-цифровые символы): %1$s</string>
   <string name="setting_asr_configure_base_url">Base URL</string>
