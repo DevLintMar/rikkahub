@@ -33,20 +33,24 @@ fun ZoomableAsyncImage(
 ) {
     var showImageViewer by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    val placeholder = if(LocalDarkMode.current) R.drawable.placeholder_dark else R.drawable.placeholder
+    val darkMode = LocalDarkMode.current
+    val placeholder = if (darkMode) R.drawable.placeholder_dark else R.drawable.placeholder
     val export = LocalExportContext.current
-    val coilModel = ImageRequest.Builder(context)
-        .data(model)
-        .placeholder(placeholder)
-        .crossfade(false)
-        .allowHardware(!export)
-        .build()
+    // remember：item 存活期间父级重组不再重建 ImageRequest → Coil 状态机不重启（内存缓存命中直接复用绘制结果）
+    val coilModel = remember(model, export, darkMode) {
+        ImageRequest.Builder(context)
+            .data(model)
+            .placeholder(placeholder)
+            .crossfade(false)
+            .allowHardware(!export)
+            .build()
+    }
     var loading by remember { mutableStateOf(false) }
     AsyncImage(
         model = coilModel,
         contentDescription = contentDescription,
         modifier = modifier
-            .shimmer(isLoading = loading)
+            .shimmer(isLoading = loading, animate = false)
             .clickable {
                 showImageViewer = true
             },
