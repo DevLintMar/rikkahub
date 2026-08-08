@@ -42,6 +42,29 @@ private class HighlightTokenLruCache(private val maxSize: Int) {
 }
 
 private val highlightTokenCache = HighlightTokenLruCache(maxSize = 128)
+
+/** 高亮 AnnotatedString 缓存长度上限（64KB）：超过直接构建不缓存，避免大代码块撑爆 LRU */
+private const val MAX_ANNOTATED_LENGTH = 64 * 1024
+
+/** 高亮最终 AnnotatedString 进程级缓存：key 含 palette（15 色），同主题滚动滚回视野直接复用，跳过主线程 buildAnnotatedString */
+private class HighlightAnnotatedLruCache(private val maxSize: Int) {
+    private val map = object : LinkedHashMap<HighlightAnnotatedKey, AnnotatedString>(maxSize, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<HighlightAnnotatedKey, AnnotatedString>): Boolean = size > maxSize
+    }
+    @Synchronized
+    fun get(key: HighlightAnnotatedKey): AnnotatedString? = map[key]
+    @Synchronized
+    fun put(key: HighlightAnnotatedKey, value: AnnotatedString) { map[key] = value }
+}
+
+private data class HighlightAnnotatedKey(
+    val code: String,
+    val language: String,
+    val palette: HighlightTextColorPalette,
+)
+
+private val highlightAnnotatedCache = HighlightAnnotatedLruCache(maxSize = 64)
+
 private fun highlightCacheKey(code: String, language: String): String = "$language\u0000$code"
 
 /** 切换对话遮罩期间后台预热：把高亮 token 写入进程级缓存 */
@@ -74,7 +97,6 @@ fun HighlightText(
     minLines: Int = 1,
 ) {
     val highlighter = LocalHighlighter.current
-    var tokens: List<HighlightToken> by remember { mutableStateOf(emptyList()) }
     var annotatedString by remember { mutableStateOf(AnnotatedString(code)) }
 
     val updatedCode by rememberUpdatedState(code)
@@ -83,16 +105,22 @@ fun HighlightText(
         snapshotFlow { updatedCode to updatedLanguage }.collect {
             val key = highlightCacheKey(updatedCode, updatedLanguage)
             val cached = highlightTokenCache.get(key)
-            tokens = when {
+            val tokens = when {
                 cached != null -> cached
                 updatedCode.length <= MAX_CODE_LENGTH -> {
                     highlighter.highlight(updatedCode, updatedLanguage).also { highlightTokenCache.put(key, it) }
                 }
                 else -> listOf(HighlightToken.Plain(content = updatedCode))
             }
-            annotatedString = buildAnnotatedString {
+            // 最终 AnnotatedString 进程级缓存（key 含 palette）：同主题滚回视野直接复用，跳过主线程 buildAnnotatedString
+            val annotatedKey = HighlightAnnotatedKey(updatedCode, updatedLanguage, colors)
+            annotatedString = highlightAnnotatedCache.get(annotatedKey) ?: buildAnnotatedString {
                 tokens.fastForEach { token ->
                     buildHighlightText(token, colors)
+                }
+            }.also { built ->
+                if (updatedCode.length <= MAX_ANNOTATED_LENGTH) {
+                    highlightAnnotatedCache.put(annotatedKey, built)
                 }
             }
         }
