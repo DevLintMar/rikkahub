@@ -35,7 +35,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -210,16 +209,20 @@ private fun SwipeableConversationItem(
             positionalThreshold = positionThreshold,
         )
     }
+    val scope = rememberCoroutineScope()
 
-    LaunchedEffect(dismissState.currentValue) {
-        when (dismissState.currentValue) {
-            SwipeToDismissBoxValue.EndToStart -> {
-                // 先回位再请求确认：条目不立即移除，reset 后才能再次右滑
-                dismissState.reset()
+    // onDismiss 在条目真正滑出（settled 在 EndToStart）后回调一次。用 remember 固定 lambda，
+    // 避免 SwipeToDismissBox 内部 LaunchedEffect(settledValue, onDismiss) 在重组时因
+    // onDismiss 键变化对同一已滑出状态重复回调。
+    val handleDismiss = remember {
+        { direction: SwipeToDismissBoxValue ->
+            if (direction == SwipeToDismissBoxValue.EndToStart) {
+                // 请求父级弹确认框；条目在独立协程里立即回位——
+                // 不能用 LaunchedEffect(currentValue) 同步 reset：reset 会让 currentValue
+                // 变回 Settled，从而取消以它为 key 的协程，确认回调永远执行不到。
                 onRequestDelete()
+                scope.launch { dismissState.reset() }
             }
-
-            else -> {}
         }
     }
 
@@ -244,6 +247,7 @@ private fun SwipeableConversationItem(
             }
         },
         enableDismissFromStartToEnd = false,
+        onDismiss = handleDismiss,
         modifier = modifier
     ) {
         ConversationItem(
