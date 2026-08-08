@@ -64,6 +64,9 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     var showDeleteAllDialog by remember { mutableStateOf(false) }
+    var pendingDeleteConversation by remember { mutableStateOf<Conversation?>(null) }
+    val snackMessageDeleted = stringResource(R.string.history_page_conversation_deleted)
+    val snackMessageUndo = stringResource(R.string.history_page_undo)
 
     val conversations by vm.conversations.collectAsStateWithLifecycle()
 
@@ -101,8 +104,6 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
             SnackbarHost(hostState = snackbarHostState)
         }
     ) { contentPadding ->
-        val snackMessageDeleted = stringResource(R.string.history_page_conversation_deleted)
-        val snackMessageUndo = stringResource(R.string.history_page_undo)
         LazyColumn(
             contentPadding = contentPadding + PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -113,21 +114,7 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
                     onClick = {
                         navigateToChatPage(navController, conversation.id)
                     },
-                    onDelete = {
-                        scope.launch {
-                            // 先获取完整的对话数据（包含 messageNodes），用于撤销恢复
-                            val fullConversation = vm.getFullConversation(conversation.id) ?: conversation
-                            vm.deleteConversation(conversation)
-                            val result = snackbarHostState.showSnackbar(
-                                message = snackMessageDeleted,
-                                actionLabel = snackMessageUndo,
-                                withDismissAction = true,
-                            )
-                            if (result == SnackbarResult.ActionPerformed) {
-                                vm.restoreConversation(fullConversation)
-                            }
-                        }
-                    },
+                    onRequestDelete = { pendingDeleteConversation = conversation },
                     onTogglePin = { vm.togglePinStatus(conversation.id) },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -161,13 +148,58 @@ fun HistoryPage(vm: HistoryVM = koinViewModel()) {
             }
         )
     }
+
+    // 右滑删除二次确认
+    pendingDeleteConversation?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteConversation = null },
+            title = { Text(stringResource(R.string.history_page_delete_conversation_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.history_page_delete_conversation_confirm,
+                        target.title.ifBlank { stringResource(R.string.history_page_new_conversation) }.trim()
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDeleteConversation = null
+                        scope.launch {
+                            // 先获取完整的对话数据（包含 messageNodes），用于撤销恢复
+                            val fullConversation = vm.getFullConversation(target.id) ?: target
+                            vm.deleteConversation(target)
+                            val result = snackbarHostState.showSnackbar(
+                                message = snackMessageDeleted,
+                                actionLabel = snackMessageUndo,
+                                withDismissAction = true,
+                            )
+                            if (result == SnackbarResult.ActionPerformed) {
+                                vm.restoreConversation(fullConversation)
+                            }
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.history_page_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { pendingDeleteConversation = null }
+                ) {
+                    Text(stringResource(R.string.history_page_cancel))
+                }
+            }
+        )
+    }
 }
 
 @Composable
 private fun SwipeableConversationItem(
     conversation: Conversation,
     modifier: Modifier = Modifier,
-    onDelete: () -> Unit = {},
+    onRequestDelete: () -> Unit = {},
     onTogglePin: () -> Unit = {},
     onClick: () -> Unit = {},
 ) {
@@ -182,7 +214,9 @@ private fun SwipeableConversationItem(
     LaunchedEffect(dismissState.currentValue) {
         when (dismissState.currentValue) {
             SwipeToDismissBoxValue.EndToStart -> {
-                onDelete()
+                // 先回位再请求确认：条目不立即移除，reset 后才能再次右滑
+                dismissState.reset()
+                onRequestDelete()
             }
 
             else -> {}

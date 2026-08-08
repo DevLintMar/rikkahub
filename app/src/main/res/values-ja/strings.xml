@@ -383,6 +383,8 @@
   <string name="history_page_delete_all">すべて削除</string>
   <string name="history_page_delete_all_confirmation">すべての会話を削除してもよろしいですか？この操作は元に戻せません。</string>
   <string name="history_page_delete_all_conversations">すべての会話を削除</string>
+  <string name="history_page_delete_conversation_confirm">会話「%1$s」を削除してもよろしいですか？</string>
+  <string name="history_page_delete_conversation_title">会話を削除</string>
   <string name="history_page_new_conversation">新しい会話</string>
   <string name="history_page_pin">ピン留め</string>
   <string name="history_page_search">検索</string>

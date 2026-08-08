@@ -396,6 +396,8 @@
   <string name="history_page_delete_all">删除全部</string>
   <string name="history_page_delete_all_confirmation">确定要删除所有对话吗？此操作无法撤销。</string>
   <string name="history_page_delete_all_conversations">删除全部对话</string>
+  <string name="history_page_delete_conversation_confirm">确定删除对话「%1$s」吗？</string>
+  <string name="history_page_delete_conversation_title">删除对话</string>
   <string name="history_page_new_conversation">新对话</string>
   <string name="history_page_pin">置顶</string>
   <string name="history_page_search">搜索</string>
