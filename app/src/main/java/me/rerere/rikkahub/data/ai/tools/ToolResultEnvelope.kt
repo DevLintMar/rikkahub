@@ -10,7 +10,7 @@ import me.rerere.rikkahub.utils.JsonInstant
 
 /** 从工具输出文本解析信封 JSON。非 JSON 或空返回 null。 */
 fun parseEnvelope(parts: List<UIMessagePart>): JsonObject? {
-    val text = parts.filterIsInstance<UIMessagePart.Text>().joinToString("\n").trim()
+    val text = parts.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }.trim()
     if (text.isBlank()) return null
     return runCatching { JsonInstant.parseToJsonElement(text).jsonObject }.getOrNull()
 }

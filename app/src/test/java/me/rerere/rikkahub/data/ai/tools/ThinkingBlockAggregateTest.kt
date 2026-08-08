@@ -9,10 +9,13 @@ import org.junit.Test
 
 class ThinkingBlockAggregateTest {
 
+    // 固定基准时间戳：createdAt/finishedAt 用同一 base，差值精确整秒（两次 now() 会有微秒抖动导致 inWholeMilliseconds 截断）
+    private val base = Clock.System.now()
+
     private fun reasoning(durationSeconds: Int) = UIMessagePart.Reasoning(
         reasoning = "think",
-        createdAt = Clock.System.now() - kotlin.time.Duration.parse("${durationSeconds}s"),
-        finishedAt = Clock.System.now(),
+        createdAt = base - kotlin.time.Duration.parse("${durationSeconds}s"),
+        finishedAt = base,
     )
 
     private fun tool(output: String? = null) = UIMessagePart.Tool(
