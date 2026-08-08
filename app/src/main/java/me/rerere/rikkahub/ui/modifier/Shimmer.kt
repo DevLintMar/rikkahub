@@ -60,6 +60,14 @@ fun Modifier.shimmer(
                 backgroundColor  // 结束的背景色
             )
         }
+        // 静态路径用透明边渐变 + 普通 alpha 合成：无需 BlendMode.DstIn（那是每帧离屏 buffer）
+        val tintColors = remember(shimmerColor) {
+            listOf(
+                shimmerColor.copy(alpha = 0f),
+                shimmerColor,
+                shimmerColor.copy(alpha = 0f),
+            )
+        }
         if (animate) {
             // 创建无限循环动画
             val transition = rememberInfiniteTransition(label = "ShimmerTransition")
@@ -122,8 +130,8 @@ fun Modifier.shimmer(
                     )
                 }
         } else {
-            // 静态占位：无无限动画、无离屏 layer，避免滚动中多张图并发加载时每帧全区域重绘。
-            // 亮带固定在动画中途（30%）的位置，视觉与动画版一致但完全静止。
+            // 静态占位：无无限动画、无离屏 layer。亮带固定在动画中途（30%）的位置；
+            // 用透明边渐变普通 alpha 合成（不画 BlendMode.DstIn——每帧建离屏 buffer 的元凶）。
             val angleRad = Math.toRadians(angle.toDouble()).toFloat()
             this
                 .onGloballyPositioned { layoutCoordinates ->
@@ -143,16 +151,14 @@ fun Modifier.shimmer(
                     val startY = fixedOffset * kotlin.math.sin(angleRad)
                     val endX = (fixedOffset + gradientWidth) * kotlin.math.cos(angleRad)
                     val endY = (fixedOffset + gradientWidth) * kotlin.math.sin(angleRad)
-                    val shimmerBrush = Brush.linearGradient(
-                        colors = colors,
-                        start = Offset(startX, startY),
-                        end = Offset(endX, endY),
-                        tileMode = TileMode.Clamp
-                    )
                     drawContent()
                     drawRect(
-                        brush = shimmerBrush,
-                        blendMode = BlendMode.DstIn
+                        brush = Brush.linearGradient(
+                            colors = tintColors,
+                            start = Offset(startX, startY),
+                            end = Offset(endX, endY),
+                            tileMode = TileMode.Clamp,
+                        )
                     )
                 }
         }
