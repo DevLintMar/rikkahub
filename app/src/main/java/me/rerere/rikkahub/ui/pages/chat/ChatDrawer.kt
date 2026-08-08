@@ -563,8 +563,19 @@ fun ChatDrawerContent(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        drawerVm.createFolder(name)
-                        showCreateFolderDialog = false
+                        // 重名预检：与当前助手已有文件夹同名（忽略大小写）→ toast 且不关闭对话框；
+                        // 通过则创建并关闭
+                        scope.launch {
+                            if (drawerVm.isFolderNameTaken(name)) {
+                                toaster.show(
+                                    context.getString(R.string.chat_page_folder_duplicate, name.trim()),
+                                    type = ToastType.Warning,
+                                )
+                            } else {
+                                drawerVm.createFolder(name)
+                                showCreateFolderDialog = false
+                            }
+                        }
                     },
                     enabled = name.isNotBlank()
                 ) { Text(stringResource(R.string.chat_page_save)) }

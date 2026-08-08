@@ -142,6 +142,19 @@ class ChatDrawerVM(
         _selectedFolderId.value = folderId
     }
 
+    /**
+     * 当前助手是否已有同名文件夹（忽略大小写；跨助手允许重名）。
+     * 供创建文件夹前预检，重名时拒绝创建并提示。
+     */
+    suspend fun isFolderNameTaken(name: String): Boolean {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return false
+        val assistantId = assistantIdFlow.first()
+        return folderRepo.getFoldersOfAssistant(assistantId)
+            .first()
+            .any { it.name.trim().equals(trimmed, ignoreCase = true) }
+    }
+
     fun createFolder(name: String) {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return
