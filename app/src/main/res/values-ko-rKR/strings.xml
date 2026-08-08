@@ -1266,7 +1266,6 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="log_page_record_requests_desc">요청 헤더, 본문 및 응답 메타데이터를 기록합니다.</string>
   <string name="chat_message_tool_recent_chats">최근 채팅 보기</string>
   <string name="chat_message_tool_list_folders">채팅 폴더 나열</string>
-  <string name="tool_ui_folder_unfiled">미분류</string>
   <string name="tool_ui_folder_current">현재</string>
   <string name="tool_ui_folder_conversations">대화 %1$d개</string>
   <string name="chat_message_tool_conversation_search">검색 기록: %1$s</string>

@@ -1370,7 +1370,6 @@
   <string name="log_page_record_requests_desc">Capture request headers, bodies, and response metadata</string>
   <string name="chat_message_tool_recent_chats">View recent chats</string>
   <string name="chat_message_tool_list_folders">List chat folders</string>
-  <string name="tool_ui_folder_unfiled">Unfiled</string>
   <string name="tool_ui_folder_current">Current</string>
   <string name="tool_ui_folder_conversations">%1$d conversations</string>
   <string name="tool_ui_view_json">View JSON</string>

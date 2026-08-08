@@ -1354,7 +1354,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="log_page_record_requests_desc">捕获请求标头、正文和响应元数据</string>
   <string name="chat_message_tool_recent_chats">查看最近的对话</string>
   <string name="chat_message_tool_list_folders">列出聊天文件夹</string>
-  <string name="tool_ui_folder_unfiled">未归类</string>
   <string name="tool_ui_folder_current">当前</string>
   <string name="tool_ui_folder_conversations">%1$d 个对话</string>
   <string name="chat_message_tool_conversation_search">搜索历史：%1$s</string>

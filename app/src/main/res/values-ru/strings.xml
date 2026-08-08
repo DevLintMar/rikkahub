@@ -1266,7 +1266,6 @@
   <string name="log_page_record_requests_desc">Записывать заголовки запросов, тела и метаданные ответов</string>
   <string name="chat_message_tool_recent_chats">Посмотреть недавние чаты</string>
   <string name="chat_message_tool_list_folders">Список папок чатов</string>
-  <string name="tool_ui_folder_unfiled">Без папки</string>
   <string name="tool_ui_folder_current">Текущая</string>
   <string name="tool_ui_folder_conversations">%1$d диалогов</string>
   <string name="chat_message_tool_conversation_search">История поиска: %1$s</string>

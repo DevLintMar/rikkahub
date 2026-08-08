@@ -1266,7 +1266,6 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="log_page_record_requests_desc">リクエストヘッダー、ボディ、レスポンスメタデータをキャプチャします</string>
   <string name="chat_message_tool_recent_chats">最近のチャットを表示</string>
   <string name="chat_message_tool_list_folders">チャットフォルダーを一覧表示</string>
-  <string name="tool_ui_folder_unfiled">未分類</string>
   <string name="tool_ui_folder_current">現在</string>
   <string name="tool_ui_folder_conversations">%1$d 件の会話</string>
   <string name="chat_message_tool_conversation_search">検索履歴: %1$s</string>

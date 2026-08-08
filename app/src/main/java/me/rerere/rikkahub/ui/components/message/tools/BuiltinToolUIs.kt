@@ -620,14 +620,18 @@ object ListConversationFoldersToolUI : ToolUIRenderer {
     private fun JsonElement.isCurrentFolder(): Boolean =
         jsonObjectOrNull?.get("is_current")?.jsonPrimitiveOrNull?.booleanOrNull ?: false
 
-    /** 该条目是否未归类（id 为 null 的默认文件夹条目） */
-    private fun JsonElement.isUnfiled(): Boolean =
-        jsonObjectOrNull?.get("id")?.jsonPrimitiveOrNull?.contentOrNull == null
+    /** 该条目是否为默认「聊天」文件夹（id 为 default 的未归类条目） */
+    private fun JsonElement.isDefaultFolder(): Boolean =
+        jsonObjectOrNull?.get("id")?.jsonPrimitiveOrNull?.contentOrNull == "default"
+
+    /** 该条目的 id 文本：默认文件夹显示 "default"，其余为文件夹 UUID */
+    private fun JsonElement.folderIdText(): String =
+        jsonObjectOrNull?.get("id")?.jsonPrimitiveOrNull?.contentOrNull ?: "default"
 
     @Composable
     private fun JsonElement.folderDisplayName(): String =
-        if (isUnfiled()) {
-            stringResource(R.string.tool_ui_folder_unfiled)
+        if (isDefaultFolder()) {
+            stringResource(R.string.chat_page_folder_default)
         } else {
             getStringContent("name") ?: stringResource(R.string.tool_ui_untitled)
         }
@@ -725,12 +729,7 @@ object ListConversationFoldersToolUI : ToolUIRenderer {
                                 }
                         }
                         Text(
-                            text = if (folder.isUnfiled()) {
-                                stringResource(R.string.tool_ui_folder_unfiled)
-                            } else {
-                                folder.jsonObjectOrNull?.get("id")
-                                    ?.jsonPrimitiveOrNull?.contentOrNull.orEmpty()
-                            },
+                            text = folder.folderIdText(),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontFamily = FontFamily.Monospace,

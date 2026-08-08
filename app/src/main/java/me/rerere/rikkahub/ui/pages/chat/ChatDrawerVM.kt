@@ -143,12 +143,17 @@ class ChatDrawerVM(
     }
 
     /**
-     * 当前助手是否已有同名文件夹（忽略大小写；跨助手允许重名）。
-     * 供创建文件夹前预检，重名时拒绝创建并提示。
+     * 名称是否被占用：默认「聊天」文件夹名（当前 locale 标签 + 英文 Chat）或当前助手已有同名文件夹（忽略大小写；跨助手允许重名）。
+     * 供创建文件夹前预检，占用时拒绝创建并提示。
      */
     suspend fun isFolderNameTaken(name: String): Boolean {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return false
+        // 默认「聊天」文件夹名保留，不允许创建同名文件夹
+        val defaultLabel = context.getString(R.string.chat_page_folder_default)
+        if (trimmed.equals(defaultLabel, ignoreCase = true) || trimmed.equals("Chat", ignoreCase = true)) {
+            return true
+        }
         val assistantId = assistantIdFlow.first()
         return folderRepo.getFoldersOfAssistant(assistantId)
             .first()

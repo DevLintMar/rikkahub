@@ -1,7 +1,6 @@
 package me.rerere.rikkahub.data.ai.tools
 
 import kotlinx.coroutines.flow.first
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -16,6 +15,7 @@ import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.Tool
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.embedding.MessageTextExtractor
+import me.rerere.rikkahub.data.repository.ConversationFolderScope
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.repository.FolderRepository
 import me.rerere.rikkahub.utils.JsonInstantPretty
@@ -35,10 +35,11 @@ fun createConversationTools(
     Tool(
         name = "list_conversation_folders",
         description = """
-            List the user's conversation folders (including the default unfiled "chat" folder) for the current assistant.
+            List the user's conversation folders (including the default "chat" folder) for the current assistant.
             Use this to obtain folder IDs, then pass `folder_id` to `recent_chats` or `conversation_search` to scope results to a single folder.
+            The default "chat" (unfiled) folder has id `default`; its `name` is "Chat". Pass `folder_id: "default"` (or an empty string) to target it.
             `current_folder_id` / `folders[].is_current` marks the folder the current conversation belongs to.
-            `current_folder_id` is null (and the default entry's `is_current` is true) when the current conversation is unfiled in the default folder.
+            `current_folder_id` is `default` (and the default entry's `is_current` is true) when the current conversation is unfiled.
             Pass the obtained `current_folder_id` to `recent_chats` / `conversation_search` as `folder_id` to search the current folder.
         """.trimIndent(),
         parameters = {
@@ -56,11 +57,11 @@ fun createConversationTools(
                 .coerceAtLeast(0)
             val payload = buildJsonObject {
                 put("type", "list_conversation_folders")
-                put("current_folder_id", currentFolderId?.let { JsonPrimitive(it) } ?: JsonNull)
+                put("current_folder_id", JsonPrimitive(currentFolderId ?: DEFAULT_FOLDER_ID))
                 putJsonArray("folders") {
                     add(buildJsonObject {
-                        put("id", JsonNull)
-                        put("name", "Default (unfiled)")
+                        put("id", DEFAULT_FOLDER_ID)
+                        put("name", "Chat")
                         put("is_current", currentFolderId == null)
                         put("conversation_count", unfiledCount)
                     })
@@ -83,7 +84,7 @@ fun createConversationTools(
             List the user's recent conversations with you to understand their preferences and ongoing topics.
             Returns conversation titles and the date of last activity, ordered by pinned first then most recently updated.
             Use this when you need quick context about what the user has been discussing lately.
-            Pass `folder_id` (a folder UUID) to list only conversations in that folder; omit it to list all.
+            Pass `folder_id` to list only conversations in a specific folder: `"default"` (or an empty string) for the unfiled "chat" folder, or a folder UUID from `list_conversation_folders`. Omit it to list all.
             Only titles and dates are returned; use `conversation_search` to look up the actual content.
             Use `offset` to page through older conversations beyond the first page.
             `has_more` indicates whether more conversations exist after this page.
@@ -109,7 +110,7 @@ fun createConversationTools(
                         put("type", "string")
                         put(
                             "description",
-                            "The folder ID (UUID) to restrict results to. Omit to list conversations in all folders."
+                            "Folder to restrict results to: \"default\" or \"\" for the unfiled \"chat\" folder, or a folder UUID. Omit to list conversations in all folders."
                         )
                     })
                 }
@@ -118,11 +119,11 @@ fun createConversationTools(
         execute = {
             val limit = (it.jsonObject["limit"]?.jsonPrimitive?.intOrNull ?: 10).coerceIn(1, 50)
             val offset = (it.jsonObject["offset"]?.jsonPrimitive?.intOrNull ?: 0).coerceAtLeast(0)
-            val folderId = parseFolderId(it.jsonObject)
-            val total = conversationRepo.countConversationsOfAssistant(assistantId, folderId)
+            val scope = parseFolderScope(it.jsonObject)
+            val total = conversationRepo.countConversationsOfAssistant(assistantId, scope)
             val recent = conversationRepo.getRecentConversations(
                 assistantId = assistantId,
-                folderId = folderId,
+                scope = scope,
                 limit = limit,
                 offset = offset,
             )
@@ -148,7 +149,7 @@ fun createConversationTools(
             Hybrid semantic + keyword search across the user's past conversations to recall specific information they mentioned before.
             Matches on meaning as well as exact keywords, so paraphrased queries can find relevant past messages.
             Run multiple searches with different phrasings if needed.
-            Pass `folder_id` (a folder UUID) to search only conversations in that folder; omit it to search all.
+            Pass `folder_id` to search only conversations in a specific folder: `"default"` (or an empty string) for the unfiled "chat" folder, or a folder UUID from `list_conversation_folders`. Omit it to search all.
             Returns each specific matched message, with the matched keywords marked in [brackets] in `snippet`, the conversation
             (`conversation_id`, `title`), the message's `index` within it, and its `date` (yyyy-MM-dd).
             Results are ordered by date, newest first. `offset` pages to older matches; `has_more` indicates whether more exist.
@@ -179,7 +180,7 @@ fun createConversationTools(
                         put("type", "string")
                         put(
                             "description",
-                            "The folder ID (UUID) to restrict results to. Omit to search all conversations."
+                            "Folder to restrict results to: \"default\" or \"\" for the unfiled \"chat\" folder, or a folder UUID. Omit to search all conversations."
                         )
                     })
                 },
@@ -191,8 +192,8 @@ fun createConversationTools(
                 ?: error("query is required")
             val limit = (it.jsonObject["limit"]?.jsonPrimitive?.intOrNull ?: 15).coerceIn(1, 50)
             val offset = (it.jsonObject["offset"]?.jsonPrimitive?.intOrNull ?: 0).coerceAtLeast(0)
-            val folderId = parseFolderId(it.jsonObject)
-            val page = conversationRepo.searchConversationMessages(query, folderId, limit, offset)
+            val scope = parseFolderScope(it.jsonObject)
+            val page = conversationRepo.searchConversationMessages(query, scope, limit, offset)
             val payload = buildJsonObject {
                 put("type", "conversation_search")
                 put("query", query)
@@ -280,7 +281,22 @@ fun createConversationTools(
     )
 )
 
-/** 解析可选的 folder_id 参数；缺失/非法返回 null（= 全部文件夹）。 */
-private fun parseFolderId(args: JsonObject): Uuid? =
-    args["folder_id"]?.jsonPrimitive?.contentOrNull
-        ?.let { v -> runCatching { Uuid.parse(v) }.getOrNull() }
+/** 默认「聊天」（未归类）文件夹的固定 id，供 AI 通过 folder_id 访问。 */
+private const val DEFAULT_FOLDER_ID = "default"
+
+/**
+ * 解析可选的 folder_id 参数：
+ * - 缺失（null）→ 全部文件夹；
+ * - `""` 或 `"default"` → 默认「聊天」（未归类）文件夹；
+ * - 合法 UUID → 该文件夹；
+ * - 非法 → 全部（容错）。
+ */
+private fun parseFolderScope(args: JsonObject): ConversationFolderScope {
+    val raw = args["folder_id"]?.jsonPrimitive?.contentOrNull
+    return when {
+        raw == null -> ConversationFolderScope.All
+        raw == "" || raw.equals(DEFAULT_FOLDER_ID, ignoreCase = true) -> ConversationFolderScope.Unfiled
+        else -> runCatching { ConversationFolderScope.Folder(Uuid.parse(raw)) }
+            .getOrDefault(ConversationFolderScope.All)
+    }
+}

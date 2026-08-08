@@ -1264,7 +1264,6 @@
   <string name="log_page_record_requests_desc">擷取請求標頭、請求主體和回應元數據</string>
   <string name="chat_message_tool_recent_chats">查看最近聊天</string>
   <string name="chat_message_tool_list_folders">列出聊天資料夾</string>
-  <string name="tool_ui_folder_unfiled">未歸類</string>
   <string name="tool_ui_folder_current">目前</string>
   <string name="tool_ui_folder_conversations">%1$d 個對話</string>
   <string name="chat_message_tool_conversation_search">搜尋歷史：%1$s</string>

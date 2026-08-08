@@ -31,6 +31,18 @@ import me.rerere.rikkahub.utils.JsonInstant
 import java.time.Instant
 import kotlin.uuid.Uuid
 
+/**
+ * 对话查询的文件夹范围。
+ * - [All]：全部文件夹（含未归类）；
+ * - [Unfiled]：默认「聊天」文件夹（未归类，folder_id 为空），id 记为 `default`；
+ * - [Folder]：指定文件夹。
+ */
+sealed interface ConversationFolderScope {
+    data object All : ConversationFolderScope
+    data object Unfiled : ConversationFolderScope
+    data class Folder(val id: Uuid) : ConversationFolderScope
+}
+
 class ConversationRepository(
     private val conversationDAO: ConversationDAO,
     private val messageNodeDAO: MessageNodeDAO,
@@ -45,15 +57,22 @@ class ConversationRepository(
         private const val INITIAL_LOAD_SIZE = 40
     }
 
+    /** 把文件夹范围翻译成 DAO 的 folder_id 参数：null=全部、""=未归类、具体 uuid=该文件夹。 */
+    private fun ConversationFolderScope.toDaoFolderId(): String? = when (this) {
+        ConversationFolderScope.All -> null
+        ConversationFolderScope.Unfiled -> ""
+        is ConversationFolderScope.Folder -> id.toString()
+    }
+
     suspend fun getRecentConversations(
         assistantId: Uuid,
-        folderId: Uuid? = null,
+        scope: ConversationFolderScope = ConversationFolderScope.All,
         limit: Int = 10,
         offset: Int = 0,
     ): List<Conversation> {
         return conversationDAO.getRecentConversationsOfAssistant(
             assistantId = assistantId.toString(),
-            folderId = folderId?.toString(),
+            folderId = scope.toDaoFolderId(),
             limit = limit,
             offset = offset
         ).map { entity ->
@@ -62,8 +81,11 @@ class ConversationRepository(
         }
     }
 
-    suspend fun countConversationsOfAssistant(assistantId: Uuid, folderId: Uuid? = null): Int =
-        conversationDAO.countConversationsOfAssistant(assistantId.toString(), folderId?.toString())
+    suspend fun countConversationsOfAssistant(
+        assistantId: Uuid,
+        scope: ConversationFolderScope = ConversationFolderScope.All,
+    ): Int =
+        conversationDAO.countConversationsOfAssistant(assistantId.toString(), scope.toDaoFolderId())
 
     /** 指定文件夹内全部会话 id（供文件夹维度过滤/计数）。 */
     suspend fun getConversationIdsInFolder(folderId: Uuid): List<Uuid> =
@@ -374,15 +396,19 @@ class ConversationRepository(
      * 混合搜索并返回每条匹配的具体消息（融合 FTS + 语义，跨会话按融合分降序）。
      * 每条结果含所在对话、该消息在 currentMessages(USER/ASSISTANT) 中的索引
      * （与 read_conversation 的 offset 对齐）与 FTS [brackets] 着重标记 snippet。
-     * @param folderId 非空时仅搜索该文件夹内的会话；null 搜索全部。
+     * @param scope 非 [ConversationFolderScope.All] 时仅搜索该范围内的会话。
      */
     suspend fun searchConversationMessages(
         query: String,
-        folderId: Uuid? = null,
+        scope: ConversationFolderScope = ConversationFolderScope.All,
         limit: Int = 15,
         offset: Int = 0,
     ): ConversationSearchPage {
-        val folderIds = folderId?.let { conversationDAO.getConversationIdsInFolder(it.toString()).toSet() }
+        val folderIds = when (scope) {
+            ConversationFolderScope.All -> null
+            ConversationFolderScope.Unfiled -> conversationDAO.getConversationIdsInFolder("").toSet()
+            is ConversationFolderScope.Folder -> conversationDAO.getConversationIdsInFolder(scope.id.toString()).toSet()
+        }
         if (folderIds == null) {
             return searchConversationMessagesAll(query, limit, offset)
         }
