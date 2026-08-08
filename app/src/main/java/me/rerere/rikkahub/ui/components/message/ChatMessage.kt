@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -339,7 +340,10 @@ private fun MessagePartsBlock(
     }
 
     // Render parts in original order (group thinking/tool as chain-of-thought)
-    val groupedParts = remember(parts) { parts.groupMessageParts() }
+    // 用户消息合并连续图片为一行（多图并排右对齐）；assistant 消息保持每个 Image 独立块
+    val groupedParts = remember(parts) {
+        parts.groupMessageParts(mergeConsecutiveImages = role == MessageRole.USER)
+    }
     groupedParts.fastForEach { block ->
         when (block) {
             is MessagePartBlock.ThinkingBlock -> {
@@ -443,6 +447,12 @@ private fun MessagePartsBlock(
                             }
                         }
                     }
+                }
+            }
+
+            is MessagePartBlock.ImageGroupBlock -> {
+                key(block.index) {
+                    MessageImageRow(images = block.images)
                 }
             }
 
@@ -572,25 +582,7 @@ private fun MessagePartsBlock(
                     }
 
                     is UIMessagePart.Image -> {
-                        val isImageLoading =
-                            part.url.isBlank() || part.url.matches(Regex("^data:image/[^;]*;base64,\\s*$"))
-                        if (isImageLoading) {
-                            Box(
-                                modifier = Modifier
-                                    .size(72.dp)
-                                    .clip(MaterialTheme.shapes.medium)
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                                    .shimmer(isLoading = true)
-                            )
-                        } else {
-                            ZoomableAsyncImage(
-                                model = part.url,
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .clip(MaterialTheme.shapes.medium)
-                                    .height(72.dp)
-                            )
-                        }
+                        MessageImageThumb(part)
                     }
 
                     is UIMessagePart.Document -> {
@@ -716,6 +708,45 @@ private fun MessagePartsBlock(
             ) {
                 Text(stringResource(R.string.citations_count, annotations.size))
             }
+        }
+    }
+}
+
+/** 单张聊天图片缩略图：72dp 高，宽度按 aspect 缩放（窄图在合并行中自然缩窄并排） */
+@Composable
+private fun MessageImageThumb(part: UIMessagePart.Image) {
+    val isImageLoading =
+        part.url.isBlank() || part.url.matches(Regex("^data:image/[^;]*;base64,\\s*$"))
+    if (isImageLoading) {
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .clip(MaterialTheme.shapes.medium)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .shimmer(isLoading = true)
+        )
+    } else {
+        ZoomableAsyncImage(
+            model = part.url,
+            contentDescription = null,
+            modifier = Modifier
+                .clip(MaterialTheme.shapes.medium)
+                .height(72.dp)
+        )
+    }
+}
+
+/** 用户消息连续图片合并行：窄图并排、宽图占整行，右对齐（贴近气泡尾部） */
+@Composable
+private fun MessageImageRow(images: List<UIMessagePart.Image>) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
+        images.forEach { part ->
+            MessageImageThumb(part)
         }
     }
 }
