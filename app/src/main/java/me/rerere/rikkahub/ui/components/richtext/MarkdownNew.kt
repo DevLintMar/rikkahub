@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastForEach
 import androidx.core.graphics.toColorInt
+import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -247,9 +248,13 @@ private fun HtmlBlockElement(
             val src = element.attr("src")
             val alt = element.attr("alt")
             if (src.isNotEmpty()) {
+                // 工作区 file:// 链接解析为宿主 File 后转 file:// URI（Coil 原生加载）；文件不存在时回退原样
+                val workspaceImage = LocalWorkspaceFileProvider.current
+                    ?.invoke(src)
+                    ?.takeIf { it.isFile }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     ZoomableAsyncImage(
-                        model = src,
+                        model = workspaceImage?.toUri()?.toString() ?: src,
                         contentDescription = alt.takeIf { it.isNotEmpty() },
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
@@ -753,8 +758,12 @@ private fun HtmlInlineAsComposable(node: Node, onClickCitation: (String) -> Unit
                     val src = node.attr("src")
                     val alt = node.attr("alt")
                     if (src.isNotEmpty()) {
+                        // 工作区 file:// 链接解析为宿主 File 后转 file:// URI（Coil 原生加载）；文件不存在时回退原样
+                        val workspaceImage = LocalWorkspaceFileProvider.current
+                            ?.invoke(src)
+                            ?.takeIf { it.isFile }
                         ZoomableAsyncImage(
-                            model = src,
+                            model = workspaceImage?.toUri()?.toString() ?: src,
                             contentDescription = alt.takeIf { it.isNotEmpty() },
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))

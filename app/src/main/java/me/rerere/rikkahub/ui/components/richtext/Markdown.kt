@@ -48,6 +48,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -83,6 +84,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastForEach
+import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.catch
@@ -114,6 +116,7 @@ import org.intellij.markdown.flavours.gfm.GFMElementTypes
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 import org.intellij.markdown.parser.MarkdownParser
+import java.io.File
 import java.util.LinkedHashMap
 import kotlin.time.Clock
 
@@ -331,63 +334,74 @@ private fun ASTNode.containsCitationLink(content: String): Boolean {
     return children.any { it.containsCitationLink(content) }
 }
 
+/** markdown 子树内把工作区 file:// 链接解析为宿主 File 的提供器；非工作区渲染上下文（预览/导出）为 null */
+val LocalWorkspaceFileProvider = staticCompositionLocalOf<((String) -> File?)?> { null }
+
 @Composable
 fun MarkdownBlock(
     content: String,
     modifier: Modifier = Modifier,
     style: TextStyle = LocalTextStyle.current,
-    onClickCitation: (String) -> Unit = {}
+    onClickCitation: (String) -> Unit = {},
+    workspaceId: String? = null,
 ) {
-    var (data, setData) = remember { mutableStateOf(parseMarkdownCached(content)) }
-
-    // 监听内容变化，重新解析AST树
-    // 这里在后台线程解析AST树, 防止频繁更新的时候掉帧
-    val updatedContent by rememberUpdatedState(content)
-    LaunchedEffect(Unit) {
-        snapshotFlow { updatedContent }
-            .distinctUntilChanged()
-            .mapLatest { parseMarkdownCached(it) }
-            .catch { exception -> exception.printStackTrace() }
-            .flowOn(Dispatchers.Default)
-            .collect { setData(it) }
+    // 工作区 file:// 链接（/workspace、/upload 逻辑路径）→ 宿主 File 的解析器；其他链接原样交给 Coil/系统
+    val context = LocalContext.current
+    val workspaceFileResolver = remember(workspaceId) {
+        { href: String -> WorkspaceFileUrlResolver.resolveFile(context.filesDir, workspaceId, href) }
     }
+    CompositionLocalProvider(LocalWorkspaceFileProvider provides workspaceFileResolver) {
+        var (data, setData) = remember { mutableStateOf(parseMarkdownCached(content)) }
 
-    if (data.hasHtml) {
-        MarkdownNew(
-            content = content,
-            modifier = modifier,
-            style = style,
-            onClickCitation = onClickCitation,
-        )
-    } else {
-        ProvideTextStyle(style) {
-            Column(
-                modifier = modifier.padding(horizontal = 4.dp)
-            ) {
-                val children = data.astTree.children
-                var i = 0
-                while (i < children.size) {
-                    val child = children[i]
-                    // 相邻纯文本段落合并为单个 Text：超长消息几十段 → 几个 Text，
-                    // 大幅减少 LazyColumn 单 item 的 Text 布局次数（滚动卡顿尖峰来源）。
-                    if (child.isMergeableParagraph(data.preprocessed)) {
-                        val group = mutableListOf(child)
-                        while (i + 1 < children.size && children[i + 1].isMergeableParagraph(data.preprocessed)) {
-                            group.add(children[i + 1])
-                            i++
+        // 监听内容变化，重新解析AST树
+        // 这里在后台线程解析AST树, 防止频繁更新的时候掉帧
+        val updatedContent by rememberUpdatedState(content)
+        LaunchedEffect(Unit) {
+            snapshotFlow { updatedContent }
+                .distinctUntilChanged()
+                .mapLatest { parseMarkdownCached(it) }
+                .catch { exception -> exception.printStackTrace() }
+                .flowOn(Dispatchers.Default)
+                .collect { setData(it) }
+        }
+
+        if (data.hasHtml) {
+            MarkdownNew(
+                content = content,
+                modifier = modifier,
+                style = style,
+                onClickCitation = onClickCitation,
+            )
+        } else {
+            ProvideTextStyle(style) {
+                Column(
+                    modifier = modifier.padding(horizontal = 4.dp)
+                ) {
+                    val children = data.astTree.children
+                    var i = 0
+                    while (i < children.size) {
+                        val child = children[i]
+                        // 相邻纯文本段落合并为单个 Text：超长消息几十段 → 几个 Text，
+                        // 大幅减少 LazyColumn 单 item 的 Text 布局次数（滚动卡顿尖峰来源）。
+                        if (child.isMergeableParagraph(data.preprocessed)) {
+                            val group = mutableListOf(child)
+                            while (i + 1 < children.size && children[i + 1].isMergeableParagraph(data.preprocessed)) {
+                                group.add(children[i + 1])
+                                i++
+                            }
+                            MergedParagraphs(
+                                nodes = group,
+                                content = data.preprocessed,
+                                modifier = Modifier,
+                                onClickCitation = onClickCitation,
+                            )
+                        } else {
+                            MarkdownNode(
+                                node = child, content = data.preprocessed, onClickCitation = onClickCitation
+                            )
                         }
-                        MergedParagraphs(
-                            nodes = group,
-                            content = data.preprocessed,
-                            modifier = Modifier,
-                            onClickCitation = onClickCitation,
-                        )
-                    } else {
-                        MarkdownNode(
-                            node = child, content = data.preprocessed, onClickCitation = onClickCitation
-                        )
+                        i++
                     }
-                    i++
                 }
             }
         }
@@ -686,14 +700,32 @@ private fun MarkdownNode(
             val linkDest =
                 node.findChildOfTypeRecursive(MarkdownElementTypes.LINK_DESTINATION)?.getTextInNode(content) ?: ""
             val context = LocalContext.current
+            // 工作区 file:// 链接：应用内 FileProvider 打开（无应用处理时静默）；其余走系统 Intent
+            val workspaceFile = LocalWorkspaceFileProvider.current?.invoke(linkDest)?.takeIf { it.isFile }
+            val linkModifier = if (workspaceFile != null) {
+                modifier.clickable {
+                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        data = FileProvider.getUriForFile(
+                            context,
+                            "${context.packageName}.fileprovider",
+                            workspaceFile,
+                        )
+                    }
+                    runCatching { context.startActivity(Intent.createChooser(intent, null)) }
+                }
+            } else {
+                modifier.clickable {
+                    val intent = Intent(Intent.ACTION_VIEW, linkDest.toUri())
+                    context.startActivity(intent)
+                }
+            }
             Text(
                 text = linkText,
                 color = MaterialTheme.colorScheme.primary,
                 textDecoration = TextDecoration.Underline,
-                modifier = modifier.clickable {
-                    val intent = Intent(Intent.ACTION_VIEW, linkDest.toUri())
-                    context.startActivity(intent)
-                })
+                modifier = linkModifier
+            )
         }
 
         // 加粗和斜体
@@ -741,12 +773,16 @@ private fun MarkdownNode(
             val altText = node.findChildOfTypeRecursive(MarkdownElementTypes.LINK_TEXT)?.getTextInNode(content) ?: ""
             val imageUrl =
                 node.findChildOfTypeRecursive(MarkdownElementTypes.LINK_DESTINATION)?.getTextInNode(content) ?: ""
+            // 工作区 file:// 链接解析为宿主 File 后转 file:// URI（Coil 原生加载）；文件不存在时回退原样
+            val workspaceImage = LocalWorkspaceFileProvider.current
+                ?.invoke(imageUrl)
+                ?.takeIf { it.isFile }
             Column(
                 modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // 这里可以使用Coil等图片加载库加载图片
                 ZoomableAsyncImage(
-                    model = imageUrl,
+                    model = workspaceImage?.toUri()?.toString() ?: imageUrl,
                     contentDescription = altText,
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
