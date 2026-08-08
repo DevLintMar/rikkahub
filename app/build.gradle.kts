@@ -112,12 +112,9 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")
-            isMinifyEnabled = true
-            isShrinkResources = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
+            optimization {
+                enable = true
+            }
             buildConfigField("String", "VERSION_NAME", "\"${android.defaultConfig.versionName}\"")
             buildConfigField("String", "VERSION_CODE", "\"${android.defaultConfig.versionCode}\"")
         }
@@ -137,8 +134,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                getDefaultProguardFile("proguard-android-optimize.txt")
             )
             buildConfigField("String", "VERSION_NAME", "\"${android.defaultConfig.versionName}\"")
             buildConfigField("String", "VERSION_CODE", "\"${android.defaultConfig.versionCode}\"")

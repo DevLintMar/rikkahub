@@ -1,41 +1,30 @@
 plugins {
-    alias(libs.plugins.android.library)
+    id("rikkahub.android.library")
     alias(libs.plugins.kotlin.serialization)
 }
 
 android {
     namespace = "me.rerere.workspace"
-    compileSdk {
-        version = release(37)
-    }
 
     defaultConfig {
-        minSdk = 26
-
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        consumerProguardFiles("consumer-rules.pro")
         externalNativeBuild {
             cmake {
                 cppFlags += ""
             }
         }
     }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
             version = "3.22.1"
         }
+    }
+    // fork 保留：app 的 pre build type 需要库模块同步暴露 pre 变体
     buildTypes {
         create("pre") {
             initWith(getByName("release"))
         }
     }
-    }
-
 }
 
 dependencies {

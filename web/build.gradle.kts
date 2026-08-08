@@ -1,7 +1,7 @@
 import org.apache.tools.ant.taskdefs.condition.Os
 
 plugins {
-    alias(libs.plugins.android.library)
+    id("rikkahub.android.library")
 }
 
 val webUiDir = rootProject.layout.projectDirectory.dir("web-ui")
@@ -35,32 +35,16 @@ val buildWebUi = tasks.register<Exec>("buildWebUi") {
 
 android {
     namespace = "me.rerere.rikkahub.web"
-    compileSdk {
-        version = release(37)
-    }
 
     defaultConfig {
         minSdk = 24
-
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        consumerProguardFiles("consumer-rules.pro")
     }
 
+    // fork 保留：app 的 pre build type 需要库模块同步暴露 pre 变体
     buildTypes {
-        release {
-            isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
-        }
         create("pre") {
             initWith(getByName("release"))
         }
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
     }
 }
 

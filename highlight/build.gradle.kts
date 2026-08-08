@@ -1,38 +1,20 @@
 plugins {
-    alias(libs.plugins.android.library)
-    alias(libs.plugins.kotlin.compose)
+    id("rikkahub.android.library.compose")
     alias(libs.plugins.kotlin.serialization)
 }
 
 android {
     namespace = "me.rerere.highlight"
-    compileSdk = 37
 
     defaultConfig {
         minSdk = 24
-
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        consumerProguardFiles("consumer-rules.pro")
     }
 
+    // fork 保留：app 的 pre build type 需要库模块同步暴露 pre 变体
     buildTypes {
-        release {
-            isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
-        }
         create("pre") {
             initWith(getByName("release"))
         }
-    }
-    buildFeatures {
-        compose = true
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
     }
 }
 

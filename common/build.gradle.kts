@@ -2,36 +2,18 @@ import org.gradle.kotlin.dsl.withType
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    alias(libs.plugins.android.library)
+    id("rikkahub.android.library")
     alias(libs.plugins.kotlin.serialization)
 }
 
 android {
     namespace = "me.rerere.common"
-    compileSdk = 37
 
-    defaultConfig {
-        minSdk = 26
-
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        consumerProguardFiles("consumer-rules.pro")
-    }
-
+    // fork 保留：app 的 pre build type 需要库模块同步暴露 pre 变体
     buildTypes {
-        release {
-            isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
-        }
         create("pre") {
             initWith(getByName("release"))
         }
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
     }
     tasks.withType<KotlinCompile>().configureEach {
         compilerOptions.optIn.add("kotlin.uuid.ExperimentalUuidApi")

@@ -1,20 +1,14 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    alias(libs.plugins.android.library)
+    id("rikkahub.android.library.compose")
     alias(libs.plugins.kotlin.serialization)
-    alias(libs.plugins.kotlin.compose)
 }
 
 android {
     namespace = "me.rerere.ai"
-    compileSdk = 37
 
     defaultConfig {
-        minSdk = 26
-
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        consumerProguardFiles("consumer-rules.pro")
 //        externalNativeBuild {
 //            cmake {
 //                cppFlags += listOf("-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON")
@@ -23,31 +17,18 @@ android {
 //        }
     }
 
-    buildTypes {
-        release {
-            isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
-        }
-        create("pre") {
-            initWith(getByName("release"))
-        }
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
-    buildFeatures {
-        compose = true
-    }
 //    externalNativeBuild {
 //        cmake {
 //            path = file("src/main/cpp/CMakeLists.txt")
 //            version = "3.22.1"
 //        }
 //    }
+    // fork 保留：app 的 pre build type 需要库模块同步暴露 pre 变体
+    buildTypes {
+        create("pre") {
+            initWith(getByName("release"))
+        }
+    }
     tasks.withType<KotlinCompile>().configureEach {
         compilerOptions.optIn.add("kotlin.uuid.ExperimentalUuidApi")
         compilerOptions.optIn.add("kotlin.time.ExperimentalTime")
