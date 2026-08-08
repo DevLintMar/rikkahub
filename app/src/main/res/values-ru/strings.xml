@@ -1265,6 +1265,10 @@
   <string name="log_page_record_requests">Записывать запросы</string>
   <string name="log_page_record_requests_desc">Записывать заголовки запросов, тела и метаданные ответов</string>
   <string name="chat_message_tool_recent_chats">Посмотреть недавние чаты</string>
+  <string name="chat_message_tool_list_folders">Список папок чатов</string>
+  <string name="tool_ui_folder_unfiled">Без папки</string>
+  <string name="tool_ui_folder_current">Текущая</string>
+  <string name="tool_ui_folder_conversations">%1$d диалогов</string>
   <string name="chat_message_tool_conversation_search">История поиска: %1$s</string>
   <string name="assistant_page_local_tools_screen_time_title">Экранное время</string>
   <string name="assistant_page_local_tools_screen_time_desc">Позвольте ИИ прочитать время использования экрана вашего приложения</string>
@@ -1287,6 +1291,7 @@
   <string name="chat_page_remove_from_folder">Убрать из папки</string>
   <string name="chat_page_create_folder">Новая папка</string>
   <string name="chat_page_folder_name">Имя папки</string>
+  <string name="chat_page_folder_duplicate">Папка с именем «%1$s» уже существует.</string>
   <string name="chat_page_rename_folder">Переименовать папку</string>
   <string name="chat_page_delete_folder">Удалить папку</string>
   <string name="chat_page_rename">Переименовать</string>

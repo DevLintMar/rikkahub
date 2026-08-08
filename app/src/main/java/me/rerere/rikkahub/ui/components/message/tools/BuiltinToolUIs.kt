@@ -61,6 +61,7 @@ import me.rerere.hugeicons.stroke.ChatBot
 import me.rerere.hugeicons.stroke.Clipboard
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Eraser
+import me.rerere.hugeicons.stroke.FolderClock
 import me.rerere.hugeicons.stroke.GlobalSearch
 import me.rerere.hugeicons.stroke.MagicWand01
 import me.rerere.hugeicons.stroke.Message02
@@ -595,6 +596,150 @@ object UseSkillToolUI : ToolUIRenderer {
         }
         ToolDetailContainer {
             ToolTerminalOutput(output)
+        }
+    }
+}
+
+/**
+ * 聊天文件夹列表: 标题固定, 折叠下方小字列出文件夹（当前文件夹高亮+标记）,
+ * 详情为每个文件夹的名称/当前标记/对话数/ID 的信封展示
+ */
+object ListConversationFoldersToolUI : ToolUIRenderer {
+    override val toolName: String = "list_conversation_folders"
+
+    override fun icon(context: ToolUIContext): ImageVector = HugeIcons.FolderClock
+
+    @Composable
+    override fun title(context: ToolUIContext): String =
+        stringResource(R.string.chat_message_tool_list_folders)
+
+    private fun folders(context: ToolUIContext): List<JsonElement> =
+        (context.content as? JsonObject)?.get("folders") as? JsonArray ?: emptyList()
+
+    /** 该条目是否为当前文件夹（is_current） */
+    private fun JsonElement.isCurrentFolder(): Boolean =
+        jsonObjectOrNull?.get("is_current")?.jsonPrimitiveOrNull?.booleanOrNull ?: false
+
+    /** 该条目是否未归类（id 为 null 的默认文件夹条目） */
+    private fun JsonElement.isUnfiled(): Boolean =
+        jsonObjectOrNull?.get("id")?.jsonPrimitiveOrNull?.contentOrNull == null
+
+    @Composable
+    private fun JsonElement.folderDisplayName(): String =
+        if (isUnfiled()) {
+            stringResource(R.string.tool_ui_folder_unfiled)
+        } else {
+            getStringContent("name") ?: stringResource(R.string.tool_ui_untitled)
+        }
+
+    override fun hasSummary(context: ToolUIContext): Boolean = folders(context).isNotEmpty()
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val folders = folders(context)
+        if (folders.isEmpty()) return
+        Column(
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier.shimmer(isLoading = context.loading),
+        ) {
+            folders.forEach { folder ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = folder.folderDisplayName(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (folder.isCurrentFolder()) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (folder.isCurrentFolder()) {
+                        Text(
+                            text = stringResource(R.string.tool_ui_folder_current),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // 与 Preview 的 DefaultToolPreview fallback 保持一致
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean = context.content != null
+
+    @Composable
+    override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
+        val content = context.content
+        if (content == null) {
+            DefaultToolPreview(context = context)
+            return
+        }
+        val folders = folders(context)
+        ToolDetailContainer {
+            if (folders.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.tool_ui_recent_chats_empty),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                folders.forEach { folder ->
+                    val isCurrent = folder.isCurrentFolder()
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                text = folder.folderDisplayName(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isCurrent) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (isCurrent) {
+                                ToolPill(stringResource(R.string.tool_ui_folder_current))
+                            }
+                            (folder.jsonObjectOrNull?.get("conversation_count"))
+                                ?.jsonPrimitiveOrNull?.intOrNull
+                                ?.let { count ->
+                                    ToolPill(stringResource(R.string.tool_ui_folder_conversations, count))
+                                }
+                        }
+                        Text(
+                            text = if (folder.isUnfiled()) {
+                                stringResource(R.string.tool_ui_folder_unfiled)
+                            } else {
+                                folder.jsonObjectOrNull?.get("id")
+                                    ?.jsonPrimitiveOrNull?.contentOrNull.orEmpty()
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
         }
     }
 }

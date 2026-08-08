@@ -1369,6 +1369,10 @@
   <string name="log_page_record_requests">Record requests</string>
   <string name="log_page_record_requests_desc">Capture request headers, bodies, and response metadata</string>
   <string name="chat_message_tool_recent_chats">View recent chats</string>
+  <string name="chat_message_tool_list_folders">List chat folders</string>
+  <string name="tool_ui_folder_unfiled">Unfiled</string>
+  <string name="tool_ui_folder_current">Current</string>
+  <string name="tool_ui_folder_conversations">%1$d conversations</string>
   <string name="tool_ui_view_json">View JSON</string>
   <string name="tool_ui_view_style">View style</string>
   <string name="tool_ui_arguments">Arguments</string>
@@ -1400,6 +1404,7 @@
   <string name="chat_page_remove_from_folder">Remove from Folder</string>
   <string name="chat_page_create_folder">New Folder</string>
   <string name="chat_page_folder_name">Folder name</string>
+  <string name="chat_page_folder_duplicate">A folder named \"%1$s\" already exists.</string>
   <string name="chat_page_rename_folder">Rename Folder</string>
   <string name="chat_page_delete_folder">Delete Folder</string>
   <string name="chat_page_rename">Rename</string>

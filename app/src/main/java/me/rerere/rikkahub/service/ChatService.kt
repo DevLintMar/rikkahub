@@ -686,7 +686,7 @@ class ChatService(
                     baseTools.addAll(localTools.getTools(assistant.localTools))
 
                     if (assistant.enableRecentChatsReference) {
-                        baseTools.addAll(createConversationTools(conversationRepo, assistant.id))
+                        baseTools.addAll(createConversationTools(conversationRepo, folderRepository, assistant.id, conversationId))
                     }
 
                     baseTools.addAll(createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), conversation.workspaceCwd))
@@ -770,7 +770,7 @@ class ChatService(
                     })
                     // 对话工具
                     if (assistant.enableRecentChatsReference) {
-                        addAll(createConversationTools(conversationRepo, assistant.id))
+                        addAll(createConversationTools(conversationRepo, folderRepository, assistant.id, conversationId))
                     }
                     // 工作区工具
                     addAll(createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), conversation.workspaceCwd))

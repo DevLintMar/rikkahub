@@ -1263,6 +1263,10 @@
   <string name="log_page_record_requests">記錄請求</string>
   <string name="log_page_record_requests_desc">擷取請求標頭、請求主體和回應元數據</string>
   <string name="chat_message_tool_recent_chats">查看最近聊天</string>
+  <string name="chat_message_tool_list_folders">列出聊天資料夾</string>
+  <string name="tool_ui_folder_unfiled">未歸類</string>
+  <string name="tool_ui_folder_current">目前</string>
+  <string name="tool_ui_folder_conversations">%1$d 個對話</string>
   <string name="chat_message_tool_conversation_search">搜尋歷史：%1$s</string>
   <string name="assistant_page_local_tools_screen_time_title">螢幕使用時間</string>
   <string name="assistant_page_local_tools_screen_time_desc">讓 AI 讀取您的應用程式螢幕使用時間</string>
@@ -1285,6 +1289,7 @@
   <string name="chat_page_remove_from_folder">從資料夾移除</string>
   <string name="chat_page_create_folder">新資料夾</string>
   <string name="chat_page_folder_name">資料夾名稱</string>
+  <string name="chat_page_folder_duplicate">已存在名為「%1$s」的資料夾</string>
   <string name="chat_page_rename_folder">重新命名資料夾</string>
   <string name="chat_page_delete_folder">刪除資料夾</string>
   <string name="chat_page_rename">重新命名</string>

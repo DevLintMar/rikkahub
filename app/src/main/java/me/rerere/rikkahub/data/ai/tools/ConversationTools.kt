@@ -1,5 +1,7 @@
 package me.rerere.rikkahub.data.ai.tools
 
+import kotlinx.coroutines.flow.first
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -14,6 +16,7 @@ import me.rerere.ai.core.Tool
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.embedding.MessageTextExtractor
 import me.rerere.rikkahub.data.repository.ConversationRepository
+import me.rerere.rikkahub.data.repository.FolderRepository
 import me.rerere.rikkahub.utils.JsonInstantPretty
 import me.rerere.rikkahub.utils.toLocalDate
 import kotlin.uuid.Uuid
@@ -24,8 +27,55 @@ import kotlin.uuid.Uuid
  */
 fun createConversationTools(
     conversationRepo: ConversationRepository,
+    folderRepo: FolderRepository,
     assistantId: Uuid,
+    conversationId: Uuid,
 ): List<Tool> = listOf(
+    Tool(
+        name = "list_conversation_folders",
+        description = """
+            List the user's conversation folders (including the default unfiled "chat" folder) for the current assistant.
+            Use this to obtain folder IDs, then pass `folder_id` to `recent_chats` or `conversation_search` to scope results to a single folder.
+            `current_folder_id` / `folders[].is_current` marks the folder the current conversation belongs to.
+            `current_folder_id` is null (and the default entry's `is_current` is true) when the current conversation is unfiled in the default folder.
+            Pass the obtained `current_folder_id` to `recent_chats` / `conversation_search` as `folder_id` to search the current folder.
+        """.trimIndent(),
+        parameters = {
+            InputSchema.Obj(
+                properties = buildJsonObject {}
+            )
+        },
+        execute = {
+            val currentFolderId = conversationRepo.getConversationById(conversationId)?.folderId?.toString()
+            val folders = folderRepo.getFoldersOfAssistant(assistantId).first()
+            val folderCounts = folders.map { folder ->
+                folder.id to conversationRepo.getConversationIdsInFolder(folder.id.toString()).size
+            }
+            val unfiledCount = (conversationRepo.countConversationsOfAssistant(assistantId) - folderCounts.sumOf { it.second })
+                .coerceAtLeast(0)
+            val payload = buildJsonObject {
+                put("type", "list_conversation_folders")
+                put("current_folder_id", currentFolderId ?: JsonNull)
+                putJsonArray("folders") {
+                    add(buildJsonObject {
+                        put("id", JsonNull)
+                        put("name", "Default (unfiled)")
+                        put("is_current", currentFolderId == null)
+                        put("conversation_count", unfiledCount)
+                    })
+                    folders.forEach { folder ->
+                        add(buildJsonObject {
+                            put("id", folder.id.toString())
+                            put("name", folder.name)
+                            put("is_current", folder.id.toString() == currentFolderId)
+                            put("conversation_count", folderCounts.firstOrNull { it.first == folder.id }?.second ?: 0)
+                        })
+                    }
+                }
+            }
+            listOf(UIMessagePart.Text(JsonInstantPretty.encodeToString(payload)))
+        }
+    ),
     Tool(
         name = "recent_chats",
         description = """

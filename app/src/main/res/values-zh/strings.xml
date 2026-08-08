@@ -1353,6 +1353,10 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="log_page_record_requests">记录请求</string>
   <string name="log_page_record_requests_desc">捕获请求标头、正文和响应元数据</string>
   <string name="chat_message_tool_recent_chats">查看最近的对话</string>
+  <string name="chat_message_tool_list_folders">列出聊天文件夹</string>
+  <string name="tool_ui_folder_unfiled">未归类</string>
+  <string name="tool_ui_folder_current">当前</string>
+  <string name="tool_ui_folder_conversations">%1$d 个对话</string>
   <string name="chat_message_tool_conversation_search">搜索历史：%1$s</string>
   <string name="assistant_page_local_tools_screen_time_title">屏幕时间</string>
   <string name="assistant_page_local_tools_screen_time_desc">让AI读取你的应用屏幕使用时间</string>
@@ -1386,6 +1390,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="chat_page_remove_from_folder">移出文件夹</string>
   <string name="chat_page_create_folder">新建文件夹</string>
   <string name="chat_page_folder_name">文件夹名称</string>
+  <string name="chat_page_folder_duplicate">已存在名为「%1$s」的文件夹</string>
   <string name="chat_page_rename_folder">重命名文件夹</string>
   <string name="chat_page_delete_folder">删除文件夹</string>
   <string name="chat_page_rename">重命名</string>
