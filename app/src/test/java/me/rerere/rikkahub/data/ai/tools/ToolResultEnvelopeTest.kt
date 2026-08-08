@@ -29,7 +29,7 @@ class ToolResultEnvelopeTest {
     }
 
     @Test
-    fun `inferToolState maps success and empty to SUCCEEDED / EMPTY`() {
+    fun `inferToolState maps success and empty to SUCCEEDED or EMPTY`() {
         assertEquals(ToolState.SUCCEEDED, inferToolState(listOf(text("""{"type":"x","exitCode":0}"""))))
         assertEquals(ToolState.SUCCEEDED, inferToolState(listOf(text("plain text"))))
         assertEquals(ToolState.EMPTY, inferToolState(emptyList()))
