@@ -74,7 +74,8 @@ fun ZoomableAsyncImage(
                 val now = SystemClock.elapsedRealtime()
                 val dur = now - loadStartMs
                 val src = when (state.result.dataSource) {
-                    coil3.decode.DataSource.MEMORY -> "mem"
+                    coil3.decode.DataSource.MEMORY_CACHE -> "mem"
+                    coil3.decode.DataSource.MEMORY -> "raw"
                     coil3.decode.DataSource.DISK -> "disk"
                     coil3.decode.DataSource.NETWORK -> "net"
                 }
