@@ -364,13 +364,133 @@ fun MarkdownBlock(
             Column(
                 modifier = modifier.padding(horizontal = 4.dp)
             ) {
-                data.astTree.children.fastForEach { child ->
-                    MarkdownNode(
-                        node = child, content = data.preprocessed, onClickCitation = onClickCitation
-                    )
+                val children = data.astTree.children
+                var i = 0
+                while (i < children.size) {
+                    val child = children[i]
+                    // 相邻纯文本段落合并为单个 Text：超长消息几十段 → 几个 Text，
+                    // 大幅减少 LazyColumn 单 item 的 Text 布局次数（滚动卡顿尖峰来源）。
+                    if (child.isMergeableParagraph(data.preprocessed)) {
+                        val group = mutableListOf(child)
+                        while (i + 1 < children.size && children[i + 1].isMergeableParagraph(data.preprocessed)) {
+                            group.add(children[i + 1])
+                            i++
+                        }
+                        MergedParagraphs(
+                            nodes = group,
+                            content = data.preprocessed,
+                            modifier = Modifier,
+                            onClickCitation = onClickCitation,
+                        )
+                    } else {
+                        MarkdownNode(
+                            node = child, content = data.preprocessed, onClickCitation = onClickCitation
+                        )
+                    }
+                    i++
                 }
             }
         }
+    }
+}
+
+/** 可合并进文本流的段落：无图片/块级公式/行内公式（需要独立行布局），且无引用链接（回调失效保护） */
+private fun ASTNode.isMergeableParagraph(content: String): Boolean =
+    type == MarkdownElementTypes.PARAGRAPH &&
+        !containsCitationLink(content) &&
+        findChildOfTypeRecursive(
+            MarkdownElementTypes.IMAGE,
+            GFMElementTypes.BLOCK_MATH,
+            GFMElementTypes.INLINE_MATH,
+        ) == null
+
+/**
+ * 连续纯文本段落合并块：把多个相邻段落构建为一个 AnnotatedString + 单个 Text（段间 \n 分隔）。
+ * 无 latex/引用，key 不含 latex 维度（maxWidth/fontSize 归一为 -1），复用 [paragraphRenderCache]。
+ */
+@Composable
+private fun MergedParagraphs(
+    nodes: List<ASTNode>,
+    content: String,
+    modifier: Modifier = Modifier,
+    onClickCitation: (String) -> Unit = {},
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    val inlineContents = remember { mutableStateMapOf<String, InlineTextContent>() }
+    val textStyle = LocalTextStyle.current
+    val density = LocalDensity.current
+    val primaryArgb = colorScheme.primary.toArgb()
+    var maxWidthPx by remember { mutableFloatStateOf(0f) }
+    val effectiveMaxWidthPx = if (maxWidthPx > 0f) maxWidthPx else Float.MAX_VALUE
+    val fontSizePx = with(density) {
+        if (textStyle.fontSize != TextUnit.Unspecified) textStyle.fontSize.toPx()
+        else MaterialTheme.typography.bodyMedium.fontSize.toPx()
+    }
+
+    val combinedText = remember(nodes, content) {
+        nodes.joinToString("\n") { it.getTextInNode(content) }
+    }
+    val cacheKey = remember(combinedText, primaryArgb) {
+        ParagraphRenderKey(
+            text = combinedText,
+            trim = false,
+            enableLatexRendering = false,   // 合并段无行内公式（isMergeableParagraph 保证）
+            latexColorArgb = -1,
+            primaryArgb = primaryArgb,
+            maxWidthPx = -1f,
+            fontSizePx = -1f,
+            densityDensity = -1f,
+            densityFontScale = -1f,
+        )
+    }
+    val annotatedString = remember(combinedText, primaryArgb) {
+        val cached = paragraphRenderCache.get(cacheKey)
+        if (cached != null) {
+            inlineContents.clear()
+            inlineContents.putAll(cached.inlineContents)
+            cached.annotatedString
+        } else {
+            inlineContents.clear()
+            val built = buildAnnotatedString {
+                nodes.forEachIndexed { idx, node ->
+                    if (idx > 0) append("\n")
+                    node.children.fastForEach { child ->
+                        appendMarkdownNodeContent(
+                            node = child,
+                            content = content,
+                            inlineContents = inlineContents,
+                            colorScheme = colorScheme,
+                            density = density,
+                            style = textStyle,
+                            enableLatexRendering = false,
+                            latexColorArgb = -1,
+                            onClickCitation = onClickCitation,
+                            maxWidthPx = effectiveMaxWidthPx,
+                            fontSizePx = fontSizePx,
+                            formulaDisplayLists = null,
+                            resolvedColor = Color.Unspecified,
+                        )
+                    }
+                }
+            }
+            paragraphRenderCache.put(cacheKey, ParagraphRenderValue(built, inlineContents.toMap()))
+            built
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .onSizeChanged { maxWidthPx = it.width.toFloat() }
+            .then(modifier)
+    ) {
+        Text(
+            text = annotatedString,
+            modifier = Modifier,
+            inlineContent = inlineContents,
+            softWrap = true,
+            overflow = TextOverflow.Visible,
+        )
     }
 }
 
