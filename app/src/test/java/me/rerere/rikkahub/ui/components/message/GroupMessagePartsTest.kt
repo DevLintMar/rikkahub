@@ -2,10 +2,10 @@ package me.rerere.rikkahub.ui.components.message
 
 import me.rerere.ai.ui.UIMessagePart
 import kotlinx.serialization.json.buildJsonObject
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertIs
-import kotlin.test.assertTrue
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertInstanceOf
+import org.junit.Assert.assertTrue
+import org.junit.Test
 
 class GroupMessagePartsTest {
 
@@ -20,7 +20,7 @@ class GroupMessagePartsTest {
             .groupMessageParts(mergeConsecutiveImages = true)
 
         assertEquals(1, blocks.size)
-        val group = assertIs<MessagePartBlock.ImageGroupBlock>(blocks[0])
+        val group = assertInstanceOf(MessagePartBlock.ImageGroupBlock::class.java, blocks[0])
         assertEquals(listOf("a.jpg", "b.jpg", "c.jpg"), group.images.map { it.url })
         assertEquals(0, group.index) // index 取组内第一张图的原始 index
     }
@@ -36,10 +36,10 @@ class GroupMessagePartsTest {
         val blocks = parts.groupMessageParts(mergeConsecutiveImages = true)
 
         assertEquals(3, blocks.size)
-        assertIs<MessagePartBlock.ImageGroupBlock>(blocks[0])      // a 单独
+        assertInstanceOf(MessagePartBlock.ImageGroupBlock::class.java, blocks[0])   // a 单独
         assertEquals(listOf("a.jpg"), (blocks[0] as MessagePartBlock.ImageGroupBlock).images.map { it.url })
-        assertIs<MessagePartBlock.ContentBlock>(blocks[1])          // text
-        assertIs<MessagePartBlock.ImageGroupBlock>(blocks[2])       // b+c 合并
+        assertInstanceOf(MessagePartBlock.ContentBlock::class.java, blocks[1])      // text
+        assertInstanceOf(MessagePartBlock.ImageGroupBlock::class.java, blocks[2])   // b+c 合并
         assertEquals(listOf("b.jpg", "c.jpg"), (blocks[2] as MessagePartBlock.ImageGroupBlock).images.map { it.url })
         // b 的原始 index 2
         assertEquals(2, (blocks[2] as MessagePartBlock.ImageGroupBlock).index)
@@ -55,9 +55,9 @@ class GroupMessagePartsTest {
         val blocks = parts.groupMessageParts(mergeConsecutiveImages = true)
 
         assertEquals(3, blocks.size)
-        assertIs<MessagePartBlock.ImageGroupBlock>(blocks[0])
-        assertIs<MessagePartBlock.ThinkingBlock>(blocks[1])
-        assertIs<MessagePartBlock.ImageGroupBlock>(blocks[2])
+        assertInstanceOf(MessagePartBlock.ImageGroupBlock::class.java, blocks[0])
+        assertInstanceOf(MessagePartBlock.ThinkingBlock::class.java, blocks[1])
+        assertInstanceOf(MessagePartBlock.ImageGroupBlock::class.java, blocks[2])
     }
 
     @Test
@@ -66,7 +66,7 @@ class GroupMessagePartsTest {
             .groupMessageParts() // mergeConsecutiveImages = false
 
         assertEquals(2, blocks.size)
-        blocks.forEach { assertIs<MessagePartBlock.ContentBlock>(it) }
+        blocks.forEach { assertInstanceOf(MessagePartBlock.ContentBlock::class.java, it) }
     }
 
     @Test
@@ -80,10 +80,10 @@ class GroupMessagePartsTest {
         val blocks = parts.groupMessageParts(mergeConsecutiveImages = true)
 
         assertEquals(3, blocks.size)
-        assertIs<MessagePartBlock.ContentBlock>(blocks[0])
-        val group = assertIs<MessagePartBlock.ImageGroupBlock>(blocks[1])
+        assertInstanceOf(MessagePartBlock.ContentBlock::class.java, blocks[0])
+        val group = assertInstanceOf(MessagePartBlock.ImageGroupBlock::class.java, blocks[1])
         assertEquals(listOf("a.jpg", "b.jpg"), group.images.map { it.url })
-        assertIs<MessagePartBlock.ContentBlock>(blocks[2])
+        assertInstanceOf(MessagePartBlock.ContentBlock::class.java, blocks[2])
         assertTrue(blocks.all { it !is MessagePartBlock.ThinkingBlock })
     }
 }

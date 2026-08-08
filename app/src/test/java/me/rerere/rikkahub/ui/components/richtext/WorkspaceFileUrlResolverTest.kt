@@ -1,10 +1,10 @@
 package me.rerere.rikkahub.ui.components.richtext
 
-import kotlin.test.AfterTest
-import kotlin.test.BeforeTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNull
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Before
+import org.junit.Test
 import java.io.File
 import java.nio.file.Files
 
@@ -12,12 +12,12 @@ class WorkspaceFileUrlResolverTest {
 
     private lateinit var filesDir: File
 
-    @BeforeTest
+    @Before
     fun setUp() {
         filesDir = Files.createTempDirectory("workspace-url-resolver-test").toFile()
     }
 
-    @AfterTest
+    @After
     fun tearDown() {
         filesDir.deleteRecursively()
     }
