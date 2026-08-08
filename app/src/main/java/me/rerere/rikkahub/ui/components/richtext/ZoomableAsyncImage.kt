@@ -47,6 +47,10 @@ fun ZoomableAsyncImage(
             .placeholder(placeholder)
             .crossfade(false)
             .allowHardware(!export)
+            // 解码上限 1024px：聊天图显示尺寸都不超过 ~400dp（72dp 缩略 / markdown 行内图）。
+            // 不设上限时 markdown 行内图宽高无界 → Coil 按原始尺寸解码（手机照片 4000px+），
+            // 单张解码 500ms+、内存缓存每条目 48MB 挤掉所有缩略图、大纹理每帧被 GPU 采样 → 滚动卡顿。
+            .size(1024, 1024)
             .build()
     }
     var loading by remember { mutableStateOf(false) }
