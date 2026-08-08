@@ -106,6 +106,7 @@ import me.rerere.rikkahub.ui.components.ui.ListSelectableItem
 import me.rerere.rikkahub.ui.components.ui.RabbitLoadingIndicator
 import me.rerere.rikkahub.ui.components.ui.Tooltip
 import me.rerere.rikkahub.ui.hooks.ImeLazyListAutoScroller
+import me.rerere.rikkahub.ui.hooks.ScrollFrameSampler
 import me.rerere.rikkahub.ui.theme.ChatFontProvider
 import me.rerere.rikkahub.utils.plus
 import org.koin.compose.koinInject
@@ -262,6 +263,9 @@ private fun ChatListNormal(
 
     // 自动跟随键盘滚动
     ImeLazyListAutoScroller(lazyListState = state)
+
+    // debug 滚动帧间隔采样（release 零开销），定位滚动卡顿来源
+    ScrollFrameSampler(active = state.isScrollInProgress)
 
     // 对话大小警告对话框
     val sizeInfo = rememberConversationSizeInfo(conversation)

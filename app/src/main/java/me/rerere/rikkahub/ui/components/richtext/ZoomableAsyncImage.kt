@@ -1,8 +1,10 @@
 package me.rerere.rikkahub.ui.components.richtext
 
+import android.os.SystemClock
 import androidx.compose.foundation.clickable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -16,6 +18,8 @@ import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.request.crossfade
 import coil3.request.placeholder
+import me.rerere.common.android.Logging
+import me.rerere.rikkahub.BuildConfig
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.ui.ImagePreviewDialog
 import me.rerere.rikkahub.ui.components.ui.LocalExportContext
@@ -46,6 +50,9 @@ fun ZoomableAsyncImage(
             .build()
     }
     var loading by remember { mutableStateOf(false) }
+    // debug 诊断：记录加载起点，onSuccess 时输出缓存来源与耗时（定位滚动卡顿是否图片解码）
+    var loadStartMs by remember(model) { mutableLongStateOf(0L) }
+    var lastImgLogMs by remember(model) { mutableLongStateOf(0L) }
     AsyncImage(
         model = coilModel,
         contentDescription = contentDescription,
@@ -59,9 +66,24 @@ fun ZoomableAsyncImage(
         alignment = alignment,
         onLoading = {
             loading = true
+            loadStartMs = SystemClock.elapsedRealtime()
         },
-        onSuccess = {
+        onSuccess = { state ->
             loading = false
+            if (BuildConfig.DEBUG) {
+                val now = SystemClock.elapsedRealtime()
+                val dur = now - loadStartMs
+                val src = when {
+                    state.result.memoryCacheHit -> "mem"
+                    state.result.diskCacheHit -> "disk"
+                    else -> "load"
+                }
+                // 节流：真正解码/IO 或耗时超 30ms 才记，且 500ms 内至多一条
+                if ((src != "mem" || dur > 30) && now - lastImgLogMs >= 500) {
+                    lastImgLogMs = now
+                    Logging.log("ChatImg", "src=$src dur=${dur}ms")
+                }
+            }
         },
         onError = {
             loading = false
