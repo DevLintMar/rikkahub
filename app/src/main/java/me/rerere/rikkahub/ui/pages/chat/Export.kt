@@ -577,6 +577,9 @@ private fun ExportedChatMessage(
                         }
                     }
 
+                    // 导出预览 groupMessageParts() 默认不合并图片，此分支不可达（仅穷尽性要求）
+                    is MessagePartBlock.ImageGroupBlock -> {}
+
                     is MessagePartBlock.ContentBlock -> {
                         when (val part = block.part) {
                             is UIMessagePart.Text -> {
