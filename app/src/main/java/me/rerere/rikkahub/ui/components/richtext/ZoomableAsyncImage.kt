@@ -73,10 +73,10 @@ fun ZoomableAsyncImage(
             if (BuildConfig.DEBUG) {
                 val now = SystemClock.elapsedRealtime()
                 val dur = now - loadStartMs
-                val src = when {
-                    state.result.memoryCacheHit -> "mem"
-                    state.result.diskCacheHit -> "disk"
-                    else -> "load"
+                val src = when (state.result.dataSource) {
+                    coil3.decode.DataSource.MEMORY -> "mem"
+                    coil3.decode.DataSource.DISK -> "disk"
+                    coil3.decode.DataSource.NETWORK -> "net"
                 }
                 // 节流：真正解码/IO 或耗时超 30ms 才记，且 500ms 内至多一条
                 if ((src != "mem" || dur > 30) && now - lastImgLogMs >= 500) {
