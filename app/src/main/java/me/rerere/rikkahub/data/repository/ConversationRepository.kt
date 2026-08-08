@@ -65,6 +65,11 @@ class ConversationRepository(
     suspend fun countConversationsOfAssistant(assistantId: Uuid, folderId: Uuid? = null): Int =
         conversationDAO.countConversationsOfAssistant(assistantId.toString(), folderId?.toString())
 
+    /** 指定文件夹内全部会话 id（供文件夹维度过滤/计数）。 */
+    suspend fun getConversationIdsInFolder(folderId: Uuid): List<Uuid> =
+        conversationDAO.getConversationIdsInFolder(folderId.toString())
+            .mapNotNull { id -> runCatching { Uuid.parse(id) }.getOrNull() }
+
     fun getConversationsOfAssistant(assistantId: Uuid): Flow<List<Conversation>> {
         return conversationDAO
             .getConversationsOfAssistant(assistantId.toString())

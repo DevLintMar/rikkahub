@@ -3,6 +3,7 @@ package me.rerere.rikkahub.data.ai.tools
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
@@ -49,13 +50,13 @@ fun createConversationTools(
             val currentFolderId = conversationRepo.getConversationById(conversationId)?.folderId?.toString()
             val folders = folderRepo.getFoldersOfAssistant(assistantId).first()
             val folderCounts = folders.map { folder ->
-                folder.id to conversationRepo.getConversationIdsInFolder(folder.id.toString()).size
+                folder.id to conversationRepo.getConversationIdsInFolder(folder.id).size
             }
             val unfiledCount = (conversationRepo.countConversationsOfAssistant(assistantId) - folderCounts.sumOf { it.second })
                 .coerceAtLeast(0)
             val payload = buildJsonObject {
                 put("type", "list_conversation_folders")
-                put("current_folder_id", currentFolderId ?: JsonNull)
+                put("current_folder_id", currentFolderId?.let { JsonPrimitive(it) } ?: JsonNull)
                 putJsonArray("folders") {
                     add(buildJsonObject {
                         put("id", JsonNull)
