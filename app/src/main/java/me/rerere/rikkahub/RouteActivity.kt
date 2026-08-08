@@ -345,7 +345,8 @@ class RouteActivity : ComponentActivity() {
                                     files = key.files.map { it.toUri() },
                                     nodeId = key.nodeId?.let { Uuid.parse(it) },
                                     isNewChat = key.isNewChat,
-                                    openDrawer = key.openDrawer
+                                    openDrawer = key.openDrawer,
+                                    folderId = key.folderId?.let { Uuid.parse(it) },
                                 )
                             }
 
@@ -615,7 +616,8 @@ sealed interface Screen : NavKey {
         val files: List<String> = emptyList(),
         val nodeId: String? = null,
         val isNewChat: Boolean = false,
-        val openDrawer: Boolean = false
+        val openDrawer: Boolean = false,
+        val folderId: String? = null
     ) : Screen
 
     @Serializable

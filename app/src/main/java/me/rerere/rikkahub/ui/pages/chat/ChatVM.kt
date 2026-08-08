@@ -57,6 +57,8 @@ class ChatVM(
     private val analytics: FirebaseAnalytics,
     private val filesManager: FilesManager,
     private val favoriteRepository: FavoriteRepository,
+    // 新建对话的文件夹归属（导航参数传入，仅新建时生效）
+    private val folderId: String? = null,
 ) : ViewModel() {
     private val _conversationId: Uuid = Uuid.parse(id)
     val conversation: StateFlow<Conversation> = chatService.getConversationFlow(_conversationId)
@@ -87,7 +89,7 @@ class ChatVM(
         // 初始化对话
         viewModelScope.launch {
             try {
-                chatService.initializeConversation(_conversationId)
+                chatService.initializeConversation(_conversationId, folderId?.let { Uuid.parse(it) })
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e                    // 协程取消正常传播，不吞
             } catch (e: Exception) {

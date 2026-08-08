@@ -39,6 +39,7 @@ val viewModelModule = module {
             analytics = get(),
             filesManager = get(),
             favoriteRepository = get(),
+            folderId = params.get(1),
         )
     }
     viewModelOf(::ChatDrawerVM)
