@@ -73,7 +73,7 @@ val repositoryModule = module {
     }
 
     single {
-        WorkspaceRepository(get(), get(), get(), get(), File(get<Context>().cacheDir))
+        WorkspaceRepository(get(), get(), get(), get(), get<Context>().cacheDir)
     }
 
     single {
