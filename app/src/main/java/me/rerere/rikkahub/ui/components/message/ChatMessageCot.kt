@@ -75,11 +75,22 @@ fun List<UIMessagePart>.groupMessageParts(
 
             else -> {
                 flushThinkingSteps()
-                if (mergeConsecutiveImages && part is UIMessagePart.Image &&
-                    result.lastOrNull() is MessagePartBlock.ImageGroupBlock
-                ) {
-                    val last = result.removeAt(result.size - 1) as MessagePartBlock.ImageGroupBlock
-                    result.add(last.copy(images = last.images + part))
+                if (mergeConsecutiveImages && part is UIMessagePart.Image) {
+                    val last = result.lastOrNull()
+                    when {
+                        // 已有图片组：直接追加
+                        last is MessagePartBlock.ImageGroupBlock ->
+                            result[result.size - 1] = last.copy(images = last.images + part)
+                        // 末尾是单张图片 ContentBlock：升级为组（第 2 张图起命中，第一张图在此新建组）
+                        last is MessagePartBlock.ContentBlock && last.part is UIMessagePart.Image ->
+                            result[result.size - 1] = MessagePartBlock.ImageGroupBlock(
+                                images = listOf(last.part as UIMessagePart.Image, part),
+                                index = last.index,
+                            )
+                        // 末尾不是图片：新建组
+                        else ->
+                            result.add(MessagePartBlock.ImageGroupBlock(listOf(part), index))
+                    }
                 } else {
                     result.add(MessagePartBlock.ContentBlock(part, index))
                 }
