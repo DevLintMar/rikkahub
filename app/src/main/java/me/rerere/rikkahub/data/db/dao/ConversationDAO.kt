@@ -30,11 +30,14 @@ interface ConversationDAO {
     @Query("SELECT id, assistant_id as assistantId, title, is_pinned as isPinned, create_at as createAt, update_at as updateAt, folder_id as folderId FROM conversationentity WHERE folder_id = :folderId ORDER BY is_pinned DESC, update_at DESC")
     fun getConversationsOfFolderPaging(folderId: String): PagingSource<Int, LightConversationEntity>
 
-    @Query("SELECT * FROM conversationentity WHERE assistant_id = :assistantId ORDER BY is_pinned DESC, update_at DESC LIMIT :limit OFFSET :offset")
-    suspend fun getRecentConversationsOfAssistant(assistantId: String, limit: Int, offset: Int): List<ConversationEntity>
+    @Query("SELECT * FROM conversationentity WHERE assistant_id = :assistantId AND (:folderId IS NULL OR folder_id = :folderId) ORDER BY is_pinned DESC, update_at DESC LIMIT :limit OFFSET :offset")
+    suspend fun getRecentConversationsOfAssistant(assistantId: String, folderId: String?, limit: Int, offset: Int): List<ConversationEntity>
 
-    @Query("SELECT COUNT(*) FROM conversationentity WHERE assistant_id = :assistantId")
-    suspend fun countConversationsOfAssistant(assistantId: String): Int
+    @Query("SELECT COUNT(*) FROM conversationentity WHERE assistant_id = :assistantId AND (:folderId IS NULL OR folder_id = :folderId)")
+    suspend fun countConversationsOfAssistant(assistantId: String, folderId: String?): Int
+
+    @Query("SELECT id FROM conversationentity WHERE folder_id = :folderId")
+    suspend fun getConversationIdsInFolder(folderId: String): List<String>
 
     @Query("SELECT * FROM conversationentity WHERE title LIKE '%' || :searchText || '%' ORDER BY is_pinned DESC, update_at DESC")
     fun searchConversations(searchText: String): Flow<List<ConversationEntity>>

@@ -21,6 +21,7 @@ import me.rerere.rikkahub.data.db.dao.FavoriteDAO
 import me.rerere.rikkahub.data.db.dao.MessageNodeDAO
 import me.rerere.rikkahub.data.db.entity.ConversationEntity
 import me.rerere.rikkahub.data.db.entity.MessageNodeEntity
+import me.rerere.rikkahub.data.embedding.FusedHit
 import me.rerere.rikkahub.data.embedding.SemanticIndexManager
 import me.rerere.rikkahub.data.embedding.rrfFuseScored
 import me.rerere.rikkahub.data.files.FilesManager
@@ -46,11 +47,13 @@ class ConversationRepository(
 
     suspend fun getRecentConversations(
         assistantId: Uuid,
+        folderId: Uuid? = null,
         limit: Int = 10,
         offset: Int = 0,
     ): List<Conversation> {
         return conversationDAO.getRecentConversationsOfAssistant(
             assistantId = assistantId.toString(),
+            folderId = folderId?.toString(),
             limit = limit,
             offset = offset
         ).map { entity ->
@@ -59,8 +62,8 @@ class ConversationRepository(
         }
     }
 
-    suspend fun countConversationsOfAssistant(assistantId: Uuid): Int =
-        conversationDAO.countConversationsOfAssistant(assistantId.toString())
+    suspend fun countConversationsOfAssistant(assistantId: Uuid, folderId: Uuid? = null): Int =
+        conversationDAO.countConversationsOfAssistant(assistantId.toString(), folderId?.toString())
 
     fun getConversationsOfAssistant(assistantId: Uuid): Flow<List<Conversation>> {
         return conversationDAO
@@ -366,11 +369,51 @@ class ConversationRepository(
      * 混合搜索并返回每条匹配的具体消息（融合 FTS + 语义，跨会话按融合分降序）。
      * 每条结果含所在对话、该消息在 currentMessages(USER/ASSISTANT) 中的索引
      * （与 read_conversation 的 offset 对齐）与 FTS [brackets] 着重标记 snippet。
+     * @param folderId 非空时仅搜索该文件夹内的会话；null 搜索全部。
      */
     suspend fun searchConversationMessages(
         query: String,
+        folderId: Uuid? = null,
         limit: Int = 15,
         offset: Int = 0,
+    ): ConversationSearchPage {
+        val folderIds = folderId?.let { conversationDAO.getConversationIdsInFolder(it.toString()).toSet() }
+        if (folderIds == null) {
+            return searchConversationMessagesAll(query, limit, offset)
+        }
+        // 仅搜索指定文件夹：融合后按 conversationId 过滤；候选不足时循环放大取数，保证分页 has_more 正确
+        var fetchLimit = offset + limit + 1
+        var filtered: List<FusedHit> = emptyList()
+        repeat(4) {
+            val fts = searchMessages(query, MessageSearchSort.RELEVANCE).take(fetchLimit)
+            val semantic = if (semanticIndexManager.isConfigured()) {
+                semanticIndexManager.search(query, fetchLimit).map { hit ->
+                    MessageSearchResult(
+                        nodeId = hit.nodeId,
+                        messageId = hit.messageId,
+                        conversationId = hit.conversationId,
+                        title = "",
+                        updateAt = Instant.EPOCH,
+                        snippet = hit.chunkText.take(120),
+                    )
+                }
+            } else emptyList()
+            filtered = rrfFuseScored(fts, semantic, k = 60).filter { it.conversationId in folderIds }
+            if (filtered.size >= offset + limit + 1) return@repeat
+            fetchLimit *= 2
+        }
+        val all = filtered.mapNotNull { buildConversationSearchHit(it) }
+            .sortedByDescending { it.date } // 按日期新 → 旧
+        return ConversationSearchPage(
+            hits = all.drop(offset).take(limit),
+            hasMore = offset + limit < all.size,
+        )
+    }
+
+    private suspend fun searchConversationMessagesAll(
+        query: String,
+        limit: Int,
+        offset: Int,
     ): ConversationSearchPage {
         // 多取 1 条用于判断 offset+limit 之后是否还有（has_more）
         val fetchLimit = offset + limit + 1
@@ -388,28 +431,32 @@ class ConversationRepository(
             }
         } else emptyList()
 
-        val fused = rrfFuseScored(fts, semantic, k = 60)
-        val all = fused.mapNotNull { hit ->
-            val conversation = getConversationById(Uuid.parse(hit.conversationId)) ?: return@mapNotNull null
-            val branch = runCatching { conversation.currentMessages }
-                .getOrDefault(emptyList())
-                .filter { it.role == MessageRole.USER || it.role == MessageRole.ASSISTANT }
-            val index = branch.indexOfFirst { it.id.toString() == hit.messageId }
-            if (index < 0) return@mapNotNull null
-            val message = branch[index]
-            ConversationSearchHit(
-                conversationId = hit.conversationId,
-                title = conversation.title,
-                index = index,
-                role = message.role.name.lowercase(),
-                snippet = hit.snippet,
-                date = message.createdAt.date.toString(),
-            )
-        }.sortedByDescending { it.date } // 按日期新 → 旧
+        val all = rrfFuseScored(fts, semantic, k = 60)
+            .mapNotNull { buildConversationSearchHit(it) }
+            .sortedByDescending { it.date } // 按日期新 → 旧
 
         return ConversationSearchPage(
             hits = all.drop(offset).take(limit),
             hasMore = offset + limit < all.size,
+        )
+    }
+
+    /** 把一条融合命中转成具体消息命中（load 会话、在 currentMessages 中定位 index）。 */
+    private suspend fun buildConversationSearchHit(hit: FusedHit): ConversationSearchHit? {
+        val conversation = getConversationById(Uuid.parse(hit.conversationId)) ?: return null
+        val branch = runCatching { conversation.currentMessages }
+            .getOrDefault(emptyList())
+            .filter { it.role == MessageRole.USER || it.role == MessageRole.ASSISTANT }
+        val index = branch.indexOfFirst { it.id.toString() == hit.messageId }
+        if (index < 0) return null
+        val message = branch[index]
+        return ConversationSearchHit(
+            conversationId = hit.conversationId,
+            title = conversation.title,
+            index = index,
+            role = message.role.name.lowercase(),
+            snippet = hit.snippet,
+            date = message.createdAt.date.toString(),
         )
     }
 

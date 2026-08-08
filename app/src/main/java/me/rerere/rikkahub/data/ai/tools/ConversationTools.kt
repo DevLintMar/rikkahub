@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.data.ai.tools
 
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
@@ -31,6 +32,7 @@ fun createConversationTools(
             List the user's recent conversations with you to understand their preferences and ongoing topics.
             Returns conversation titles and the date of last activity, ordered by pinned first then most recently updated.
             Use this when you need quick context about what the user has been discussing lately.
+            Pass `folder_id` (a folder UUID) to list only conversations in that folder; omit it to list all.
             Only titles and dates are returned; use `conversation_search` to look up the actual content.
             Use `offset` to page through older conversations beyond the first page.
             `has_more` indicates whether more conversations exist after this page.
@@ -52,15 +54,24 @@ fun createConversationTools(
                             "Number of conversations to skip, to read older ones (default: 0)"
                         )
                     })
+                    put("folder_id", buildJsonObject {
+                        put("type", "string")
+                        put(
+                            "description",
+                            "The folder ID (UUID) to restrict results to. Omit to list conversations in all folders."
+                        )
+                    })
                 }
             )
         },
         execute = {
             val limit = (it.jsonObject["limit"]?.jsonPrimitive?.intOrNull ?: 10).coerceIn(1, 50)
             val offset = (it.jsonObject["offset"]?.jsonPrimitive?.intOrNull ?: 0).coerceAtLeast(0)
-            val total = conversationRepo.countConversationsOfAssistant(assistantId)
+            val folderId = parseFolderId(it.jsonObject)
+            val total = conversationRepo.countConversationsOfAssistant(assistantId, folderId)
             val recent = conversationRepo.getRecentConversations(
                 assistantId = assistantId,
+                folderId = folderId,
                 limit = limit,
                 offset = offset,
             )
@@ -86,6 +97,7 @@ fun createConversationTools(
             Hybrid semantic + keyword search across the user's past conversations to recall specific information they mentioned before.
             Matches on meaning as well as exact keywords, so paraphrased queries can find relevant past messages.
             Run multiple searches with different phrasings if needed.
+            Pass `folder_id` (a folder UUID) to search only conversations in that folder; omit it to search all.
             Returns each specific matched message, with the matched keywords marked in [brackets] in `snippet`, the conversation
             (`conversation_id`, `title`), the message's `index` within it, and its `date` (yyyy-MM-dd).
             Results are ordered by date, newest first. `offset` pages to older matches; `has_more` indicates whether more exist.
@@ -112,6 +124,13 @@ fun createConversationTools(
                             "Number of matched messages to skip, to page to older ones (default: 0)"
                         )
                     })
+                    put("folder_id", buildJsonObject {
+                        put("type", "string")
+                        put(
+                            "description",
+                            "The folder ID (UUID) to restrict results to. Omit to search all conversations."
+                        )
+                    })
                 },
                 required = listOf("query")
             )
@@ -121,7 +140,8 @@ fun createConversationTools(
                 ?: error("query is required")
             val limit = (it.jsonObject["limit"]?.jsonPrimitive?.intOrNull ?: 15).coerceIn(1, 50)
             val offset = (it.jsonObject["offset"]?.jsonPrimitive?.intOrNull ?: 0).coerceAtLeast(0)
-            val page = conversationRepo.searchConversationMessages(query, limit, offset)
+            val folderId = parseFolderId(it.jsonObject)
+            val page = conversationRepo.searchConversationMessages(query, folderId, limit, offset)
             val payload = buildJsonObject {
                 put("type", "conversation_search")
                 put("query", query)
@@ -208,3 +228,8 @@ fun createConversationTools(
         },
     )
 )
+
+/** 解析可选的 folder_id 参数；缺失/非法返回 null（= 全部文件夹）。 */
+private fun parseFolderId(args: JsonObject): Uuid? =
+    args["folder_id"]?.jsonPrimitive?.contentOrNull
+        ?.let { v -> runCatching { Uuid.parse(v) }.getOrNull() }
