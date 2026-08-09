@@ -130,13 +130,12 @@ data class Conversation(
             newConversation = newConversation,
         )
     }
-
-    /**
-     * 图片懒加载标记的辨识前缀（与 ImageLazyLoadTransformer 注入文本一致，
-     * 需同步维护）。
-     */
-    internal const val IMAGE_LAZY_LOAD_MARKER_PREFIX = "[The user attached "
 }
+
+/**
+ * 图片懒加载标记的辨识前缀（与 ImageLazyLoadTransformer 注入文本一致，需同步维护）。
+ */
+internal const val IMAGE_LAZY_LOAD_MARKER_PREFIX = "[The user attached "
 
 @Serializable
 data class MessageNode(
