@@ -264,6 +264,10 @@
   <string name="chat_message_tool_scrape_web">ウェブページを取得</string>
   <string name="chat_message_tool_scrape_urls">%1$d ページを取得</string>
   <string name="chat_message_tool_scrape_failed">%1$d 件失敗</string>
+  <string name="chat_message_tool_read_image">画像を認識</string>
+  <string name="chat_message_tool_read_image_count">画像 %1$d 枚</string>
+  <string name="chat_message_tool_read_image_failed">%1$d 枚失敗</string>
+  <string name="chat_message_tool_read_image_failed_label">失敗</string>
   <string name="chat_message_tool_search_results_count">%1$d件の結果</string>
   <string name="chat_message_tool_search_web">ウェブ検索: %1$s</string>
   <string name="chat_message_tool_submit">送信</string>

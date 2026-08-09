@@ -7,6 +7,8 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -74,38 +76,52 @@ fun createReadImageTool(
                 )
             },
             execute = { args ->
-                val paths = parseReadImagePaths(args)
-                when {
-                    paths.isEmpty() -> listOf(
-                        UIMessagePart.Text("""{"type":"read_image","error":"no valid urls provided"}""")
+                val urls = parseReadImagePaths(args)
+                if (urls.isEmpty()) {
+                    return@Tool listOf(
+                        UIMessagePart.Text(
+                            buildJsonObject {
+                                put("type", "read_image")
+                                put("mode", "error")
+                                put("text", "no valid urls provided")
+                            }.toString()
+                        )
                     )
-
-                    else -> {
-                        val processed = paths.take(READ_IMAGE_MAX_IMAGES_PER_CALL)
-                        val omitted = paths.size - processed.size
-                        val parts = mutableListOf<UIMessagePart>()
-                        if (omitted > 0) {
-                            parts.add(
-                                UIMessagePart.Text(
-                                    "[Note: only the first $READ_IMAGE_MAX_IMAGES_PER_CALL images are processed; $omitted URL(s) omitted.]"
-                                )
-                            )
-                        }
-                        val settings = getKoin().get<SettingsStore>().settingsFlow.value
-                        val assistant = settings.getCurrentAssistant()
-                        val model = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
-                        val hasVision = model?.inputModalities?.contains(Modality.IMAGE) == true
-
-                        // 并行读取各图（视觉直接读文件；非视觉并行 OCR），全部完成后一次性返回
-                        val perImageParts = coroutineScope {
-                            processed.map { path ->
-                                async { readSingleImage(workspaceId, workspaceRepository, path, hasVision) }
-                            }.awaitAll()
-                        }
-                        perImageParts.forEach { parts.addAll(it) }
-                        parts
-                    }
                 }
+
+                val processed = urls.take(READ_IMAGE_MAX_IMAGES_PER_CALL)
+                val omitted = urls.size - processed.size
+
+                val settings = getKoin().get<SettingsStore>().settingsFlow.value
+                val assistant = settings.getCurrentAssistant()
+                val model = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
+                val hasVision = model?.inputModalities?.contains(Modality.IMAGE) == true
+
+                // 并行读取各图（视觉直接读文件；非视觉并行 OCR），全部完成后一次性汇总
+                val results = coroutineScope {
+                    processed.map { url ->
+                        async { readSingleImage(workspaceId, workspaceRepository, url, hasVision) }
+                    }.awaitAll()
+                }
+                // 图片本体作为 Image parts 返回（provider 侧编码后视觉模型真正看到）
+                val imageParts = results.mapNotNull { it.imageUri }
+                    .map { UIMessagePart.Image(url = it) }
+                val envelope = buildJsonObject {
+                    put("type", "read_image")
+                    if (omitted > 0) {
+                        put("note", "only the first $READ_IMAGE_MAX_IMAGES_PER_CALL images processed; $omitted URL(s) omitted")
+                    }
+                    put("results", buildJsonArray {
+                        results.forEach { result ->
+                            add(buildJsonObject {
+                                put("url", result.url)
+                                put("mode", result.mode)
+                                if (result.text != null) put("text", result.text)
+                            })
+                        }
+                    })
+                }
+                imageParts + UIMessagePart.Text(envelope.toString())
             },
         )
     )
@@ -119,62 +135,44 @@ internal fun parseReadImagePaths(args: JsonElement): List<String> =
             .orEmpty()
     }.getOrDefault(emptyList())
 
+/** 单张图片读取结果。mode: "base64"（图片本体）/ "ocr"（识别文本）/ "error"（失败信息）。 */
+private data class ReadImageResult(
+    val url: String,
+    val mode: String,
+    val imageUri: String? = null,
+    val text: String? = null,
+)
+
 private suspend fun readSingleImage(
     workspaceId: String?,
     workspaceRepository: WorkspaceRepository,
     url: String,
     hasVision: Boolean,
-): List<UIMessagePart> {
+): ReadImageResult {
     val extension = url.substringAfterLast('.', "").lowercase()
     if (extension !in READ_IMAGE_EXTENSIONS) {
-        return listOf(
-            UIMessagePart.Text(
-                buildJsonObject {
-                    put("type", "read_image")
-                    put("url", url)
-                    put("error", "Not an image file. Use workspace_read for non-image files.")
-                }.toString()
-            )
+        return ReadImageResult(
+            url = url,
+            mode = "error",
+            text = "Not an image file. Use workspace_read for non-image files.",
         )
     }
 
     val uri = try {
         resolveImageFileUri(workspaceId, workspaceRepository, url)
     } catch (e: Exception) {
-        return listOf(
-            UIMessagePart.Text(
-                buildJsonObject {
-                    put("type", "read_image")
-                    put("url", url)
-                    put("error", "Failed to read image: ${e.message}")
-                }.toString()
-            )
+        return ReadImageResult(
+            url = url,
+            mode = "error",
+            text = "Failed to read image: ${e.message}",
         )
     }
 
     return if (hasVision) {
-        listOf(
-            UIMessagePart.Image(url = uri),
-            UIMessagePart.Text(
-                buildJsonObject {
-                    put("type", "read_image")
-                    put("url", url)
-                    put("description", "Image returned above")
-                }.toString()
-            ),
-        )
+        ReadImageResult(url = url, mode = "base64", imageUri = uri)
     } else {
         val ocrText = OcrTransformer.performOcr(UIMessagePart.Image(url = uri))
-        listOf(
-            UIMessagePart.Text(
-                buildJsonObject {
-                    put("type", "read_image")
-                    put("url", url)
-                    put("description", "Current model has no vision; OCR text of the image follows.")
-                }.toString()
-            ),
-            UIMessagePart.Text(ocrText),
-        )
+        ReadImageResult(url = url, mode = "ocr", text = ocrText)
     }
 }
 

@@ -264,6 +264,10 @@
   <string name="chat_message_tool_scrape_web">爬取網頁</string>
   <string name="chat_message_tool_scrape_urls">爬取 %1$d 個頁面</string>
   <string name="chat_message_tool_scrape_failed">%1$d 個失敗</string>
+  <string name="chat_message_tool_read_image">識別圖片</string>
+  <string name="chat_message_tool_read_image_count">%1$d 張圖片</string>
+  <string name="chat_message_tool_read_image_failed">%1$d 張失敗</string>
+  <string name="chat_message_tool_read_image_failed_label">失敗</string>
   <string name="chat_message_tool_search_results_count">共 %1$d 條結果</string>
   <string name="chat_message_tool_search_web">搜尋網頁: %1$s</string>
   <string name="chat_message_tool_submit">提交</string>

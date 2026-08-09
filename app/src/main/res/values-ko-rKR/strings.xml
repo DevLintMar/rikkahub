@@ -264,6 +264,10 @@
   <string name="chat_message_tool_scrape_web">웹 페이지 긁어오기</string>
   <string name="chat_message_tool_scrape_urls">페이지 %1$d개 가져오기</string>
   <string name="chat_message_tool_scrape_failed">%1$d개 실패</string>
+  <string name="chat_message_tool_read_image">이미지 인식</string>
+  <string name="chat_message_tool_read_image_count">이미지 %1$d개</string>
+  <string name="chat_message_tool_read_image_failed">%1$d개 실패</string>
+  <string name="chat_message_tool_read_image_failed_label">실패</string>
   <string name="chat_message_tool_search_results_count">%1$d개 결과</string>
   <string name="chat_message_tool_search_web">웹 검색: %1$s</string>
   <string name="chat_message_tool_submit">제출</string>

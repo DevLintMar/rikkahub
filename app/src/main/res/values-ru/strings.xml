@@ -264,6 +264,10 @@
   <string name="chat_message_tool_scrape_web">Собрать данные со страницы</string>
   <string name="chat_message_tool_scrape_urls">Получено %1$d стр.</string>
   <string name="chat_message_tool_scrape_failed">%1$d ошибок</string>
+  <string name="chat_message_tool_read_image">Распознать изображение</string>
+  <string name="chat_message_tool_read_image_count">Изображений: %1$d</string>
+  <string name="chat_message_tool_read_image_failed">%1$d ошибок</string>
+  <string name="chat_message_tool_read_image_failed_label">Ошибка</string>
   <string name="chat_message_tool_search_results_count">%1$d результатов</string>
   <string name="chat_message_tool_search_web">Поиск в интернете: %1$s</string>
   <string name="chat_message_tool_submit">Отправить</string>

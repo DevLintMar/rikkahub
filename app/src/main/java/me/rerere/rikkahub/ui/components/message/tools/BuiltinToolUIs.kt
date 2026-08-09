@@ -63,6 +63,7 @@ import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Eraser
 import me.rerere.hugeicons.stroke.FolderClock
 import me.rerere.hugeicons.stroke.GlobalSearch
+import me.rerere.hugeicons.stroke.Image03
 import me.rerere.hugeicons.stroke.MagicWand01
 import me.rerere.hugeicons.stroke.Message02
 import me.rerere.hugeicons.stroke.MessageDelay01
@@ -79,6 +80,7 @@ import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.ui.components.richtext.MarkdownBlock
+import me.rerere.rikkahub.ui.components.richtext.ZoomableAsyncImage
 import me.rerere.rikkahub.ui.components.ui.Favicon
 import me.rerere.rikkahub.ui.components.ui.FaviconRow
 import me.rerere.rikkahub.ui.modifier.shimmer
@@ -596,6 +598,205 @@ object UseSkillToolUI : ToolUIRenderer {
         }
         ToolDetailContainer {
             ToolTerminalOutput(output)
+        }
+    }
+}
+
+/**
+ * 图片读取（read_image）：标题固定"识别图片"（流式调用中与调用完成一致），
+ * 折叠下方小字显示图片缩略图与识别结果预览；详情信封渲染图片列表 + 每张图的识别结果。
+ */
+object ReadImageToolUI : ToolUIRenderer {
+    override val toolName: String = "read_image"
+
+    override fun icon(context: ToolUIContext): ImageVector = HugeIcons.Image03
+
+    @Composable
+    override fun title(context: ToolUIContext): String =
+        stringResource(R.string.chat_message_tool_read_image)
+
+    /** 单张图片的结果条目（来自 content["results"]） */
+    private data class Entry(
+        val url: String,
+        val mode: String,
+        val text: String?,
+    )
+
+    private fun entries(context: ToolUIContext): List<Entry> =
+        context.content?.jsonObjectOrNull?.get("results")?.jsonArray
+            ?.mapNotNull { it.jsonObjectOrNull }
+            ?.map { obj ->
+                Entry(
+                    url = obj.getStringContent("url") ?: "",
+                    mode = obj.getStringContent("mode") ?: "",
+                    text = obj.getStringContent("text"),
+                )
+            }
+            ?: emptyList()
+
+    private fun images(context: ToolUIContext): List<String> =
+        context.tool.output.filterIsInstance<UIMessagePart.Image>().map { it.url }
+
+    /** 剥掉 OCR 文本外层 <image_file_ocr> 包裹，只留识别内容 */
+    private fun cleanOcrText(text: String): String {
+        val inner = Regex("<image_file_ocr>([\\s\\S]*?)</image_file_ocr>")
+            .find(text)?.groupValues?.getOrNull(1)?.trim()
+        return inner?.takeIf { it.isNotBlank() } ?: text.trim()
+    }
+
+    override fun hasSummary(context: ToolUIContext): Boolean =
+        entries(context).isNotEmpty() || images(context).isNotEmpty()
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val images = images(context)
+        if (images.isNotEmpty()) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.shimmer(isLoading = context.loading),
+            ) {
+                items(images) { url ->
+                    ZoomableAsyncImage(
+                        model = url,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(width = 72.dp, height = 48.dp)
+                            .clip(RoundedCornerShape(6.dp)),
+                    )
+                }
+            }
+        }
+        val entries = entries(context)
+        val failed = entries.count { it.mode == "error" }
+        if (entries.isNotEmpty()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.chat_message_tool_read_image_count, entries.size),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                )
+                if (failed > 0) {
+                    Text(
+                        text = stringResource(R.string.chat_message_tool_read_image_failed, failed),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+            entries.firstOrNull { it.mode == "ocr" }?.text?.let { ocr ->
+                Text(
+                    text = cleanOcrText(ocr),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+
+    // 与 Preview 的 DefaultToolPreview fallback 保持一致
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean = context.content != null
+
+    @Composable
+    override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
+        val content = context.content
+        if (content == null) {
+            DefaultToolPreview(context = context)
+            return
+        }
+        val images = images(context)
+        val entries = entries(context)
+        ToolDetailContainer {
+            if (images.isNotEmpty()) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    items(images) { url ->
+                        ZoomableAsyncImage(
+                            model = url,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .height(120.dp)
+                                .width(160.dp)
+                                .clip(RoundedCornerShape(12.dp)),
+                        )
+                    }
+                }
+            }
+            content.getStringContent("note")?.let { note ->
+                Text(
+                    text = note,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (entries.isEmpty()) {
+                ToolJsonRawText(content)
+            } else {
+                entries.forEach { entry ->
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = when (entry.mode) {
+                                "error" -> MaterialTheme.colorScheme.errorContainer
+                                else -> MaterialTheme.colorScheme.surfaceContainerHighest
+                            }
+                        ),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                ToolPill(
+                                    when (entry.mode) {
+                                        "base64" -> "base64"
+                                        "ocr" -> "OCR"
+                                        else -> stringResource(R.string.chat_message_tool_read_image_failed_label)
+                                    }
+                                )
+                                Text(
+                                    text = entry.url,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                            when (entry.mode) {
+                                "error" -> entry.text?.let { err ->
+                                    Text(
+                                        text = err,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                }
+
+                                "ocr" -> entry.text?.let { ocr ->
+                                    Text(
+                                        text = cleanOcrText(ocr),
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
+
+                                else -> Unit // base64 图片已在上方渲染
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

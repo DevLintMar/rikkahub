@@ -105,6 +105,7 @@ object ToolUIRegistry {
         CalendarQueryToolUI,
         CalendarCreateToolUI,
         UseSkillToolUI,
+        ReadImageToolUI,
         ListConversationFoldersToolUI,
         RecentChatsToolUI,
         ConversationSearchToolUI,

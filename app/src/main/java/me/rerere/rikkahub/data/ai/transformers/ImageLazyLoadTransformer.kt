@@ -62,10 +62,15 @@ object ImageLazyLoadTransformer : InputMessageTransformer, KoinComponent {
     internal fun resolveDisplayPath(file: File?, filesDir: File): String {
         if (file == null) return "[Image]"
         val canonical = runCatching { file.canonicalFile }.getOrDefault(file)
-        if (canonical.parentFile == File(filesDir, "upload")) {
+        // upload 根也 canonical 化：context.filesDir 可能经符号链接（Android /data/data ↔ /data/user/0），
+        // 与 canonicalFile 的字符串形式不一致会导致 == 失效，图片被错误回退为手机绝对路径
+        val uploadRoot = runCatching { File(filesDir, "upload").canonicalFile }
+            .getOrDefault(File(filesDir, "upload"))
+        if (canonical.parentFile == uploadRoot) {
             return "file:///upload/${canonical.name}"
         }
-        val workspacesDir = File(filesDir, "workspaces")
+        val workspacesDir = runCatching { File(filesDir, "workspaces").canonicalFile }
+            .getOrDefault(File(filesDir, "workspaces"))
         val relative = runCatching { canonical.relativeTo(workspacesDir).path }.getOrNull()
         if (relative != null && !relative.startsWith("..")) {
             // workspaces/<id>/files/<rel> → file:///workspace/<rel>

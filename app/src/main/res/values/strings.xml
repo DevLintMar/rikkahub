@@ -274,6 +274,10 @@
   <string name="chat_message_tool_scrape_web">Scrape web page</string>
   <string name="chat_message_tool_scrape_urls">Scrape %1$d page(s)</string>
   <string name="chat_message_tool_scrape_failed">%1$d failed</string>
+  <string name="chat_message_tool_read_image">Read Image</string>
+  <string name="chat_message_tool_read_image_count">%1$d image(s)</string>
+  <string name="chat_message_tool_read_image_failed">%1$d failed</string>
+  <string name="chat_message_tool_read_image_failed_label">Failed</string>
   <string name="chat_message_tool_search_results_count">%1$d results</string>
   <string name="chat_message_tool_search_web">Search web: %1$s</string>
   <string name="chat_message_tool_sub_agent">Running sub-agent</string>
