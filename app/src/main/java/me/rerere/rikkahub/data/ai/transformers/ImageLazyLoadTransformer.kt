@@ -3,6 +3,7 @@ package me.rerere.rikkahub.data.ai.transformers
 import android.content.Context
 import androidx.core.net.toFile
 import androidx.core.net.toUri
+import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import org.koin.core.component.KoinComponent
@@ -13,6 +14,10 @@ import java.io.File
  * 图片懒加载：用户附加的图片不再直接发送给模型（避免每轮请求全量重编码重发、
  * 以及切换到非视觉模型时对全部历史图片的巨量 OCR 开销），
  * 改为注入一条包含图片路径的文本标记，AI 需要时调用 read_image 工具按需查看。
+ *
+ * 只处理 USER role 消息中的图片（用户附加的才是"待查看"图片）；
+ * assistant 出图与工具结果图片是模型已可见的产物，保持原样，
+ * 避免重新生成含图消息时把它们错误替换成标记、导致图片丢失或找不到文件。
  *
  * 每轮生成都会对发送副本重新执行本 transform（不写回原消息），
  * 消息本体的 Image part 保持不变，UI / 导出 / 多图合并均不受影响。
@@ -25,6 +30,8 @@ object ImageLazyLoadTransformer : InputMessageTransformer, KoinComponent {
     ): List<UIMessage> {
         val filesDir = get<Context>().filesDir
         return messages.map { message ->
+            // 仅懒加载用户附加的图片；assistant 出图/工具结果图片保持原样
+            if (message.role != MessageRole.USER) return@map message
             val images = message.parts.filterIsInstance<UIMessagePart.Image>()
                 .filter { it.url.startsWith("file:") }
             if (images.isEmpty()) return@map message
@@ -62,6 +69,8 @@ object ImageLazyLoadTransformer : InputMessageTransformer, KoinComponent {
     internal fun resolveDisplayPath(file: File?, filesDir: File): String {
         if (file == null) return "[Image]"
         val canonical = runCatching { file.canonicalFile }.getOrDefault(file)
+        // 文件已不存在：不映射成看似可读的 URL，模型读到 [Image] 就不会去调 read_image 报"找不到图片"
+        if (!canonical.isFile) return "[Image]"
         // upload 根也 canonical 化：context.filesDir 可能经符号链接（Android /data/data ↔ /data/user/0），
         // 与 canonicalFile 的字符串形式不一致会导致 == 失效，图片被错误回退为手机绝对路径
         val uploadRoot = runCatching { File(filesDir, "upload").canonicalFile }

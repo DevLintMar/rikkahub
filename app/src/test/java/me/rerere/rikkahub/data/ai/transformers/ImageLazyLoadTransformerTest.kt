@@ -35,12 +35,20 @@ class ImageLazyLoadTransformerTest {
     }
 
     @Test
-    fun `filesDir 外文件回退为自身 file URL`() {
+    fun `filesDir 外已存在的文件回退为自身 file URL`() {
         val filesDir = filesDir()
         val outside = tempFolder.newFolder("outside")
-        val file = File(outside, "x.png")
+        val file = File(outside, "x.png").apply { createNewFile() }
         val expected = "file://" + file.absolutePath.replace('\\', '/')
         assertEquals(expected, ImageLazyLoadTransformer.resolveDisplayPath(file, filesDir))
+    }
+
+    @Test
+    fun `不存在的文件回退为占位标记`() {
+        val filesDir = filesDir()
+        val outside = tempFolder.newFolder("outside")
+        val missing = File(outside, "nope.png")
+        assertEquals("[Image]", ImageLazyLoadTransformer.resolveDisplayPath(missing, filesDir))
     }
 
     @Test

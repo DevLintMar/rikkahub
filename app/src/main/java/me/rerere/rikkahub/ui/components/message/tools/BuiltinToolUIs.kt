@@ -649,24 +649,7 @@ object ReadImageToolUI : ToolUIRenderer {
 
     @Composable
     override fun Summary(context: ToolUIContext) {
-        val images = images(context)
-        if (images.isNotEmpty()) {
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.shimmer(isLoading = context.loading),
-            ) {
-                items(images) { url ->
-                    ZoomableAsyncImage(
-                        model = url,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(width = 72.dp, height = 48.dp)
-                            .clip(RoundedCornerShape(6.dp)),
-                    )
-                }
-            }
-        }
+        // 图片缩略图由 ChatMessageTools 统一渲染（折叠步骤 64dp 缩略图），此处只给文本概览
         val entries = entries(context)
         val failed = entries.count { it.mode == "error" }
         if (entries.isNotEmpty()) {

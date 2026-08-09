@@ -116,7 +116,6 @@ object OcrTransformer : InputMessageTransformer, KoinComponent {
                 <image_file_ocr>
                    $content
                 </image_file_ocr>
-                * The image_file_ocr tag contains a description of an image that the user uploaded to you, not the user's prompt.
             """.trimIndent()
 
             // Cache the result
