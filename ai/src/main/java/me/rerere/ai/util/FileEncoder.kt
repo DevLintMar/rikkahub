@@ -23,6 +23,40 @@ data class EncodedImage(
     val mimeType: String
 )
 
+/**
+ * 图片编码内存缓存：图片在每轮请求构建时都会被重新压缩编码，
+ * 按「文件路径 + 大小 + 修改时间」缓存结果，避免重复解码压缩。
+ * 纯内存 LRU，按条数与字节预算双限淘汰。
+ */
+private object ImageEncodeCache {
+    private const val MAX_ENTRIES = 32
+    private const val MAX_BYTES = 16L * 1024 * 1024
+
+    private var currentBytes = 0L
+
+    // accessOrder = true：迭代顺序为最久未访问在前
+    private val cache = LinkedHashMap<String, EncodedImage>(16, 0.75f, true)
+
+    fun keyFor(file: File): String = "${file.absolutePath}:${file.length()}:${file.lastModified()}"
+
+    @Synchronized
+    fun get(key: String): EncodedImage? = cache[key]
+
+    @Synchronized
+    fun put(key: String, value: EncodedImage) {
+        cache[key]?.let { currentBytes -= it.base64.length }
+        cache[key] = value
+        currentBytes += value.base64.length
+        val iterator = cache.entries.iterator()
+        while (iterator.hasNext() && (cache.size > MAX_ENTRIES || currentBytes > MAX_BYTES)) {
+            val eldest = iterator.next()
+            if (eldest.key == key) break // 不淘汰刚放入的条目
+            iterator.remove()
+            currentBytes -= eldest.value.base64.length
+        }
+    }
+}
+
 internal enum class ExifTransformType {
     NONE,
     FLIP_HORIZONTAL,
@@ -59,8 +93,13 @@ fun UIMessagePart.Image.encodeBase64(withPrefix: Boolean = true): Result<Encoded
                 throw IllegalArgumentException("File does not exist: ${this.url}")
             }
             val mimeType = file.guessMimeType().getOrThrow()
-            // 统一进行压缩处理
-            val (encoded, outputMimeType) = file.compressAndEncode(mimeType)
+            // 统一进行压缩处理（命中缓存则直接复用）
+            val cacheKey = ImageEncodeCache.keyFor(file)
+            val cached = ImageEncodeCache.get(cacheKey)
+            val (encoded, outputMimeType) = cached?.let { it.base64 to it.mimeType }
+                ?: file.compressAndEncode(mimeType).also {
+                    ImageEncodeCache.put(cacheKey, EncodedImage(base64 = it.first, mimeType = it.second))
+                }
             EncodedImage(
                 base64 = if (withPrefix) "data:$outputMimeType;base64,$encoded" else encoded,
                 mimeType = outputMimeType
@@ -116,7 +155,7 @@ fun UIMessagePart.Audio.encodeBase64(withPrefix: Boolean = true): Result<String>
 
 private fun File.compressAndEncode(
     mimeType: String,
-    maxDimension: Int = 10_000,
+    maxDimension: Int = 4_000,
     maxPixels: Long = 16_000_000L,
     quality: Int = 85
 ): Pair<String, String> {
