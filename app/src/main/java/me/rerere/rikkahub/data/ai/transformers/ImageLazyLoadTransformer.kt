@@ -6,6 +6,7 @@ import androidx.core.net.toUri
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.rikkahub.data.model.IMAGE_LAZY_LOAD_MARKER_PREFIX
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
 import java.io.File
@@ -41,7 +42,7 @@ object ImageLazyLoadTransformer : InputMessageTransformer, KoinComponent {
                 resolveDisplayPath(file, filesDir)
             }
             val marker = buildString {
-                appendLine("[The user attached ${images.size} image(s) to this message:")
+                appendLine("${IMAGE_LAZY_LOAD_MARKER_PREFIX}${images.size} image(s) to this message:")
                 paths.forEach { appendLine("- $it") }
                 append("The image contents are NOT included automatically. Call the `read_image` tool with these URLs if you need to see them.]")
             }

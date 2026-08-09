@@ -918,7 +918,16 @@ class ChatService(
         // 移除无效消息
         messagesNodes = messagesNodes.filter { it.messages.isNotEmpty() }
 
-        updateConversation(conversationId, conversation.copy(messageNodes = messagesNodes))
+        val cleanedConversation = conversation.copy(messageNodes = messagesNodes)
+        updateConversation(conversationId, cleanedConversation)
+
+        // 图片懒加载标记清理：标记是发送态产物（ImageLazyLoadTransformer 只注入到
+        // 发给模型的副本），一旦因重新生成等路径残留在持久化消息里，AI 会看到死路径
+        // 导致图片变占位。检测到即剥离标记文本，让消息回到干净的用户文本。
+        val stripped = cleanedConversation.stripLazyLoadImageMarkers()
+        if (stripped != cleanedConversation) {
+            updateConversation(conversationId, stripped)
+        }
     }
 
     private fun cancelToolByUser(tool: UIMessagePart.Tool): UIMessagePart.Tool {

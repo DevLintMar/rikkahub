@@ -703,8 +703,7 @@ object ReadImageToolUI : ToolUIRenderer {
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     items(images) { url ->
-                        // 高度固定占满、宽度按原比例缩放，Fit 完整显示不被 Crop 截断；
-                        // 外层固定 120×160 容器裁掉按比例缩放后的空白/溢出
+                        // 高度固定占满、宽度按原比例缩放，Fit 完整显示不被 Crop 截断
                         Box(
                             modifier = Modifier
                                 .height(120.dp)
@@ -716,9 +715,7 @@ object ReadImageToolUI : ToolUIRenderer {
                                 model = url,
                                 contentDescription = null,
                                 contentScale = ContentScale.Fit,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(RoundedCornerShape(12.dp)),
+                                modifier = Modifier.fillMaxSize(),
                             )
                         }
                     }

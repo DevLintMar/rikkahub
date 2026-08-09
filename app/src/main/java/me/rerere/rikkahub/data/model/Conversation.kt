@@ -39,6 +39,33 @@ data class Conversation(
             .flatMap { node -> node.messages.flatMap { it.parts } }
             .collectAllParts()
             .mapNotNull { it.fileUri() }
+            .distinct()
+
+    /**
+     * 移除所有图片懒加载标记文本 part，让消息回到干净的用户文本。
+     * 标记是发送态产物（ImageLazyLoadTransformer 只注入到发给模型的副本），
+     * 持久化消息里不该出现；重新生成旧懒加载消息时若残留，AI 会看到死路径 → 图片占位。
+     * 返回移除后的 Conversation（无标记时原样返回）。
+     */
+    fun stripLazyLoadImageMarkers(): Conversation {
+        val newNodes = messageNodes.map { node ->
+            if (node.messages.isEmpty()) return@map node
+            val newMessages = node.messages.map { message ->
+                if (message.role != MessageRole.USER) return@map message
+                val newParts = message.parts.filterNot { part ->
+                    part is UIMessagePart.Text &&
+                        part.text.startsWith(IMAGE_LAZY_LOAD_MARKER_PREFIX) &&
+                        part.text.contains("read_image")
+                }
+                if (newParts.size == message.parts.size) message
+                else message.copy(parts = newParts)
+            }
+            if (newMessages == node.messages) node
+            else node.copy(messages = newMessages)
+        }
+        return if (newNodes == messageNodes) this
+        else copy(messageNodes = newNodes)
+    }
 
     /**
      *  当前选中的 message
@@ -103,6 +130,12 @@ data class Conversation(
             newConversation = newConversation,
         )
     }
+
+    /**
+     * 图片懒加载标记的辨识前缀（与 ImageLazyLoadTransformer 注入文本一致，
+     * 需同步维护）。
+     */
+    internal const val IMAGE_LAZY_LOAD_MARKER_PREFIX = "[The user attached "
 }
 
 @Serializable
