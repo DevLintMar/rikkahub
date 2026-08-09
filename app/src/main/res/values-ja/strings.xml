@@ -1067,6 +1067,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="theme_name_spring">メドウグリーン</string>
   <string name="title_activity_safe_mode">セーフモード</string>
   <string name="tools_warning">現在のモデルではツール呼び出しが有効になっていません。設定でモデルのツール機能を有効にしてから、検索/MCPなどの機能を使用してください。</string>
+  <string name="error_tool_unable_read_images">この会話には画像が含まれていますが、現在のモデルはツール呼び出しに対応していないため、read_image ツールで画像を表示できません。ツールに対応したモデルに切り替えてください。</string>
   <string name="translate">翻訳</string>
   <string name="translating">翻訳中...</string>
   <string name="translation_clear">翻訳をクリア</string>

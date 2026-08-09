@@ -1065,6 +1065,7 @@
   <string name="theme_name_spring">原野綠</string>
   <string name="title_activity_safe_mode">安全模式</string>
   <string name="tools_warning">當前模型未開啟工具調用，請在設定內啟用模型的工具能力，再使用搜尋/MCP等功能</string>
+  <string name="error_tool_unable_read_images">該會話中包含圖片，但當前模型不支援工具調用，無法透過 read_image 工具檢視圖片，請切換為支援工具的模型</string>
   <string name="translate">翻譯</string>
   <string name="translating">翻譯中...</string>
   <string name="translation_clear">清空翻譯</string>

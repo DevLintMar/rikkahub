@@ -1113,6 +1113,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="theme_name_spring">原野绿</string>
   <string name="title_activity_safe_mode">安全模式</string>
   <string name="tools_warning">当前模型未开启工具调用，请在设置内启用模型的工具能力，再使用搜索/MCP等功能</string>
+  <string name="error_tool_unable_read_images">该会话中包含图片，但当前模型不支持工具调用，无法通过 read_image 工具查看图片，请切换为支持工具的模型</string>
   <string name="translate">翻译</string>
   <string name="translating">翻译中...</string>
   <string name="translation_clear">清空翻译</string>

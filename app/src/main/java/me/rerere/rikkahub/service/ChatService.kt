@@ -47,6 +47,7 @@ import me.rerere.rikkahub.data.ai.GenerationChunk
 import me.rerere.rikkahub.data.ai.GenerationHandler
 import me.rerere.rikkahub.data.ai.mcp.McpManager
 import me.rerere.rikkahub.data.ai.tools.createConversationTools
+import me.rerere.rikkahub.data.ai.tools.createReadImageTool
 import me.rerere.rikkahub.data.ai.tools.local.LocalTools
 import me.rerere.rikkahub.data.ai.tools.local.McpToolGroup
 import me.rerere.rikkahub.data.ai.tools.local.SubAgentToolContext
@@ -59,7 +60,7 @@ import me.rerere.rikkahub.data.ai.tools.createWorkspaceTools
 import me.rerere.rikkahub.data.files.SkillManager
 import me.rerere.rikkahub.data.ai.transformers.Base64ImageToLocalFileTransformer
 import me.rerere.rikkahub.data.ai.transformers.DocumentAsPromptTransformer
-import me.rerere.rikkahub.data.ai.transformers.OcrTransformer
+import me.rerere.rikkahub.data.ai.transformers.ImageLazyLoadTransformer
 import me.rerere.rikkahub.data.ai.transformers.PlaceholderTransformer
 import me.rerere.rikkahub.data.ai.transformers.PromptInjectionTransformer
 import me.rerere.rikkahub.data.ai.transformers.RegexOutputTransformer
@@ -125,7 +126,7 @@ private val inputTransformers by lazy {
         PromptInjectionTransformer,
         PlaceholderTransformer,
         DocumentAsPromptTransformer,
-        OcrTransformer,
+        ImageLazyLoadTransformer,
     )
 }
 
@@ -617,6 +618,17 @@ class ChatService(
                         title = context.getString(R.string.error_title_tool_unavailable)
                     )
                 }
+                // 会话中存在用户图片时提示：图片懒加载依赖 read_image 工具，无工具能力的模型无法查看
+                val hasAttachedImages = initialConversation.messageNodes
+                    .flatMap { it.messages }
+                    .any { message -> message.parts.any { it is UIMessagePart.Image && it.url.startsWith("file:") } }
+                if (hasAttachedImages) {
+                    addError(
+                        IllegalStateException(context.getString(R.string.error_tool_unable_read_images)),
+                        conversationId,
+                        title = context.getString(R.string.error_title_tool_unavailable)
+                    )
+                }
             }
 
             // check invalid messages
@@ -690,6 +702,7 @@ class ChatService(
                     }
 
                     baseTools.addAll(createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), conversation.workspaceCwd))
+                    baseTools.addAll(createReadImageTool(assistant.workspaceId?.toString(), workspaceRepository))
 
                     // MCP 工具按 server 分组
                     val rawTools = mcpManager.getAllAvailableTools()
@@ -774,6 +787,8 @@ class ChatService(
                     }
                     // 工作区工具
                     addAll(createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), conversation.workspaceCwd))
+                    // 图片懒加载读取工具
+                    addAll(createReadImageTool(assistant.workspaceId?.toString(), workspaceRepository))
                     // Skill 工具
                     skillTool?.let { add(it) }
                     // MCP 工具

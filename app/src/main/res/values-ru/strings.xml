@@ -1067,6 +1067,7 @@
   <string name="theme_name_spring">Луговой зелёный</string>
   <string name="title_activity_safe_mode">Безопасный режим</string>
   <string name="tools_warning">Текущая модель не поддерживает вызов инструментов. Чтобы использовать функции поиска/MCP, включите возможности инструментов модели в настройках.</string>
+  <string name="error_tool_unable_read_images">В этом диалоге есть изображения, но текущая модель не поддерживает вызов инструментов и не может просматривать их через инструмент read_image. Переключитесь на модель с поддержкой инструментов.</string>
   <string name="translate">Перевести</string>
   <string name="translating">Перевод...</string>
   <string name="translation_clear">Очистить перевод</string>

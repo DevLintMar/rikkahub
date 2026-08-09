@@ -1067,6 +1067,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="theme_name_spring">들판 녹색</string>
   <string name="title_activity_safe_mode">안전 모드</string>
   <string name="tools_warning">현재 모델에는 도구 호출 기능이 활성화되어 있지 않습니다. 검색/MCP 기능 사용을 위해 설정에서 모델의 도구 기능을 활성화하세요.</string>
+  <string name="error_tool_unable_read_images">이 대화에는 이미지가 포함되어 있지만 현재 모델은 도구 호출을 지원하지 않아 read_image 도구로 이미지를 볼 수 없습니다. 도구를 지원하는 모델로 전환하세요.</string>
   <string name="translate">번역</string>
   <string name="translating">번역 중...</string>
   <string name="translation_clear">번역 지우기</string>

@@ -2,6 +2,7 @@ package me.rerere.rikkahub.data.ai.transformers
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.serializer
@@ -79,7 +80,7 @@ object OcrTransformer : InputMessageTransformer, KoinComponent {
         }
     }
 
-    suspend fun performOcr(part: UIMessagePart.Image): String = runCatching {
+    suspend fun performOcr(part: UIMessagePart.Image): String {
         // Check cache first
         cache.get(part.url)?.let { cachedResult ->
             Log.i(TAG, "performOcr: Using cached result for ${part.url}")
@@ -87,37 +88,44 @@ object OcrTransformer : InputMessageTransformer, KoinComponent {
         }
 
         val settings = get<SettingsStore>().settingsFlow.value
-        val model = settings.findModelById(settings.ocrModelId) ?: return "[Image]"
-        val providerSetting = model.findProvider(settings.providers) ?: return "[Image]"
+        val model = settings.findModelById(settings.ocrModelId)
+            ?: return "[ERROR, OCR model not configured]"
+        val providerSetting = model.findProvider(settings.providers)
+            ?: return "[ERROR, OCR model provider not found]"
         val provider = get<ProviderManager>().getProviderByType(providerSetting)
-        val result = provider.generateText(
-            providerSetting = providerSetting,
-            messages = listOf(
-                UIMessage.system(settings.ocrPrompt),
-                UIMessage(
-                    role = MessageRole.USER,
-                    parts = listOf(UIMessagePart.Image(part.url))
-                )
-            ),
-            params = TextGenerationParams(
-                model = model,
-                customHeaders = model.customHeaders,
-                customBody = model.customBodies,
-            ),
-        )
-        val content = result.choices[0].message?.toText() ?: "[ERROR, OCR failed]"
-        Log.i(TAG, "performOcr: $content")
-        val ocrResult = """
-            <image_file_ocr>
-               $content
-            </image_file_ocr>
-            * The image_file_ocr tag contains a description of an image that the user uploaded to you, not the user's prompt.
-        """.trimIndent()
 
-        // Cache the result
-        cache.put(part.url, ocrResult)
-        return ocrResult
-    }.getOrElse {
-        "[ERROR, OCR failed: $it]"
+        return try {
+            val result = provider.generateText(
+                providerSetting = providerSetting,
+                messages = listOf(
+                    UIMessage.system(settings.ocrPrompt),
+                    UIMessage(
+                        role = MessageRole.USER,
+                        parts = listOf(UIMessagePart.Image(part.url))
+                    )
+                ),
+                params = TextGenerationParams(
+                    model = model,
+                    customHeaders = model.customHeaders,
+                    customBody = model.customBodies,
+                ),
+            )
+            val content = result.choices[0].message?.toText() ?: "[ERROR, OCR failed: empty response]"
+            Log.i(TAG, "performOcr: $content")
+            val ocrResult = """
+                <image_file_ocr>
+                   $content
+                </image_file_ocr>
+                * The image_file_ocr tag contains a description of an image that the user uploaded to you, not the user's prompt.
+            """.trimIndent()
+
+            // Cache the result
+            cache.put(part.url, ocrResult)
+            ocrResult
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            "[ERROR, OCR failed: $e]"
+        }
     }
 }

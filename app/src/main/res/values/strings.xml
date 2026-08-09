@@ -1179,6 +1179,7 @@
   <string name="theme_name_spring">Meadow Green</string>
   <string name="title_activity_safe_mode">Safe Mode</string>
   <string name="tools_warning">The current model does not have tool calling enabled. Please enable the model\'s tool capabilities in the settings to use features like search/MCP.</string>
+  <string name="error_tool_unable_read_images">This conversation contains images, but the current model does not support tool calls and therefore cannot view them via the read_image tool. Please switch to a model with tool capabilities.</string>
   <string name="translate">Translate</string>
   <string name="translating">Translating...</string>
   <string name="translation_clear">Clear Translation</string>
