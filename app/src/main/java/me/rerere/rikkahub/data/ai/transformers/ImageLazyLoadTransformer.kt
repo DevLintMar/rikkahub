@@ -69,10 +69,11 @@ object ImageLazyLoadTransformer : InputMessageTransformer, KoinComponent {
         if (relative != null && !relative.startsWith("..")) {
             // workspaces/<id>/files/<rel> → /workspace/<rel>
             val segments = relative.split(File.separatorChar)
-            if (segments.size >= 3 && segments[1].isNotEmpty() && segments[2] == "files") {
-                return "/workspace/" + segments.drop(3).joinToString("/")
+            if (segments.size >= 3 && segments[0].isNotEmpty() && segments[1] == "files") {
+                return "/workspace/" + segments.drop(2).joinToString("/")
             }
         }
-        return file.toUri().toString()
+        // 回退：file:// URL 字符串拼接（不依赖 Android toUri，纯 JVM 可测）
+        return "file://" + file.absolutePath.replace('\\', '/')
     }
 }
