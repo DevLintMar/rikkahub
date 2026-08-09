@@ -701,15 +701,24 @@ object ReadImageToolUI : ToolUIRenderer {
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     items(images) { url ->
-                        ZoomableAsyncImage(
-                            model = url,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
+                        // 高度固定占满、宽度按原比例缩放，Fit 完整显示不被 Crop 截断；
+                        // 外层固定 120×160 容器裁掉按比例缩放后的空白/溢出
+                        Box(
                             modifier = Modifier
                                 .height(120.dp)
                                 .width(160.dp)
                                 .clip(RoundedCornerShape(12.dp)),
-                        )
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            ZoomableAsyncImage(
+                                model = url,
+                                contentDescription = null,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(12.dp)),
+                            )
+                        }
                     }
                 }
             }
