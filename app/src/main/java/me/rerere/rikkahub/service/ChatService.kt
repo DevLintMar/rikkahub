@@ -77,6 +77,7 @@ import me.rerere.rikkahub.data.datastore.getAssistantById
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.datastore.getCurrentChatModel
 import me.rerere.rikkahub.data.files.FilesManager
+import me.rerere.rikkahub.data.files.FileFolders
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.AssistantAffectScope
@@ -1224,8 +1225,14 @@ class ChatService(
         }
         val newFiles = newConversation.files
         val oldFiles = oldConversation.files
+        // upload 目录附件是用户持久附件（图片/文档），可能被多条消息引用；
+        // 任何自动清理误删的代价极高（重新生成/懒加载等路径可能误判引用），
+        // 因此 upload 文件一律不随会话更新自动删除，靠"设置-文件管理"手动清理。
+        val uploadRoot = context.filesDir.resolve(FileFolders.UPLOAD).absolutePath
         val deletedFiles = oldFiles.filter { file ->
             newFiles.none { it == file }
+        }.filterNot { file ->
+            file.path?.startsWith(uploadRoot) == true
         }
         if (deletedFiles.isNotEmpty()) {
             // 诊断：记录被删文件与调用来源（定位"重新生成后图片被删"根因）
