@@ -11,29 +11,29 @@ import org.junit.Test
 class ReadImageToolsTest {
 
     @Test
-    fun `paths 数组正常解析并去除空白项`() {
+    fun `urls 数组正常解析并去除空白项`() {
         val args = buildJsonObject {
-            putJsonArray("paths") {
-                add("/upload/a.jpg")
+            putJsonArray("urls") {
+                add("file:///upload/a.jpg")
                 add("   ")
-                add("  /workspace/b.png  ")
+                add("  https://example.com/b.png  ")
             }
         }
         assertEquals(
-            listOf("/upload/a.jpg", "/workspace/b.png"),
+            listOf("file:///upload/a.jpg", "https://example.com/b.png"),
             parseReadImagePaths(args)
         )
     }
 
     @Test
-    fun `缺少 paths 参数返回空列表`() {
+    fun `缺少 urls 参数返回空列表`() {
         val args = buildJsonObject { put("limit", 1) }
         assertTrue(parseReadImagePaths(args).isEmpty())
     }
 
     @Test
-    fun `paths 非数组时返回空列表`() {
-        val args = buildJsonObject { put("paths", "/upload/a.jpg") }
+    fun `urls 非数组时返回空列表`() {
+        val args = buildJsonObject { put("urls", "file:///upload/a.jpg") }
         assertTrue(parseReadImagePaths(args).isEmpty())
     }
 

@@ -36,7 +36,7 @@ object ImageLazyLoadTransformer : InputMessageTransformer, KoinComponent {
             val marker = buildString {
                 appendLine("[The user attached ${images.size} image(s) to this message:")
                 paths.forEach { appendLine("- $it") }
-                append("The image contents are NOT included automatically. Call the `read_image` tool with these paths if you need to see them.]")
+                append("The image contents are NOT included automatically. Call the `read_image` tool with these URLs if you need to see them.]")
             }
 
             var markerInjected = false
@@ -55,25 +55,26 @@ object ImageLazyLoadTransformer : InputMessageTransformer, KoinComponent {
     }
 
     /**
-     * 物理文件 → AI 可见路径：upload 目录映射为 /upload/<文件名>（proot 挂载点），
-     * 工作区文件映射为 /workspace/<相对路径>，其余回退为 file:// URL。
+     * 物理文件 → AI 可见 URL：upload 目录映射为 file:///upload/<文件名>（proot 挂载点），
+     * 工作区文件映射为 file:///workspace/<相对路径>，其余回退为自身 file:// URL。
+     * 无法解析物理文件（如遗留 content://）时返回占位标记。
      */
     internal fun resolveDisplayPath(file: File?, filesDir: File): String {
-        if (file == null) return "[unreadable image]"
+        if (file == null) return "[Image]"
         val canonical = runCatching { file.canonicalFile }.getOrDefault(file)
         if (canonical.parentFile == File(filesDir, "upload")) {
-            return "/upload/${canonical.name}"
+            return "file:///upload/${canonical.name}"
         }
         val workspacesDir = File(filesDir, "workspaces")
         val relative = runCatching { canonical.relativeTo(workspacesDir).path }.getOrNull()
         if (relative != null && !relative.startsWith("..")) {
-            // workspaces/<id>/files/<rel> → /workspace/<rel>
+            // workspaces/<id>/files/<rel> → file:///workspace/<rel>
             val segments = relative.split(File.separatorChar)
             if (segments.size >= 3 && segments[0].isNotEmpty() && segments[1] == "files") {
-                return "/workspace/" + segments.drop(2).joinToString("/")
+                return "file:///workspace/" + segments.drop(2).joinToString("/")
             }
         }
-        // 回退：file:// URL 字符串拼接（不依赖 Android toUri，纯 JVM 可测）
+        // 回退：自身 file:// URL 字符串拼接（不依赖 Android toUri，纯 JVM 可测）
         return "file://" + file.absolutePath.replace('\\', '/')
     }
 }

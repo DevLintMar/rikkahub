@@ -102,6 +102,10 @@ class FilesManager(
     fun getFile(entity: ManagedFileEntity): File =
         File(context.filesDir, entity.relativePath)
 
+    /**
+     * 把外部内容拷贝进 upload/ 并登记管理。单个 Uri 失败时跳过（返回的列表可能短于入参）。
+     * 调用方应只消费返回的 file:// Uri。
+     */
     fun createChatFilesByContents(uris: List<Uri>): List<Uri> {
         val newUris = mutableListOf<Uri>()
         val dir = context.filesDir.resolve(FileFolders.UPLOAD)
@@ -144,14 +148,18 @@ class FilesManager(
         return newUris
     }
 
-    fun createChatFilesByByteArrays(byteArrays: List<ByteArray>): List<Uri> {
+    fun createChatFilesByByteArrays(
+        byteArrays: List<ByteArray>,
+        extension: String = "png",
+    ): List<Uri> {
         val newUris = mutableListOf<Uri>()
         val dir = context.filesDir.resolve(FileFolders.UPLOAD)
         if (!dir.exists()) {
             dir.mkdirs()
         }
+        val normalizedExt = extension.trimStart('.').ifEmpty { "png" }.lowercase()
         byteArrays.forEach { byteArray ->
-            val fileName = buildUuidFileName(displayName = "image.png", mimeType = "image/png")
+            val fileName = buildUuidFileName(displayName = "image.$normalizedExt", mimeType = "image/$normalizedExt")
             val file = dir.resolve(fileName)
             if (!file.exists()) {
                 file.createNewFile()
@@ -163,8 +171,8 @@ class FilesManager(
             trackManagedFile(
                 folder = FileFolders.UPLOAD,
                 file = file,
-                displayName = "image.png",
-                mimeType = "image/png"
+                displayName = "image.$normalizedExt",
+                mimeType = "image/$normalizedExt"
             )
             newUris.add(newUri)
         }

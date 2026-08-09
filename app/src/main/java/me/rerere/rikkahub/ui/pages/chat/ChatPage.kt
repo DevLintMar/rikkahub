@@ -153,20 +153,17 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null, is
     // 初始化输入状态（处理传入的 files 和 text 参数）
     LaunchedEffect(files, text) {
         if (files.isNotEmpty()) {
-            val localFiles = filesManager.createChatFilesByContents(files)
-            val contentTypes = files.mapNotNull { file ->
-                filesManager.getFileMimeType(file)
-            }
-            val parts = buildList {
-                localFiles.forEachIndexed { index, file ->
-                    val type = contentTypes.getOrNull(index)
-                    if (type?.startsWith("image/") == true) {
-                        add(UIMessagePart.Image(url = file.toString()))
-                    } else if (type?.startsWith("video/") == true) {
-                        add(UIMessagePart.Video(url = file.toString()))
-                    } else if (type?.startsWith("audio/") == true) {
-                        add(UIMessagePart.Audio(url = file.toString()))
-                    }
+            // 逐个拷贝落盘 upload/ 并取 mime：只把成功的 file:// 文件放进消息，
+            // 避免拷贝失败时 content:// Uri 泄漏进消息（懒加载无法解析）
+            val parts = files.mapNotNull { uri ->
+                val mime = filesManager.getFileMimeType(uri) ?: return@mapNotNull null
+                val localFile = filesManager.createChatFilesByContents(listOf(uri)).firstOrNull()
+                    ?: return@mapNotNull null
+                when {
+                    mime.startsWith("image/") -> UIMessagePart.Image(url = localFile.toString())
+                    mime.startsWith("video/") -> UIMessagePart.Video(url = localFile.toString())
+                    mime.startsWith("audio/") -> UIMessagePart.Audio(url = localFile.toString())
+                    else -> null
                 }
             }
             inputState.messageContent = parts

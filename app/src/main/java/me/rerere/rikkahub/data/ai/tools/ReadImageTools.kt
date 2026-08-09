@@ -27,14 +27,18 @@ import java.io.File
 
 /**
  * read_image 工具：图片懒加载的读取端。
- * 用户附加的图片默认不进上下文（见 ImageLazyLoadTransformer，只注入路径标记），
- * AI 需要查看时调用本工具按路径读取：
+ * 用户附加的图片默认不进上下文（见 ImageLazyLoadTransformer，只注入 URL 标记），
+ * AI 需要查看时调用本工具按 URL 读取：
  * - 视觉模型：返回图片本体（三家 provider 的工具结果图片通道已存在）
  * - 非视觉模型：并行调用 OCR 模型转文本后一次性返回
  *
- * 与工作区绑定门控：助手未启用工作区时不注册（路径解析依赖 rootfs）。
+ * 恒注册，不依赖工作区：file:///upload/... 全局可解析（没有工作区时 upload 挂载依然存在）；
+ * file:///workspace/... 与其它绝对路径需要当前助手启用工作区；
+ * http(s) URL 会先下载到 upload/ 再读取。
  */
 const val READ_IMAGE_MAX_IMAGES_PER_CALL = 8
+
+private const val READ_IMAGE_MAX_DOWNLOAD_BYTES = 8L * 1024 * 1024
 
 private val READ_IMAGE_EXTENSIONS = setOf(
     "png", "jpg", "jpeg", "gif", "webp", "bmp", "heic", "heif", "avif",
@@ -44,34 +48,36 @@ fun createReadImageTool(
     workspaceId: String?,
     workspaceRepository: WorkspaceRepository,
 ): List<Tool> {
-    if (workspaceId.isNullOrBlank()) return emptyList()
     return listOf(
         Tool(
             name = "read_image",
             description = """
-                Read one or more images by path. Accepts paths under /upload/... (user attachments) and workspace paths (/workspace/... or absolute rootfs paths).
-                Up to $READ_IMAGE_MAX_IMAGES_PER_CALL paths per call; any extra paths are omitted and reported in the result.
+                Read one or more images by URL. Accepts:
+                - file:///upload/... — images the user attached to the chat (always available)
+                - file:///workspace/... or other absolute workspace paths (requires a workspace-enabled assistant)
+                - http:// or https:// links — downloaded and read
+                Up to $READ_IMAGE_MAX_IMAGES_PER_CALL images per call; any extra URLs are omitted and reported in the result.
                 For vision-capable models, the images themselves are returned — you will see them directly.
                 For models without vision, each image is OCR'd by a dedicated vision model and returned as text wrapped in <image_file_ocr> tags (all images are processed in parallel).
-                Use this tool to view images that the user attached in chat: their paths appear as /upload/... or /workspace/... in the message.
+                Use this tool to view images that the user attached in chat: their URLs appear as file:///upload/... in the message.
             """.trimIndent(),
             parameters = {
                 InputSchema.Obj(
                     properties = buildJsonObject {
-                        put("paths", buildJsonObject {
+                        put("urls", buildJsonObject {
                             put("type", "array")
-                            put("description", "Image paths to read, e.g. [\"/upload/xxx.jpg\", \"/workspace/report.png\"]. Max $READ_IMAGE_MAX_IMAGES_PER_CALL per call.")
+                            put("description", "Image URLs to read, e.g. [\"file:///upload/xxx.jpg\", \"https://example.com/a.png\"]. Max $READ_IMAGE_MAX_IMAGES_PER_CALL per call.")
                             put("items", buildJsonObject { put("type", "string") })
                         })
                     },
-                    required = listOf("paths"),
+                    required = listOf("urls"),
                 )
             },
             execute = { args ->
                 val paths = parseReadImagePaths(args)
                 when {
                     paths.isEmpty() -> listOf(
-                        UIMessagePart.Text("""{"type":"read_image","error":"no valid paths provided"}""")
+                        UIMessagePart.Text("""{"type":"read_image","error":"no valid urls provided"}""")
                     )
 
                     else -> {
@@ -81,7 +87,7 @@ fun createReadImageTool(
                         if (omitted > 0) {
                             parts.add(
                                 UIMessagePart.Text(
-                                    "[Note: only the first $READ_IMAGE_MAX_IMAGES_PER_CALL images are processed; $omitted path(s) omitted.]"
+                                    "[Note: only the first $READ_IMAGE_MAX_IMAGES_PER_CALL images are processed; $omitted URL(s) omitted.]"
                                 )
                             )
                         }
@@ -105,27 +111,27 @@ fun createReadImageTool(
     )
 }
 
-/** 从工具参数中提取 paths 数组（字符串条目、去空白、去空项）。供单测直接调用。 */
+/** 从工具参数中提取 urls 数组（字符串条目、去空白、去空项）。供单测直接调用。 */
 internal fun parseReadImagePaths(args: JsonElement): List<String> =
     runCatching {
-        args.jsonObject["paths"]?.jsonArray
+        args.jsonObject["urls"]?.jsonArray
             ?.mapNotNull { it.jsonPrimitive.content.takeIf(String::isNotBlank)?.trim() }
             .orEmpty()
     }.getOrDefault(emptyList())
 
 private suspend fun readSingleImage(
-    workspaceId: String,
+    workspaceId: String?,
     workspaceRepository: WorkspaceRepository,
-    path: String,
+    url: String,
     hasVision: Boolean,
 ): List<UIMessagePart> {
-    val extension = path.substringAfterLast('.', "").lowercase()
+    val extension = url.substringAfterLast('.', "").lowercase()
     if (extension !in READ_IMAGE_EXTENSIONS) {
         return listOf(
             UIMessagePart.Text(
                 buildJsonObject {
                     put("type", "read_image")
-                    put("path", path)
+                    put("url", url)
                     put("error", "Not an image file. Use workspace_read for non-image files.")
                 }.toString()
             )
@@ -133,13 +139,13 @@ private suspend fun readSingleImage(
     }
 
     val uri = try {
-        resolveImageFileUri(workspaceId, workspaceRepository, path)
+        resolveImageFileUri(workspaceId, workspaceRepository, url)
     } catch (e: Exception) {
         return listOf(
             UIMessagePart.Text(
                 buildJsonObject {
                     put("type", "read_image")
-                    put("path", path)
+                    put("url", url)
                     put("error", "Failed to read image: ${e.message}")
                 }.toString()
             )
@@ -152,7 +158,7 @@ private suspend fun readSingleImage(
             UIMessagePart.Text(
                 buildJsonObject {
                     put("type", "read_image")
-                    put("path", path)
+                    put("url", url)
                     put("description", "Image returned above")
                 }.toString()
             ),
@@ -163,7 +169,7 @@ private suspend fun readSingleImage(
             UIMessagePart.Text(
                 buildJsonObject {
                     put("type", "read_image")
-                    put("path", path)
+                    put("url", url)
                     put("description", "Current model has no vision; OCR text of the image follows.")
                 }.toString()
             ),
@@ -173,41 +179,71 @@ private suspend fun readSingleImage(
 }
 
 /**
- * 路径 → 图片文件的 file:// URL。
- * /upload/... → filesDir/upload（proot 挂载点）；file:// → 校验在 filesDir 下；
- * 其余按工作区 rootfs 读取后落盘 upload/（readImageInRootfs 同款路径）。
- * canonicalFile 防路径穿越。
+ * URL → 图片文件的 file:// URL（本地缓存副本）。
+ * - file:///upload/... → filesDir/upload（全局可解析；没有工作区时该挂载依然存在）
+ * - file:///workspace/... 与其它绝对路径 → 工作区 rootfs 读取后落盘 upload/
+ * - http(s)://... → 下载到 upload/（上限 8MB）
+ * canonicalFile 防路径穿越。其它 scheme 一律拒绝。
  */
 internal suspend fun resolveImageFileUri(
-    workspaceId: String,
+    workspaceId: String?,
     workspaceRepository: WorkspaceRepository,
-    path: String,
+    url: String,
 ): String {
     val context = getKoin().get<Context>()
     val filesDir = context.filesDir
-    if (path.startsWith("/upload/")) {
-        val rel = path.removePrefix("/upload/")
+    if (url.startsWith("file:///upload/")) {
+        val rel = url.removePrefix("file:///upload/")
         val root = File(filesDir, "upload").canonicalFile
         val target = root.resolve(rel).canonicalFile
-        require(target.startsWith(root) && target.isFile) { "Image not found: $path" }
+        require(target.startsWith(root)) { "Image not found under /upload: $url" }
+        require(target.isFile) { "Image not found under /upload: $url" }
         return "file://" + target.absolutePath.replace('\\', '/')
     }
-    if (path.startsWith("file://")) {
-        val target = runCatching { File(java.net.URI(path)).canonicalFile }.getOrNull()
-            ?: throw IllegalArgumentException("Invalid image URI: $path")
-        val root = filesDir.canonicalFile
-        require(target.startsWith(root) && target.isFile) { "Image not found: $path" }
-        return "file://" + target.absolutePath.replace('\\', '/')
+    if (url.startsWith("http://") || url.startsWith("https://")) {
+        return downloadImageToUpload(url)
     }
-    // 工作区 / rootfs 路径：读取字节后落盘为 file:// 图片
+    // 工作区 / rootfs 路径：读取字节后落盘为 file:// 图片（保留扩展名）
+    require(!workspaceId.isNullOrBlank()) {
+        "Workspace paths require a workspace-enabled assistant; only file:///upload/... and http(s) URLs are available here"
+    }
+    val extension = url.substringAfterLast('.', "").lowercase().ifEmpty { "png" }
     val bytes = withContext(Dispatchers.IO) {
-        val size = workspaceRepository.rootfsFileSize(workspaceId, path)
-        require(size in 1..8L * 1024 * 1024) { "Image is too large or empty: $path" }
+        val size = workspaceRepository.rootfsFileSize(workspaceId, url)
+        require(size in 1..8L * 1024 * 1024) { "Image is too large or empty: $url" }
         val buffer = java.io.ByteArrayOutputStream(size.toInt())
-        workspaceRepository.exportRootfsFile(workspaceId, path, buffer)
+        workspaceRepository.exportRootfsFile(workspaceId, url, buffer)
         buffer.toByteArray()
     }
     val filesManager = getKoin().get<FilesManager>()
-    val uri = filesManager.createChatFilesByByteArrays(listOf(bytes)).first()
+    val uri = filesManager.createChatFilesByByteArrays(listOf(bytes), extension).first()
     return uri.toString()
+}
+
+/** 下载 http(s) 图片到 upload/，返回 file:// URL。上限 8MB，超限或失败抛出。 */
+private suspend fun downloadImageToUpload(url: String): String {
+    val okHttpClient = getKoin().get<okhttp3.OkHttpClient>()
+    val response = withContext(Dispatchers.IO) {
+        okHttpClient.newCall(okhttp3.Request.Builder().url(url).build()).execute()
+    }
+    return try {
+        if (!response.isSuccessful) error("Download failed with status ${response.code}")
+        val bytes = withContext(Dispatchers.IO) {
+            response.body?.let { body ->
+                val source = body.source()
+                source.request(READ_IMAGE_MAX_DOWNLOAD_BYTES + 1)
+                check(source.buffer.size <= READ_IMAGE_MAX_DOWNLOAD_BYTES) {
+                    "Image too large to download (> ${READ_IMAGE_MAX_DOWNLOAD_BYTES / 1024 / 1024}MB): $url"
+                }
+                source.readByteArray()
+            } ?: error("Empty response body")
+        }
+        val extension = url.substringBefore('?').substringAfterLast('.', "").lowercase().ifEmpty { "png" }
+        getKoin().get<FilesManager>()
+            .createChatFilesByByteArrays(listOf(bytes), extension)
+            .first()
+            .toString()
+    } finally {
+        response.close()
+    }
 }
