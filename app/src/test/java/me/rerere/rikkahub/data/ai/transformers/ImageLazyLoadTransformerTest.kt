@@ -16,21 +16,21 @@ class ImageLazyLoadTransformerTest {
     @Test
     fun `upload 目录文件映射为 upload 挂载 URL`() {
         val filesDir = filesDir()
-        val file = File(filesDir, "upload").apply { mkdirs() }.resolve("abc123.jpg")
+        val file = File(filesDir, "upload").apply { mkdirs() }.resolve("abc123.jpg").apply { createNewFile() }
         assertEquals("file:///upload/abc123.jpg", ImageLazyLoadTransformer.resolveDisplayPath(file, filesDir))
     }
 
     @Test
     fun `工作区文件映射为 workspace 挂载 URL`() {
         val filesDir = filesDir()
-        val file = File(filesDir, "workspaces/wsid/files").apply { mkdirs() }.resolve("report.png")
+        val file = File(filesDir, "workspaces/wsid/files").apply { mkdirs() }.resolve("report.png").apply { createNewFile() }
         assertEquals("file:///workspace/report.png", ImageLazyLoadTransformer.resolveDisplayPath(file, filesDir))
     }
 
     @Test
     fun `工作区嵌套目录保留相对层级`() {
         val filesDir = filesDir()
-        val file = File(filesDir, "workspaces/wsid/files/diagrams").apply { mkdirs() }.resolve("sub.png")
+        val file = File(filesDir, "workspaces/wsid/files/diagrams").apply { mkdirs() }.resolve("sub.png").apply { createNewFile() }
         assertEquals("file:///workspace/diagrams/sub.png", ImageLazyLoadTransformer.resolveDisplayPath(file, filesDir))
     }
 
