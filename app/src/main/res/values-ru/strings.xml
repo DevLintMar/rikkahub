@@ -343,6 +343,7 @@
   <string name="error_title_generation">Ошибка генерации сообщения</string>
   <string name="error_title_operation">Операция не выполнена</string>
   <string name="error_title_regenerate_message">Не удалось повторно сгенерировать сообщение</string>
+  <string name="error_message_not_found_regenerate">Сообщение для повторной генерации не найдено. Попробуйте ещё раз.</string>
   <string name="error_title_send_message">Не удалось отправить сообщение</string>
   <string name="error_title_tool_approval">Сбой обработки вызова инструмента</string>
   <string name="error_title_tool_unavailable">Инструмент недоступен</string>

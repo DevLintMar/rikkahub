@@ -43,6 +43,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import coil3.compose.rememberAsyncImagePainter
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -703,12 +704,20 @@ object ReadImageToolUI : ToolUIRenderer {
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     items(images) { url ->
-                        // 高度固定占满、宽度按原比例缩放，Fit 完整显示不被 Crop 截断
+                        // 高度固定占满 120dp，宽度按图片原比例换算（不固定宽、不左右留白）。
+                        // painter.intrinsicSize 由 Coil 状态驱动：加载完成后触发重组，宽度随之更新
+                        val painter = rememberAsyncImagePainter(model = url)
+                        val size = painter.intrinsicSize
+                        val ratio = if (size.height > 0f && size.width > 0f) {
+                            size.width / size.height
+                        } else {
+                            1f
+                        }
                         Box(
                             modifier = Modifier
                                 .height(120.dp)
-                                .width(160.dp)
-                                .clip(RoundedCornerShape(12.dp)),
+                                .width((120.dp * ratio).coerceIn(48.dp, 240.dp))
+                                .clip(RoundedCornerShape(8.dp)),
                             contentAlignment = Alignment.Center,
                         ) {
                             ZoomableAsyncImage(

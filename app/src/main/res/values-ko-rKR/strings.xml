@@ -343,6 +343,7 @@
   <string name="error_title_generation">메시지 생성 실패</string>
   <string name="error_title_operation">작업 실패</string>
   <string name="error_title_regenerate_message">메시지 재생성 실패</string>
+  <string name="error_message_not_found_regenerate">재생성할 메시지를 찾을 수 없습니다. 다시 시도해 주세요.</string>
   <string name="error_title_send_message">메시지 전송 실패</string>
   <string name="error_title_tool_approval">도구 호출 처리 실패</string>
   <string name="error_title_tool_unavailable">도구를 사용할 수 없음</string>

@@ -405,9 +405,25 @@ class ChatService(
             try {
                 val conversation = session.state.value
 
+                // 定位消息所在节点：优先用 id 匹配（消息 id 稳定）。UI 传入的 message 实例
+                // 可能与 session 最新实例 equals 不匹配（usage/annotations 等字段更新过），
+                // equals 匹配会返回 null → indexOf(null) = -1 → subList(0, 0) 清空整个会话，
+                // checkFilesDelete 连带删除全部图片文件——图片变占位符的根因。
+                val node = conversation.getMessageNodeByMessageId(message.id)
+                    ?: conversation.getMessageNodeByMessage(message)
+                if (node == null) {
+                    addError(
+                        IllegalStateException(
+                            context.getString(R.string.error_message_not_found_regenerate)
+                        ),
+                        conversationId,
+                        title = context.getString(R.string.error_title_regenerate_message)
+                    )
+                    return@launch
+                }
+
                 if (message.role == MessageRole.USER) {
                     // 如果是用户消息，则截止到当前消息
-                    val node = conversation.getMessageNodeByMessage(message)
                     val indexAt = conversation.messageNodes.indexOf(node)
                     val newConversation = conversation.copy(
                         messageNodes = conversation.messageNodes.subList(0, indexAt + 1)
@@ -416,7 +432,6 @@ class ChatService(
                     handleMessageComplete(conversationId)
                 } else {
                     if (regenerateAssistantMsg) {
-                        val node = conversation.getMessageNodeByMessage(message)
                         val nodeIndex = conversation.messageNodes.indexOf(node)
                         handleMessageComplete(conversationId, messageRange = 0..<nodeIndex)
                     } else {
@@ -1198,6 +1213,15 @@ class ChatService(
     }
 
     private fun checkFilesDelete(newConversation: Conversation, oldConversation: Conversation) {
+        // 防御：新会话节点为空但旧会话非空，说明发生了异常截断（如节点定位失败导致
+        // subList(0,0)），此时照常删除会连用户图片一起误删——跳过删除并告警。
+        if (newConversation.messageNodes.isEmpty() && oldConversation.messageNodes.isNotEmpty()) {
+            Log.w(
+                TAG,
+                "checkFilesDelete: skipped unexpected empty newConversation(${newConversation.id}); old had ${oldConversation.messageNodes.size} nodes"
+            )
+            return
+        }
         val newFiles = newConversation.files
         val oldFiles = oldConversation.files
         val deletedFiles = oldFiles.filter { file ->

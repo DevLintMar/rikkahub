@@ -343,6 +343,7 @@
   <string name="error_title_generation">メッセージ生成に失敗しました</string>
   <string name="error_title_operation">操作に失敗しました</string>
   <string name="error_title_regenerate_message">メッセージの再生成に失敗しました</string>
+  <string name="error_message_not_found_regenerate">再生成するメッセージが見つかりません。もう一度お試しください。</string>
   <string name="error_title_send_message">メッセージ送信失敗</string>
   <string name="error_title_tool_approval">ツール呼び出し処理に失敗しました</string>
   <string name="error_title_tool_unavailable">ツールが利用できません</string>

@@ -357,6 +357,7 @@
   <string name="error_title_generation">Message generation failed</string>
   <string name="error_title_operation">Operation failed</string>
   <string name="error_title_regenerate_message">Message regeneration failed</string>
+  <string name="error_message_not_found_regenerate">Message was not found for regeneration; please try again.</string>
   <string name="error_title_send_message">Message send failed</string>
   <string name="error_title_tool_approval">Tool call processing failed</string>
   <string name="error_title_tool_unavailable">Tool unavailable</string>
