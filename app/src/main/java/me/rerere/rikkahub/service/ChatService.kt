@@ -702,7 +702,7 @@ class ChatService(
                     }
 
                     baseTools.addAll(createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), conversation.workspaceCwd))
-                    baseTools.addAll(createReadImageTool(assistant.workspaceId?.toString(), workspaceRepository))
+                    baseTools.addAll(createReadImageTool(workspaceId = null, workspaceRepository))
 
                     // MCP 工具按 server 分组
                     val rawTools = mcpManager.getAllAvailableTools()
@@ -787,8 +787,8 @@ class ChatService(
                     }
                     // 工作区工具
                     addAll(createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), conversation.workspaceCwd))
-                    // 图片懒加载读取工具
-                    addAll(createReadImageTool(assistant.workspaceId?.toString(), workspaceRepository))
+                    // 图片懒加载读取工具（恒注册：/upload 全局可解析；工作区路径才需工作区）
+                    addAll(createReadImageTool(workspaceId = null, workspaceRepository))
                     // Skill 工具
                     skillTool?.let { add(it) }
                     // MCP 工具

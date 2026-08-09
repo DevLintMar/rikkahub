@@ -34,9 +34,9 @@ import java.io.File
  * - 视觉模型：返回图片本体（三家 provider 的工具结果图片通道已存在）
  * - 非视觉模型：并行调用 OCR 模型转文本后一次性返回
  *
- * 恒注册，不依赖工作区：file:///upload/... 全局可解析（没有工作区时 upload 挂载依然存在）；
- * file:///workspace/... 与其它绝对路径需要当前助手启用工作区；
- * http(s) URL 会先下载到 upload/ 再读取。
+ * 恒注册（workspaceId 仅用于解析 file:///workspace/... 等 rootfs 路径；不传则只可用
+ * file:///upload/... 与 http(s) URL，完全满足用户附加图片的读取）。
+ * 历史记录在 [chat_message_tool_read_image_failed] 的封装统一见 [ReadImageResult]。
  */
 const val READ_IMAGE_MAX_IMAGES_PER_CALL = 8
 
