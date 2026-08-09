@@ -94,4 +94,66 @@ class RegenerateMessageResolutionTest {
         // 会话被清空 → files 为空 → checkFilesDelete 会把旧会话全部文件（含用户图片）判为删除
         assertEquals(0, emptied.messageNodes.size)
     }
+
+    @Test
+    fun `regenerate 完整流程下用户图片每一步都保留`() {
+        val imageUrl = "file:///data/user/0/xyz.lynsei.rikkahub.debug/files/upload/a.png"
+        val u0 = UIMessage(role = MessageRole.USER, parts = listOf(UIMessagePart.Image(url = imageUrl)))
+        val a1 = UIMessage(role = MessageRole.ASSISTANT, parts = listOf(UIMessagePart.Text("reply")))
+        val conversation = Conversation(
+            id = Uuid.random(),
+            assistantId = Uuid.random(),
+            messageNodes = listOf(u0.toMessageNode(), a1.toMessageNode()),
+        )
+
+        // 步骤1：regenerate USER 分支截断（id 匹配定位）
+        val node = conversation.getMessageNodeByMessageId(u0.id)
+        assertNotNull(node)
+        val indexAt = conversation.messageNodes.indexOf(node)
+        val truncated = conversation.copy(
+            messageNodes = conversation.messageNodes.subList(0, indexAt + 1),
+        )
+
+        // 步骤2：截断后用户消息的图片 part 必须保留。
+        // （JVM 测试无法调 conversation.files（androidx toUri stub），
+        //   但 checkFilesDelete 的 new.files 就来自这些 part——part 在则文件不会被视为删除）
+        val imagesAfterTruncate = truncated.currentMessages.first().parts
+            .filterIsInstance<UIMessagePart.Image>()
+        assertEquals(listOf(imageUrl), imagesAfterTruncate.map { it.url })
+
+        // 步骤3：模拟 handleMessageComplete 生成后 updateCurrentMessages
+        // （第一轮 chunk.messages = [用户消息(图), assistant流式回复]）
+        val a2 = UIMessage(role = MessageRole.ASSISTANT, parts = listOf(UIMessagePart.Text("new reply")))
+        val chunkMessages = listOf(truncated.currentMessages.first(), a2)
+        val updated = truncated.updateCurrentMessages(chunkMessages)
+
+        // 用户消息仍保留图片 URL
+        val imagesAfter = updated.currentMessages[0].parts.filterIsInstance<UIMessagePart.Image>()
+        assertEquals(listOf(imageUrl), imagesAfter.map { it.url })
+        assertEquals(2, updated.messageNodes.size)
+    }
+
+    @Test
+    fun `多轮工具循环 updateCurrentMessages 不丢用户图片`() {
+        val imageUrl = "file:///data/user/0/xyz.lynsei.rikkahub.debug/files/upload/a.png"
+        val u0 = UIMessage(role = MessageRole.USER, parts = listOf(UIMessagePart.Image(url = imageUrl)))
+        val conversation = Conversation(
+            id = Uuid.random(),
+            assistantId = Uuid.random(),
+            messageNodes = listOf(u0.toMessageNode()),
+        )
+
+        // 模拟生成中多轮 emit：每轮 chunk.messages 的第一个元素始终是用户消息
+        var current = conversation
+        repeat(3) { round ->
+            val a = UIMessage(
+                role = MessageRole.ASSISTANT,
+                parts = listOf(UIMessagePart.Text("round $round")),
+            )
+            val chunk = listOf(current.currentMessages.first(), a)
+            current = current.updateCurrentMessages(chunk)
+            val images = current.currentMessages.first().parts.filterIsInstance<UIMessagePart.Image>()
+            assertEquals("第 ${round + 1} 轮后用户图片应保留", listOf(imageUrl), images.map { it.url })
+        }
+    }
 }

@@ -1228,6 +1228,18 @@ class ChatService(
             newFiles.none { it == file }
         }
         if (deletedFiles.isNotEmpty()) {
+            // 诊断：记录被删文件与调用来源（定位"重新生成后图片被删"根因）
+            val stack = Thread.currentThread().stackTrace
+                .take(8)
+                .joinToString("\n") { "    at $it" }
+            Log.w(
+                TAG,
+                "checkFilesDelete: deleting ${deletedFiles.size} file(s): ${deletedFiles.joinToString(", ")}\n$stack"
+            )
+            Logging.log(
+                TAG,
+                "checkFilesDelete: deleting ${deletedFiles.size} file(s): ${deletedFiles.joinToString(", ")}"
+            )
             filesManager.deleteChatFiles(deletedFiles)
             Log.w(TAG, "checkFilesDelete: $deletedFiles")
         }
