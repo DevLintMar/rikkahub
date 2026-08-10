@@ -210,6 +210,14 @@ class FilesManager(
         }
 
     fun deleteChatFiles(uris: List<Uri>) {
+        if (uris.isNotEmpty()) {
+            // 诊断：任何文件删除都打印全栈（定位"重新生成后图片被删"的确切调用路径）
+            val stack = Thread.currentThread().stackTrace
+                .take(10)
+                .joinToString("\n") { "    at $it" }
+            Log.w(TAG, "FILES_DELETE: ${uris.joinToString(", ")}\n$stack")
+            Logging.log(TAG, "FILES_DELETE: ${uris.joinToString(", ")}")
+        }
         val relativePaths = mutableSetOf<String>()
         uris.filter { it.toString().startsWith("file:") }.forEach { uri ->
             val file = uri.toFile()

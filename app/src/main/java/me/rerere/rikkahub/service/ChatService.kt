@@ -2,6 +2,7 @@ package me.rerere.rikkahub.service
 
 import android.app.Application
 import android.content.Context
+import android.net.Uri
 import android.util.Log
 import androidx.core.net.toUri
 import kotlinx.coroutines.CancellationException
@@ -1228,12 +1229,23 @@ class ChatService(
         // upload 目录附件是用户持久附件（图片/文档），可能被多条消息引用；
         // 任何自动清理误删的代价极高（重新生成/懒加载等路径可能误判引用），
         // 因此 upload 文件一律不随会话更新自动删除，靠"设置-文件管理"手动清理。
-        val uploadRoot = context.filesDir.resolve(FileFolders.UPLOAD).absolutePath
-        val deletedFiles = oldFiles.filter { file ->
-            newFiles.none { it == file }
-        }.filterNot { file ->
-            file.path?.startsWith(uploadRoot) == true
+        // 路径形式多样（/data/data vs /data/user/0 符号链接），按父目录名判定最稳。
+        fun isUploadFile(uri: Uri): Boolean =
+            uri.path?.let { path ->
+                path.substringBeforeLast('/').substringAfterLast('/') == FileFolders.UPLOAD
+            } == true
+
+        val missingFromNew = oldFiles.filter { file -> newFiles.none { it == file } }
+        val skippedUpload = missingFromNew.filter(::isUploadFile)
+        if (skippedUpload.isNotEmpty()) {
+            // 诊断：某次会话更新时这些 upload 附件在新会话中"缺失引用"（候选误删），
+            // belt 已拦截。若用户图片出现在此清单，说明消息 part 在更新中被弄丢了。
+            Log.w(
+                TAG,
+                "checkFilesDelete: belt skipped ${skippedUpload.size} upload file(s) missing from newConversation: ${skippedUpload.joinToString(", ")}"
+            )
         }
+        val deletedFiles = missingFromNew - skippedUpload.toSet()
         if (deletedFiles.isNotEmpty()) {
             // 诊断：记录被删文件与调用来源（定位"重新生成后图片被删"根因）
             val stack = Thread.currentThread().stackTrace
