@@ -1240,10 +1240,9 @@ class ChatService(
         if (skippedUpload.isNotEmpty()) {
             // 诊断：某次会话更新时这些 upload 附件在新会话中"缺失引用"（候选误删），
             // belt 已拦截。若用户图片出现在此清单，说明消息 part 在更新中被弄丢了。
-            Log.w(
-                TAG,
-                "checkFilesDelete: belt skipped ${skippedUpload.size} upload file(s) missing from newConversation: ${skippedUpload.joinToString(", ")}"
-            )
+            val msg = "checkFilesDelete: belt skipped ${skippedUpload.size} upload file(s) missing from newConversation: ${skippedUpload.joinToString(", ")}"
+            Log.w(TAG, msg)
+            Logging.log(TAG, msg)
         }
         val deletedFiles = missingFromNew - skippedUpload.toSet()
         if (deletedFiles.isNotEmpty()) {
@@ -1257,7 +1256,7 @@ class ChatService(
             )
             Logging.log(
                 TAG,
-                "checkFilesDelete: deleting ${deletedFiles.size} file(s): ${deletedFiles.joinToString(", ")}"
+                "checkFilesDelete: deleting ${deletedFiles.size} file(s): ${deletedFiles.joinToString(", ")}\n$stack"
             )
             filesManager.deleteChatFiles(deletedFiles)
             Log.w(TAG, "checkFilesDelete: $deletedFiles")

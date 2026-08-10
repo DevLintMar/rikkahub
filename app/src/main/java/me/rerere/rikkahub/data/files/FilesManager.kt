@@ -216,7 +216,7 @@ class FilesManager(
                 .take(10)
                 .joinToString("\n") { "    at $it" }
             Log.w(TAG, "FILES_DELETE: ${uris.joinToString(", ")}\n$stack")
-            Logging.log(TAG, "FILES_DELETE: ${uris.joinToString(", ")}")
+            Logging.log(TAG, "FILES_DELETE: ${uris.joinToString(", ")}\n$stack")
         }
         val relativePaths = mutableSetOf<String>()
         uris.filter { it.toString().startsWith("file:") }.forEach { uri ->
