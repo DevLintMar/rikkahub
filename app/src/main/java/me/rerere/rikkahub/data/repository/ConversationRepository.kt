@@ -57,8 +57,6 @@ class ConversationRepository(
 ) {
     companion object {
         private const val TAG = "ConversationRepository"
-    }
-    companion object {
         private const val PAGE_SIZE = 20
         private const val INITIAL_LOAD_SIZE = 40
     }
