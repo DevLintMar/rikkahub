@@ -1467,6 +1467,7 @@ class ChatService(
         // 引用计数回收：删除消息后失去引用且不再被任何会话消息引用的 upload 附件
         // （checkFilesDelete 因 belt 跳过 upload，此处显式补充）
         val lostFiles = currentConversation.files - updatedConversation.files.toSet()
+        Logging.log(TAG, "deleteMessage: lost ${lostFiles.size} file(s): ${lostFiles.joinToString(", ")}")
         if (lostFiles.isNotEmpty()) {
             conversationRepo.cleanupUploadFilesIfUnreferenced(lostFiles)
         }

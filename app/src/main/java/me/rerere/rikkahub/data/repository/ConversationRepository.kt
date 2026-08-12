@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
+import me.rerere.common.android.Logging
 import me.rerere.rikkahub.data.db.AppDatabase
 import me.rerere.rikkahub.data.db.fts.MessageFtsManager
 import me.rerere.rikkahub.data.db.fts.MessageSearchResult
@@ -379,17 +380,22 @@ class ConversationRepository(
      */
     suspend fun cleanupUploadFilesIfUnreferenced(files: List<Uri>) {
         if (files.isEmpty()) return
-        // 纯决策逻辑（filterUnreferencedUploadUrls）在单测覆盖；此处做 suspend DAO 调用，
+        Logging.log(TAG, "cleanup: ${files.size} candidate upload file(s): ${files.joinToString(", ")}")
         // 逐个文件名查全库引用，无任何消息仍引用才物理删除
         val toDelete = mutableListOf<Uri>()
         files.forEach { uri ->
             val fileName = uri.toString().uploadFileNameOrNull() ?: return@forEach
-            if (messageNodeDAO.countMessageNodesContaining(fileName) == 0) {
+            val refs = messageNodeDAO.countMessageNodesContaining(fileName)
+            Logging.log(TAG, "  $fileName refs=$refs ${if (refs == 0) "-> DELETE" else "-> KEEP"}")
+            if (refs == 0) {
                 toDelete.add(uri)
             }
         }
         if (toDelete.isNotEmpty()) {
+            Logging.log(TAG, "  deleteChatFiles: ${toDelete.joinToString(", ")}")
             filesManager.deleteChatFiles(toDelete)
+        } else {
+            Logging.log(TAG, "  nothing to delete (all still referenced)")
         }
     }
 
