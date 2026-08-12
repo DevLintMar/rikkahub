@@ -1469,7 +1469,7 @@ class ChatService(
         val lostFiles = currentConversation.files - updatedConversation.files.toSet()
         Logging.log(TAG, "deleteMessage: lost ${lostFiles.size} file(s): ${lostFiles.joinToString(", ")}")
         if (lostFiles.isNotEmpty()) {
-            conversationRepo.cleanupUploadFilesIfUnreferenced(lostFiles)
+            conversationRepo.cleanupUploadFilesIfUnreferenced(lostFiles, conversationId.toString())
         }
     }
 

@@ -369,24 +369,29 @@ class ConversationRepository(
                 conversationToConversationEntity(conversation)
             )
         }
-        // 引用计数回收：仅当附件不再被任何会话消息引用时才物理删除，
+        // 引用计数回收：仅当附件不再被任何"其他会话"消息引用时才物理删除，
         // 避免多会话共享同一张图时删一个会话误删另一会话的图片
-        cleanupUploadFilesIfUnreferenced(fullConversation.files)
+        cleanupUploadFilesIfUnreferenced(fullConversation.files, conversation.id.toString())
     }
 
     /**
      * 引用计数回收 upload 附件。删除对话/消息后调用：对失去引用的附件做全库
-     * 引用检查（message_node.messages LIKE 文件名），无任何消息仍引用才物理删除。
-     * 注意：调用方需在 DB 完成删除/更新后再调用（被删内容已从 message_node 表移除）。
+     * 引用检查（message_node.messages LIKE 文件名），无任何"其他会话"仍引用才物理删除。
+     * [excludeConversationId] 排除正在删除/编辑的会话：其自身节点可能因并发取消
+     * 任务的兜底保存残留引用，不应计入。注意：调用方需在 DB 完成删除/更新后再调用
+     * （被删内容已从 message_node 表移除）。
      */
-    suspend fun cleanupUploadFilesIfUnreferenced(files: List<Uri>) {
+    suspend fun cleanupUploadFilesIfUnreferenced(
+        files: List<Uri>,
+        excludeConversationId: String,
+    ) {
         if (files.isEmpty()) return
         Logging.log(TAG, "cleanup: ${files.size} candidate upload file(s): ${files.joinToString(", ")}")
-        // 逐个文件名查全库引用，无任何消息仍引用才物理删除
+        // 逐个文件名查全库引用（排除当前会话），无任何其他会话仍引用才物理删除
         val toDelete = mutableListOf<Uri>()
         files.forEach { uri ->
             val fileName = uri.toString().uploadFileNameOrNull() ?: return@forEach
-            val refs = messageNodeDAO.countMessageNodesContaining(fileName)
+            val refs = messageNodeDAO.countMessageNodesContaining(fileName, excludeConversationId)
             Logging.log(TAG, "  $fileName refs=$refs ${if (refs == 0) "-> DELETE" else "-> KEEP"}")
             if (refs == 0) {
                 toDelete.add(uri)
