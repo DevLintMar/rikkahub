@@ -379,11 +379,17 @@ class ConversationRepository(
      */
     suspend fun cleanupUploadFilesIfUnreferenced(files: List<Uri>) {
         if (files.isEmpty()) return
-        val toDelete = filterUnreferencedUploadUrls(files.map { it.toString() }) { fileName ->
-            messageNodeDAO.countMessageNodesContaining(fileName) > 0
+        // 纯决策逻辑（filterUnreferencedUploadUrls）在单测覆盖；此处做 suspend DAO 调用，
+        // 逐个文件名查全库引用，无任何消息仍引用才物理删除
+        val toDelete = mutableListOf<Uri>()
+        files.forEach { uri ->
+            val fileName = uri.toString().uploadFileNameOrNull() ?: return@forEach
+            if (messageNodeDAO.countMessageNodesContaining(fileName) == 0) {
+                toDelete.add(uri)
+            }
         }
         if (toDelete.isNotEmpty()) {
-            filesManager.deleteChatFiles(toDelete.map { it.toUri() })
+            filesManager.deleteChatFiles(toDelete)
         }
     }
 
