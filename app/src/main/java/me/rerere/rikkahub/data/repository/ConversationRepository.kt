@@ -1,6 +1,8 @@
 package me.rerere.rikkahub.data.repository
 
 import android.database.sqlite.SQLiteBlobTooBigException
+import android.net.Uri
+import androidx.core.net.toUri
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
@@ -365,7 +367,24 @@ class ConversationRepository(
                 conversationToConversationEntity(conversation)
             )
         }
-        filesManager.deleteChatFiles(fullConversation.files)
+        // 引用计数回收：仅当附件不再被任何会话消息引用时才物理删除，
+        // 避免多会话共享同一张图时删一个会话误删另一会话的图片
+        cleanupUploadFilesIfUnreferenced(fullConversation.files)
+    }
+
+    /**
+     * 引用计数回收 upload 附件。删除对话/消息后调用：对失去引用的附件做全库
+     * 引用检查（message_node.messages LIKE 文件名），无任何消息仍引用才物理删除。
+     * 注意：调用方需在 DB 完成删除/更新后再调用（被删内容已从 message_node 表移除）。
+     */
+    suspend fun cleanupUploadFilesIfUnreferenced(files: List<Uri>) {
+        if (files.isEmpty()) return
+        val toDelete = filterUnreferencedUploadUrls(files.map { it.toString() }) { fileName ->
+            messageNodeDAO.countMessageNodesContaining(fileName) > 0
+        }
+        if (toDelete.isNotEmpty()) {
+            filesManager.deleteChatFiles(toDelete.map { it.toUri() })
+        }
     }
 
     suspend fun searchMessages(
@@ -691,3 +710,22 @@ data class ConversationPageResult(
     val items: List<Conversation>,
     val nextOffset: Int?,
 )
+
+/** 从 upload file:// URL 提取 uuid 文件名（供引用计数 LIKE 匹配）；非 upload 路径返回 null。纯 JVM 可测。 */
+internal fun String.uploadFileNameOrNull(): String? {
+    if (!contains("/upload/")) return null
+    return substringAfterLast('/').takeIf { it.isNotBlank() }
+}
+
+/**
+ * 从失去引用的附件中筛出"全库无任何消息引用"的部分（upload URL 字符串版本）。
+ * [isReferenced]：fileName → 是否仍被任何会话消息引用（由 DAO LIKE 查询提供）。
+ * 纯函数，不依赖 Android，供单测直接验证决策逻辑。
+ */
+internal fun filterUnreferencedUploadUrls(
+    lostUrls: List<String>,
+    isReferenced: (String) -> Boolean,
+): List<String> = lostUrls.filter { url ->
+    val fileName = url.uploadFileNameOrNull() ?: return@filter false
+    !isReferenced(fileName)
+}

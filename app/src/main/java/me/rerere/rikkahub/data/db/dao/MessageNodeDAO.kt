@@ -40,6 +40,14 @@ interface MessageNodeDAO {
     @Query("DELETE FROM message_node WHERE id = :nodeId")
     suspend fun deleteById(nodeId: String)
 
+    /**
+     * 统计 messages JSON 中包含指定文件名的 message_node 条数。
+     * 用于 upload 附件的引用计数回收：删除对话/消息后，仅当全库无任何消息
+     * 仍引用该文件名时才物理删除。uuid 文件名（hex+短横线）不含 SQL LIKE 通配符，直接匹配安全。
+     */
+    @Query("SELECT COUNT(*) FROM message_node WHERE messages LIKE '%' || :fileName || '%'")
+    suspend fun countMessageNodesContaining(fileName: String): Int
+
     // 使用 @RawQuery 绕过 Room 编译期校验，以便使用 json_each() 虚拟表
     @RawQuery
     suspend fun getTokenStatsRaw(query: SupportSQLiteQuery): MessageTokenStats
