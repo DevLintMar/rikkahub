@@ -18,12 +18,14 @@ import me.rerere.ai.core.InputSchema
 import me.rerere.ai.core.Tool
 import me.rerere.ai.provider.Modality
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.common.android.Logging
 import me.rerere.rikkahub.data.ai.transformers.OcrTransformer
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
+import me.rerere.rikkahub.utils.retryOnFailure
 import org.koin.java.KoinJavaComponent.getKoin
 import java.io.File
 
@@ -40,7 +42,12 @@ import java.io.File
  */
 const val READ_IMAGE_MAX_IMAGES_PER_CALL = 8
 
+private const val TAG = "ReadImageTools"
+
 private const val READ_IMAGE_MAX_DOWNLOAD_BYTES = 8L * 1024 * 1024
+
+/** http 下载失败自动重试：1 次初始 + 3 次重试 = 4 次尝试（网络波动等瞬时错误） */
+private const val DOWNLOAD_MAX_ATTEMPTS = 4
 
 private val READ_IMAGE_EXTENSIONS = setOf(
     "png", "jpg", "jpeg", "gif", "webp", "bmp", "heic", "heif", "avif",
@@ -218,30 +225,40 @@ internal suspend fun resolveImageFileUri(
     return uri.toString()
 }
 
-/** 下载 http(s) 图片到 upload/，返回 file:// URL。上限 8MB，超限或失败抛出。 */
+/**
+ * 下载 http(s) 图片到 upload/，返回 file:// URL。上限 8MB，超限或失败抛出。
+ * 网络波动等瞬时错误自动重试（1 次初始 + 3 次重试），全部失败才抛出；文件落盘只做一次。
+ */
 private suspend fun downloadImageToUpload(url: String): String {
     val okHttpClient = getKoin().get<okhttp3.OkHttpClient>()
-    val response = withContext(Dispatchers.IO) {
-        okHttpClient.newCall(okhttp3.Request.Builder().url(url).build()).execute()
-    }
-    return try {
-        if (!response.isSuccessful) error("Download failed with status ${response.code}")
-        val bytes = withContext(Dispatchers.IO) {
-            response.body?.let { body ->
-                val source = body.source()
-                source.request(READ_IMAGE_MAX_DOWNLOAD_BYTES + 1)
-                check(source.buffer.size <= READ_IMAGE_MAX_DOWNLOAD_BYTES) {
-                    "Image too large to download (> ${READ_IMAGE_MAX_DOWNLOAD_BYTES / 1024 / 1024}MB): $url"
-                }
-                source.readByteArray()
-            } ?: error("Empty response body")
+    val bytes = retryOnFailure(
+        attempts = DOWNLOAD_MAX_ATTEMPTS,
+        onRetry = { attempt, e ->
+            Logging.log(TAG, "downloadImageToUpload: attempt $attempt failed, retrying: ${e.message}")
+        },
+    ) {
+        val response = withContext(Dispatchers.IO) {
+            okHttpClient.newCall(okhttp3.Request.Builder().url(url).build()).execute()
         }
-        val extension = url.substringBefore('?').substringAfterLast('.', "").lowercase().ifEmpty { "png" }
-        getKoin().get<FilesManager>()
-            .createChatFilesByByteArrays(listOf(bytes), extension)
-            .first()
-            .toString()
-    } finally {
-        response.close()
+        try {
+            if (!response.isSuccessful) error("Download failed with status ${response.code}")
+            withContext(Dispatchers.IO) {
+                response.body?.let { body ->
+                    val source = body.source()
+                    source.request(READ_IMAGE_MAX_DOWNLOAD_BYTES + 1)
+                    check(source.buffer.size <= READ_IMAGE_MAX_DOWNLOAD_BYTES) {
+                        "Image too large to download (> ${READ_IMAGE_MAX_DOWNLOAD_BYTES / 1024 / 1024}MB): $url"
+                    }
+                    source.readByteArray()
+                } ?: error("Empty response body")
+            }
+        } finally {
+            response.close()
+        }
     }
+    val extension = url.substringBefore('?').substringAfterLast('.', "").lowercase().ifEmpty { "png" }
+    return getKoin().get<FilesManager>()
+        .createChatFilesByByteArrays(listOf(bytes), extension)
+        .first()
+        .toString()
 }

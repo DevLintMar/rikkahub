@@ -14,17 +14,22 @@ import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.common.android.Logging
 import me.rerere.common.cache.LruCache
 import me.rerere.common.cache.SingleFileCacheStore
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findProvider
+import me.rerere.rikkahub.utils.retryOnFailure
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
 import java.io.File
 import kotlin.time.Duration.Companion.days
 
 private const val TAG = "OcrTransformer"
+
+/** OCR 模型调用失败自动重试：1 次初始 + 3 次重试 = 4 次尝试（网络波动等瞬时错误） */
+private const val OCR_MAX_ATTEMPTS = 4
 
 object OcrTransformer : InputMessageTransformer, KoinComponent {
     private val cache by lazy {
@@ -95,22 +100,32 @@ object OcrTransformer : InputMessageTransformer, KoinComponent {
         val provider = get<ProviderManager>().getProviderByType(providerSetting)
 
         return try {
-            val result = provider.generateText(
-                providerSetting = providerSetting,
-                messages = listOf(
-                    UIMessage.system(settings.ocrPrompt),
-                    UIMessage(
-                        role = MessageRole.USER,
-                        parts = listOf(UIMessagePart.Image(part.url))
-                    )
-                ),
-                params = TextGenerationParams(
-                    model = model,
-                    customHeaders = model.customHeaders,
-                    customBody = model.customBodies,
-                ),
-            )
-            val content = result.choices[0].message?.toText() ?: "[ERROR, OCR failed: empty response]"
+            // 网络波动等瞬时错误自动重试（1 次初始 + 3 次重试），全部失败才把错误返回给模型
+            val content = retryOnFailure(
+                attempts = OCR_MAX_ATTEMPTS,
+                onRetry = { attempt, e ->
+                    Logging.log(TAG, "performOcr: attempt $attempt failed, retrying: ${e.message}")
+                },
+            ) {
+                val result = provider.generateText(
+                    providerSetting = providerSetting,
+                    messages = listOf(
+                        UIMessage.system(settings.ocrPrompt),
+                        UIMessage(
+                            role = MessageRole.USER,
+                            parts = listOf(UIMessagePart.Image(part.url))
+                        )
+                    ),
+                    params = TextGenerationParams(
+                        model = model,
+                        customHeaders = model.customHeaders,
+                        customBody = model.customBodies,
+                    ),
+                )
+                val choices = result.choices
+                check(choices.isNotEmpty()) { "OCR failed: empty response" }
+                checkNotNull(choices[0].message?.toText()) { "OCR failed: empty response" }
+            }
             Log.i(TAG, "performOcr: $content")
             val ocrResult = """
                 <image_file_ocr>
