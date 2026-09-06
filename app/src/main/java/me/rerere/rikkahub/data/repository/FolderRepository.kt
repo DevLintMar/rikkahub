@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.data.repository
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import me.rerere.rikkahub.data.db.dao.ConversationDAO
 import me.rerere.rikkahub.data.db.dao.FolderDAO
@@ -25,6 +26,7 @@ class FolderRepository(
     suspend fun createFolder(assistantId: Uuid, name: String): Folder {
         // sortIndex 排到当前助手文件夹末尾（max + 1），新文件夹出现在最后
         val maxSortIndex = folderDAO.getFoldersOfAssistant(assistantId.toString())
+            .first()
             .maxOfOrNull { it.sortIndex } ?: -1
         val folder = Folder(
             assistantId = assistantId,
