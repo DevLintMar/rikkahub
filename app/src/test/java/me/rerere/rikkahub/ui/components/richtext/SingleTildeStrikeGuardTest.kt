@@ -31,10 +31,11 @@ class SingleTildeStrikeGuardTest {
     }
 
     @Test
-    fun `范围符号单波浪被转义`() {
-        // 30%~50% 在前文有 * 时会被误判
-        assertEquals("30\\%~50%", escaped("30%~50%"))
-        assertEquals("**x** 30\\%~50%", escaped("**x** 30%~50%"))
+    fun `无前置delimiter的单波浪不产出假删除线节点原样返回`() {
+        // 解析器的 delimiter 平衡缺陷反而使孤立的单波浪（opener 在下标 0）不配对，
+        // 无 STRIKETHROUGH 节点 → 无需转义，原样返回（渲染本就是纯文本）
+        assertEquals("30%~50%", escaped("30%~50%"))
+        assertEquals("**x** 30%~50%", escaped("**x** 30%~50%"))
     }
 
     @Test
@@ -43,10 +44,10 @@ class SingleTildeStrikeGuardTest {
     }
 
     @Test
-    fun `单波浪开双波浪闭的混合包裹视为假删除线`() {
-        // 首单尾双：原文不是 ~~ 包裹 → 转义
+    fun `单波浪开双波浪闭的混合包裹不产出节点原样返回`() {
+        // a~b~~: 单波浪 opener 在下标 0 不配对，双波浪 closer 无匹配 opener → 无节点
         val escaped = escaped("a~b~~\n")
-        assertEquals("a\\~b\\~\n", escaped)
+        assertEquals("a~b~~\n", escaped)
     }
 
     @Test
