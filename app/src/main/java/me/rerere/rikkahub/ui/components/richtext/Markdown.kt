@@ -236,8 +236,10 @@ private fun ASTNode.containsHtml(): Boolean {
 
 private fun parseMarkdown(content: String): MarkdownParseResult {
     val preprocessed = preProcess(content)
-    val astTree = parser.buildMarkdownTreeFromString(preprocessed)
-    return MarkdownParseResult(preprocessed, astTree, astTree.containsHtml())
+    // 单波浪假删除线抑制：~x~ 不是删除线，转义为 \~x~（见 SingleTildeStrikeGuard）
+    val guarded = escapeSingleTildeStrikethrough(parser, preprocessed)
+    val astTree = parser.buildMarkdownTreeFromString(guarded)
+    return MarkdownParseResult(guarded, astTree, astTree.containsHtml())
 }
 
 /**

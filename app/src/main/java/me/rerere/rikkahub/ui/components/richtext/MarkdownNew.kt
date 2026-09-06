@@ -115,8 +115,10 @@ private val parser by lazy { MarkdownParser(flavour) }
 
 private fun generateMarkdownHtml(content: String): String {
     val preprocessed = preProcess(content)
-    val tree = parser.buildMarkdownTreeFromString(preprocessed)
-    return HtmlGenerator(preprocessed, tree, flavour).generateHtml()
+    // 单波浪假删除线抑制：~x~ 不是删除线，转义为 \~x~（见 SingleTildeStrikeGuard）
+    val guarded = escapeSingleTildeStrikethrough(parser, preprocessed)
+    val tree = parser.buildMarkdownTreeFromString(guarded)
+    return HtmlGenerator(guarded, tree, flavour).generateHtml()
 }
 
 // ---- Main composable ----
@@ -993,6 +995,9 @@ private fun AnnotatedString.Builder.appendHtmlInlineElement(
                         append(formula)
                     }
                 }
+            } else if (element.hasClass("user-del")) {
+                // GFM 删除线: 解析器产出 <span class="user-del">（而非 <del>）
+                appendElementChildren(SpanStyle(textDecoration = TextDecoration.LineThrough))
             } else {
                 appendElementChildren()
             }

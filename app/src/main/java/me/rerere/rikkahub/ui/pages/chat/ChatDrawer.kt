@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
@@ -41,10 +42,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -54,6 +60,8 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ChartColumn
 import me.rerere.hugeicons.stroke.Delete01
@@ -81,7 +89,6 @@ import me.rerere.rikkahub.ui.components.ui.Greeting
 import me.rerere.rikkahub.ui.components.ui.Tooltip
 import me.rerere.rikkahub.ui.components.ui.UIAvatar
 import me.rerere.rikkahub.ui.components.ui.UpdateCard
-import androidx.compose.ui.draw.clip
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.context.Navigator
 import com.dokar.sonner.ToastType
@@ -245,6 +252,7 @@ fun ChatDrawerContent(
                 onCreate = { showCreateFolderDialog = true },
                 onRename = { folderToRename = it },
                 onDelete = { folderToDelete = it },
+                onReorder = { drawerVm.reorderFolders(it) },
             )
 
             ConversationList(
@@ -795,15 +803,51 @@ private fun FolderBar(
     onCreate: () -> Unit,
     onRename: (Folder) -> Unit,
     onDelete: (Folder) -> Unit,
+    onReorder: (folders: List<Folder>) -> Unit,
 ) {
+    val haptic = LocalHapticFeedback.current
+    val lazyListState = rememberLazyListState()
+    // 拖拽期间的本地顺序镜像：onMove 立即交换（拖拽跟手），拖拽结束后一次性持久化。
+    // 不直接以 Room Flow 顺序做交换源——Flow 回流有延迟，拖拽中多次 onMove 会索引错位。
+    var localFolders by remember { mutableStateOf(folders) }
+    LaunchedEffect(folders) {
+        localFolders = folders
+    }
+    // 拖拽位移映射到 folders 列表下标：首项「聊天」chip 占 index 0，文件夹从 index 1 开始
+    val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
+        val fromIndex = from.index - 1
+        val toIndex = to.index - 1
+        if (fromIndex in localFolders.indices && toIndex in localFolders.indices) {
+            haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
+            localFolders = localFolders.toMutableList().apply {
+                add(toIndex, removeAt(fromIndex))
+            }
+        }
+    }
+    // 拖拽结束（从有拖拽变为无拖拽）时把最终顺序一次性持久化；
+    // Room Flow 回流后与 localFolders 一致，LaunchedEffect 不再触发
+    val currentFolders by rememberUpdatedState(folders)
+    LaunchedEffect(reorderableState) {
+        var wasDragging = false
+        snapshotFlow { reorderableState.isAnyItemDragging }
+            .distinctUntilChanged()
+            .collect { dragging ->
+                if (wasDragging && !dragging && localFolders != currentFolders) {
+                    onReorder(localFolders)
+                }
+                wasDragging = dragging
+            }
+    }
+
     LazyRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
+        state = lazyListState,
     ) {
-        item {
+        item(key = "default") {
             FolderChip(
                 label = stringResource(R.string.chat_page_folder_default),
                 selected = selectedFolderId == null,
@@ -811,40 +855,63 @@ private fun FolderBar(
                 onLongClick = {},
             )
         }
-        items(folders) { folder ->
-            var menuExpanded by remember { mutableStateOf(false) }
-            Box {
-                FolderChip(
-                    label = folder.name,
-                    icon = HugeIcons.Folder01,
-                    selected = selectedFolderId == folder.id,
-                    onClick = { onSelect(folder.id) },
-                    onLongClick = { menuExpanded = true },
-                )
-                DropdownMenu(
-                    expanded = menuExpanded,
-                    onDismissRequest = { menuExpanded = false },
-                ) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.chat_page_rename)) },
-                        leadingIcon = { Icon(HugeIcons.PencilEdit01, null) },
+        itemsIndexed(localFolders, key = { _, folder -> folder.id }) { _, folder ->
+            ReorderableItem(
+                state = reorderableState,
+                key = folder.id,
+            ) { isDragging ->
+                var menuExpanded by remember { mutableStateOf(false) }
+                Box {
+                    FolderChip(
+                        label = folder.name,
+                        icon = HugeIcons.Folder01,
+                        selected = selectedFolderId == folder.id,
+                        // 长按已被拖拽占用（longPressDraggableHandle 消费长按），
+                        // 单击选中；再次单击已选中的文件夹时弹出操作菜单（重命名/删除）
                         onClick = {
-                            onRename(folder)
-                            menuExpanded = false
-                        }
+                            if (selectedFolderId == folder.id) {
+                                menuExpanded = true
+                            } else {
+                                onSelect(folder.id)
+                            }
+                        },
+                        onLongClick = {},
+                        modifier = Modifier
+                            .scale(if (isDragging) 0.95f else 1f)
+                            .longPressDraggableHandle(
+                                onDragStarted = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
+                                },
+                                onDragStopped = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
+                                },
+                            ),
                     )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.chat_page_delete)) },
-                        leadingIcon = { Icon(HugeIcons.Delete01, null) },
-                        onClick = {
-                            onDelete(folder)
-                            menuExpanded = false
-                        }
-                    )
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.chat_page_rename)) },
+                            leadingIcon = { Icon(HugeIcons.PencilEdit01, null) },
+                            onClick = {
+                                onRename(folder)
+                                menuExpanded = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.chat_page_delete)) },
+                            leadingIcon = { Icon(HugeIcons.Delete01, null) },
+                            onClick = {
+                                onDelete(folder)
+                                menuExpanded = false
+                            }
+                        )
+                    }
                 }
             }
         }
-        item {
+        item(key = "add") {
             FolderChip(
                 label = stringResource(R.string.chat_page_folder_add),
                 icon = HugeIcons.FolderAdd,
@@ -863,6 +930,7 @@ private fun FolderChip(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     icon: ImageVector? = null,
+    modifier: Modifier = Modifier,
 ) {
     Surface(
         shape = CircleShape,
@@ -871,7 +939,7 @@ private fun FolderChip(
         } else {
             MaterialTheme.colorScheme.surfaceContainerLow
         },
-        modifier = Modifier
+        modifier = modifier
             .clip(CircleShape)
             .combinedClickable(
                 onClick = onClick,

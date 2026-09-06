@@ -23,9 +23,13 @@ class FolderRepository(
     }
 
     suspend fun createFolder(assistantId: Uuid, name: String): Folder {
+        // sortIndex 排到当前助手文件夹末尾（max + 1），新文件夹出现在最后
+        val maxSortIndex = folderDAO.getFoldersOfAssistant(assistantId.toString())
+            .maxOfOrNull { it.sortIndex } ?: -1
         val folder = Folder(
             assistantId = assistantId,
             name = name,
+            sortIndex = maxSortIndex + 1,
             createAt = Instant.now(),
         )
         folderDAO.insert(folder.toEntity())
@@ -34,6 +38,17 @@ class FolderRepository(
 
     suspend fun renameFolder(id: Uuid, name: String) {
         folderDAO.rename(id.toString(), name)
+    }
+
+    /**
+     * 拖拽重排序：按 [folders] 的新顺序持久化各自 sortIndex（下标即顺序）。
+     * 逐条 @Update 在 Room 事务里由调用方（DAO 挂起函数在同一线程队列执行）
+     * 完成；Room Flow 会在写完后自动触发列表刷新。
+     */
+    suspend fun reorderFolders(folders: List<Folder>) {
+        folders.forEachIndexed { index, folder ->
+            folderDAO.updateSortIndex(folder.id.toString(), index)
+        }
     }
 
     /**

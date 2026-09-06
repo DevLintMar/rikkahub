@@ -178,6 +178,16 @@ class ChatDrawerVM(
     }
 
     /**
+     * 拖拽重排序：持久化 [folders] 的新顺序到 sort_index（下标即顺序）。
+     * UI 在拖拽结束（松手）时以最终顺序调用一次；Room Flow 回流后与 UI 一致。
+     */
+    fun reorderFolders(folders: List<Folder>) {
+        viewModelScope.launch {
+            folderRepo.reorderFolders(folders)
+        }
+    }
+
+    /**
      * 删除文件夹。若文件夹内有正在生成回复的会话，拒绝删除并返回 false（UI 层据此提示用户）。
      */
     fun deleteFolder(folderId: Uuid): Boolean {
