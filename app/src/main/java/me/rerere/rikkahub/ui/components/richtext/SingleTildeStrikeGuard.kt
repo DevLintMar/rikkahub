@@ -49,8 +49,10 @@ fun escapeSingleTildeStrikethrough(parser: MarkdownParser, content: String): Str
     return buildString(content.length) {
         var cursor = 0
         for (range in offsets.sortedBy { it.first }) {
+            // 在 ~ 前插入反斜杠（转义），原 ~ 字符保留
             append(content, cursor, range.first)
             append('\\')
+            append('~')
             cursor = range.last + 1
         }
         append(content, cursor, content.length)
