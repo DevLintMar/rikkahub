@@ -27,9 +27,11 @@ import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.files.FileFolders
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.files.WorkspaceFileUrlResolver
+import me.rerere.rikkahub.utils.isTimeoutFailure
 import me.rerere.rikkahub.utils.retryOnFailure
 import org.koin.java.KoinJavaComponent.getKoin
 import java.io.File
+import java.util.concurrent.TimeUnit
 
 /**
  * read_image 工具：图片懒加载的读取端。
@@ -53,6 +55,26 @@ private const val READ_IMAGE_MAX_DOWNLOAD_BYTES = 8L * 1024 * 1024
 /** http 下载失败自动重试：1 次初始 + 3 次重试 = 4 次尝试（网络波动等瞬时错误） */
 private const val DOWNLOAD_MAX_ATTEMPTS = 4
 
+/**
+ * 图片下载的整体超时（秒）：覆盖 DNS、建连、TLS、重定向与读正文。
+ *
+ * 全局 OkHttp 客户端的 readTimeout 是 **10 分钟**（那是给流式 LLM 响应用的），且没有
+ * callTimeout；只连得上但不返回内容的图片（tarpit、挂死的图床）会让 connectTimeout(20s)
+ * 完全失效——TCP 已经连上了——一次调用就挂 10 分钟，再乘 4 次重试。
+ * 因此这里用独立的 callTimeout 兜住，且超时后**不再重试**（见 [isTimeoutFailure]）。
+ */
+private const val READ_IMAGE_TIMEOUT_SECONDS = 20L
+
+/**
+ * 图片下载专用客户端：共享全局客户端的连接池与调度器，只收紧超时。
+ */
+private val imageHttpClient by lazy {
+    getKoin().get<okhttp3.OkHttpClient>()
+        .newBuilder()
+        .callTimeout(READ_IMAGE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .build()
+}
+
 /** 判断图片类型需要读取的文件头长度 */
 private const val IMAGE_HEADER_BYTES = 16
 
@@ -67,7 +89,7 @@ fun createReadImageTool(
                 - file:///upload/... — images the user attached to the chat (always available, works without a workspace)
                 - file:///workspace/... — files in the workspace files area
                 - any other absolute path inside the workspace rootfs, e.g. file:///tmp/chart.png or file:///skills/.../x.png
-                - http:// or https:// links — downloaded and read (max 8 MB)
+                - http:// or https:// links — downloaded and read (max 8 MB; the download is capped at 20 seconds and is not retried on timeout, so an unreachable or very slow link fails fast)
                 The file:// prefix may be omitted. Paths inside the workspace need a workspace-enabled assistant.
                 Up to $READ_IMAGE_MAX_IMAGES_PER_CALL images per call; any extra URLs are omitted and reported in the result.
                 For vision-capable models, the images themselves are returned — you will see them directly.
@@ -276,34 +298,53 @@ internal fun sniffImageExtension(header: ByteArray): String? {
 
 /**
  * 下载 http(s) 图片到 upload/，返回 file:// URL。上限 8MB，超限或非图片抛出。
- * 网络波动等瞬时错误自动重试（1 次初始 + 3 次重试），全部失败才抛出；文件落盘只做一次。
+ *
+ * **整体 20 秒超时**（[READ_IMAGE_TIMEOUT_SECONDS]），超时直接失败且不重试——访问不到的图片
+ * 重试只是再等一轮，会把工具调用一直挂住。其余瞬时错误（5xx、连接被重置等）仍自动重试
+ * （1 次初始 + 3 次重试）；文件落盘只做一次。
  */
 private suspend fun downloadImageToUpload(url: String): String {
-    val okHttpClient = getKoin().get<okhttp3.OkHttpClient>()
-    val bytes = retryOnFailure(
-        attempts = DOWNLOAD_MAX_ATTEMPTS,
-        onRetry = { attempt, e ->
-            Logging.log(TAG, "downloadImageToUpload: attempt $attempt failed, retrying: ${e.message}")
-        },
-    ) {
-        val response = withContext(Dispatchers.IO) {
-            okHttpClient.newCall(okhttp3.Request.Builder().url(url).build()).execute()
-        }
-        try {
-            if (!response.isSuccessful) error("Download failed with status ${response.code}")
-            withContext(Dispatchers.IO) {
-                response.body?.let { body ->
-                    val source = body.source()
-                    source.request(READ_IMAGE_MAX_DOWNLOAD_BYTES + 1)
-                    check(source.buffer.size <= READ_IMAGE_MAX_DOWNLOAD_BYTES) {
-                        "Image too large to download (> ${READ_IMAGE_MAX_DOWNLOAD_BYTES / 1024 / 1024}MB): $url"
-                    }
-                    source.readByteArray()
-                } ?: error("Empty response body")
+    val bytes = try {
+        retryOnFailure(
+            attempts = DOWNLOAD_MAX_ATTEMPTS,
+            onRetry = { attempt, e ->
+                Logging.log(TAG, "downloadImageToUpload: attempt $attempt failed, retrying: ${e.message}")
+            },
+            retryIf = { !isTimeoutFailure(it) },
+        ) {
+            val response = withContext(Dispatchers.IO) {
+                imageHttpClient.newCall(okhttp3.Request.Builder().url(url).build()).execute()
             }
-        } finally {
-            response.close()
+            try {
+                if (!response.isSuccessful) error("Download failed with status ${response.code}")
+                withContext(Dispatchers.IO) {
+                    response.body?.let { body ->
+                        val source = body.source()
+                        source.request(READ_IMAGE_MAX_DOWNLOAD_BYTES + 1)
+                        check(source.buffer.size <= READ_IMAGE_MAX_DOWNLOAD_BYTES) {
+                            "Image too large to download (> ${READ_IMAGE_MAX_DOWNLOAD_BYTES / 1024 / 1024}MB): $url"
+                        }
+                        source.readByteArray()
+                    } ?: error("Empty response body")
+                }
+            } finally {
+                response.close()
+            }
         }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        if (isTimeoutFailure(e)) {
+            Logging.log(
+                TAG,
+                "downloadImageToUpload: timed out after ${READ_IMAGE_TIMEOUT_SECONDS}s, not retrying: $url"
+            )
+            throw IllegalStateException(
+                "Download timed out after ${READ_IMAGE_TIMEOUT_SECONDS}s (image unreachable or too slow): $url",
+                e,
+            )
+        }
+        throw e
     }
     // 扩展名按下载到的内容判断：网页图片常常没有扩展名或带 query（?w=100），URL 后缀不可信
     val extension = sniffImageExtension(bytes)
