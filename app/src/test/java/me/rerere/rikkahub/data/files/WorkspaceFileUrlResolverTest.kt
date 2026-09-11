@@ -3,7 +3,7 @@ package me.rerere.rikkahub.data.files
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Assume.assumeTrue
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.io.File
@@ -139,14 +139,31 @@ class WorkspaceFileUrlResolverTest {
     }
 
     @Test
-    fun `设备上的绝对路径不解析`() {
-        // Windows 上 `/data` 是盘符相对路径，这条真机路径断言只对 POSIX 绝对路径有意义
-        assumeTrue(File("/data").path.startsWith("/"))
-        assertNull(
-            WorkspaceFileUrlResolver.resolveFile(
-                filesDir, "w1", "file:///data/user/0/me.rerere.rikkahub/files/upload/x.png",
-            ),
+    fun `解析结果永远落在 filesDir 内 读不到沙箱外`() {
+        // 核心安全性质：无论输入什么（设备绝对路径、伪装的私有目录路径、穿越尝试、
+        // 绑定挂载、Rootfs 各前缀），解析出的 File 必须在应用 files 目录内 ——
+        // 也就是只能在沙箱里取图，读不到设备上的任何真实文件
+        val candidates = listOf(
+            "file:///data/user/0/me.rerere.rikkahub/files/upload/x.png",
+            "file:///data/data/me.rerere.rikkahub/files/images/x.png",
+            "file:///sdcard/dcim/a.png",
+            "file:///etc/hostname",
+            "file:///tmp/chart.png",
+            "file:///workspace/a.png",
+            "file:///upload/a.png",
+            "file:///skills/pptx/icon.png",
+            "file:///tool_outputs/out.png",
+            "file:///",
+            "file:///workspace/../../secret",
+            "file:///upload/../../../etc/passwd",
         )
+        val base = filesDir.canonicalPath
+        candidates.forEach { href ->
+            val resolved = WorkspaceFileUrlResolver.resolveFile(filesDir, "w1", href)
+            if (resolved != null) {
+                assertTrue("$href 解析到了 filesDir 之外: ${resolved.path}", resolved.path.startsWith(base))
+            }
+        }
     }
 
     @Test
