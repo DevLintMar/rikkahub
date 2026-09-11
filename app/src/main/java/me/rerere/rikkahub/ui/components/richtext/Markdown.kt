@@ -99,6 +99,7 @@ import me.rerere.hugeicons.stroke.Copy01
 import me.rerere.hugeicons.stroke.Download04
 import me.rerere.hugeicons.stroke.Tick01
 import me.rerere.rikkahub.data.datastore.Settings
+import me.rerere.rikkahub.data.files.WorkspaceFileUrlResolver
 import me.rerere.rikkahub.ui.components.table.DataTable
 import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.ui.modifier.onClick
@@ -334,7 +335,10 @@ private fun ASTNode.containsCitationLink(content: String): Boolean {
     return children.any { it.containsCitationLink(content) }
 }
 
-/** markdown 子树内把工作区 file:// 链接解析为宿主 File 的提供器；非工作区渲染上下文（预览/导出）为 null */
+/**
+ * markdown 子树内把 Rootfs 逻辑路径（`file:///workspace/...`、`file:///upload/...`、
+ * `file:///tmp/...` 等）解析为宿主 File 的提供器；非工作区渲染上下文（预览/导出）为 null。
+ */
 val LocalWorkspaceFileProvider = staticCompositionLocalOf<((String) -> File?)?> { null }
 
 @Composable
@@ -345,7 +349,8 @@ fun MarkdownBlock(
     onClickCitation: (String) -> Unit = {},
     workspaceId: String? = null,
 ) {
-    // 工作区 file:// 链接（/workspace、/upload 逻辑路径）→ 宿主 File 的解析器；其他链接原样交给 Coil/系统
+    // Rootfs 逻辑路径（/workspace、/upload、/skills、/tmp 等）→ 宿主 File 的解析器；
+    // 其它链接（http、宿主绝对路径等）原样交给 Coil/系统
     val context = LocalContext.current
     val workspaceFileResolver = remember(workspaceId) {
         { href: String -> WorkspaceFileUrlResolver.resolveFile(context.filesDir, workspaceId, href) }

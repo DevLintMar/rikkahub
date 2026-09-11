@@ -507,6 +507,19 @@ object FileFolders {
     const val SKILLS = "skills"
     const val FONTS = "fonts"
     const val TOOL_OUTPUTS = "tool_outputs"
+
+    /**
+     * Rootfs 内的 bind mount 目标 → `<filesDir>` 下的实际目录名。
+     *
+     * 同一份表既用于 PRoot 的 `-b` 参数（RepositoryModule），也用于把 Rootfs 逻辑路径
+     * 解析成宿主文件（WorkspaceFileUrlResolver，markdown 图片/read_image 工具），
+     * 避免两处各写一份而漂移。
+     */
+    val ROOTFS_BIND_MOUNTS: List<Pair<String, String>> = listOf(
+        "/skills" to SKILLS,
+        "/tool_outputs" to TOOL_OUTPUTS,
+        "/upload" to UPLOAD,
+    )
 }
 
 suspend fun FilesManager.saveUploadFromUri(

@@ -1,8 +1,9 @@
-package me.rerere.rikkahub.ui.components.richtext
+package me.rerere.rikkahub.data.files
 
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import java.io.File
@@ -58,28 +59,94 @@ class WorkspaceFileUrlResolverTest {
     }
 
     @Test
-    fun `路径穿越被拦截`() {
-        assertNull(WorkspaceFileUrlResolver.resolveFile(filesDir, "w1", "file:///workspace/../../secret"))
-        assertNull(WorkspaceFileUrlResolver.resolveFile(filesDir, "w1", "file:///upload/../../../etc/passwd"))
+    fun `Rootfs 其它绝对路径落到 linux 区`() {
+        assertEquals(
+            canonical("workspaces/w1/linux/tmp/chart.png"),
+            WorkspaceFileUrlResolver.resolveFile(filesDir, "w1", "file:///tmp/chart.png"),
+        )
+        assertEquals(
+            canonical("workspaces/w1/linux/etc/hostname"),
+            WorkspaceFileUrlResolver.resolveFile(filesDir, "w1", "/etc/hostname"),
+        )
+        assertEquals(
+            canonical("workspaces/w1/linux/root/out.png"),
+            WorkspaceFileUrlResolver.resolveFile(filesDir, "w1", "file:///root/out.png"),
+        )
     }
 
     @Test
-    fun `非工作区协议原样返回 null`() {
+    fun `Rootfs 其它绝对路径需要 workspaceId`() {
+        assertNull(WorkspaceFileUrlResolver.resolveFile(filesDir, null, "file:///tmp/chart.png"))
+        assertNull(WorkspaceFileUrlResolver.resolveFile(filesDir, "  ", "file:///tmp/chart.png"))
+    }
+
+    @Test
+    fun `bind mount 路径解析为宿主目录且无需 workspaceId`() {
+        assertEquals(
+            canonical("skills/pptx/SKILL.md"),
+            WorkspaceFileUrlResolver.resolveFile(filesDir, null, "file:///skills/pptx/SKILL.md"),
+        )
+        assertEquals(
+            canonical("tool_outputs/out.png"),
+            WorkspaceFileUrlResolver.resolveFile(filesDir, null, "/tool_outputs/out.png"),
+        )
+    }
+
+    @Test
+    fun `Rootfs 根目录解析为 linux 区根`() {
+        assertEquals(
+            canonical("workspaces/w1/linux"),
+            WorkspaceFileUrlResolver.resolveFile(filesDir, "w1", "file:///"),
+        )
+    }
+
+    @Test
+    fun `内核伪文件系统返回 null`() {
+        assertNull(WorkspaceFileUrlResolver.resolveFile(filesDir, "w1", "file:///proc/cpuinfo"))
+        assertNull(WorkspaceFileUrlResolver.resolveFile(filesDir, "w1", "file:///dev/null"))
+        assertNull(WorkspaceFileUrlResolver.resolveFile(filesDir, "w1", "file:///sys/class/net"))
+    }
+
+    @Test
+    fun `路径穿越被拦截`() {
+        assertNull(WorkspaceFileUrlResolver.resolveFile(filesDir, "w1", "file:///workspace/../../secret"))
+        assertNull(WorkspaceFileUrlResolver.resolveFile(filesDir, "w1", "file:///upload/../../../etc/passwd"))
+        assertNull(WorkspaceFileUrlResolver.resolveFile(filesDir, "w1", "file:///tmp/../workspace/../../x"))
+    }
+
+    @Test
+    fun `非 Rootfs 协议返回 null`() {
         assertNull(WorkspaceFileUrlResolver.resolveFile(filesDir, "w1", "http://example.com/a.png"))
         assertNull(WorkspaceFileUrlResolver.resolveFile(filesDir, "w1", "https://example.com/a.png"))
         assertNull(WorkspaceFileUrlResolver.resolveFile(filesDir, "w1", "data:image/png;base64,xxx"))
         assertNull(WorkspaceFileUrlResolver.resolveFile(filesDir, "w1", "content://media/123"))
-        // 宿主绝对路径（既有 file:// 机制）不属于工作区逻辑路径
+        assertNull(WorkspaceFileUrlResolver.resolveFile(filesDir, "w1", "relative/path.png"))
+    }
+
+    @Test
+    fun `真机私有目录路径不解析 即使它就是应用自己的目录`() {
+        // file:// 的根是工作区沙箱根，不是设备根 → 应用私有目录的宿主路径一律拒绝
         assertNull(
             WorkspaceFileUrlResolver.resolveFile(
-                filesDir, "w1", "file:///data/user/0/me.rerere.rikkahub/files/upload/x.png",
+                filesDir, "w1", "file://" + File(filesDir, "upload/x.png").path.replace('\\', '/'),
+            ),
+        )
+        assertNull(
+            WorkspaceFileUrlResolver.resolveFile(
+                filesDir, "w1", "file://" + filesDir.canonicalPath.replace('\\', '/') + "/upload/x.png",
             ),
         )
     }
 
     @Test
-    fun `Rootfs 内部路径不支持`() {
-        assertNull(WorkspaceFileUrlResolver.resolveFile(filesDir, "w1", "file:///etc/hostname"))
+    fun `设备上的绝对路径不解析`() {
+        // Windows 上 `/data` 是盘符相对路径，这条真机路径断言只对 POSIX 绝对路径有意义
+        assumeTrue(File("/data").path.startsWith("/"))
+        assertNull(
+            WorkspaceFileUrlResolver.resolveFile(
+                filesDir, "w1", "file:///data/user/0/me.rerere.rikkahub/files/upload/x.png",
+            ),
+        )
     }
 
     @Test

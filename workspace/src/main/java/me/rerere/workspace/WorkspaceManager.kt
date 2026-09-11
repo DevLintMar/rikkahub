@@ -293,8 +293,15 @@ class WorkspaceManager(
     }
 
     companion object {
-        private const val FILES_DIR = "files"
-        private const val LINUX_DIR = "linux"
+        /** files 目录下的工作区根目录名（`<filesDir>/workspaces/<root>/...`） */
+        const val WORKSPACES_BASE_DIR = "workspaces"
+
+        /** 工作区内的工作区文件区目录名（Rootfs `/workspace` → `<root>/files`） */
+        const val FILES_DIR = "files"
+
+        /** 工作区内的 Rootfs 目录名（Rootfs 其它绝对路径 → `<root>/linux/<path>`） */
+        const val LINUX_DIR = "linux"
+
         private const val TEMP_DIR = "tmp"
         const val DEFAULT_COMMAND_TIMEOUT_MS = 30_000L
 

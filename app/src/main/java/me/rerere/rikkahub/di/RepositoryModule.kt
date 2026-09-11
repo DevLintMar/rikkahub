@@ -46,25 +46,17 @@ val repositoryModule = module {
     single {
         val context: Context = get()
         WorkspaceManager(
-            baseDir = File(context.filesDir, "workspaces"),
+            baseDir = File(context.filesDir, WorkspaceManager.WORKSPACES_BASE_DIR),
             shellRunner = ProotShellRunner(
                 nativeLibraryDir = File(context.applicationInfo.nativeLibraryDir),
             ),
             // 同一份挂载表既用于 PRoot 的 -b 参数, 也用于文件工具的路径解析, 避免两处漂移
-            bindMounts = listOf(
+            bindMounts = FileFolders.ROOTFS_BIND_MOUNTS.map { (target, folder) ->
                 WorkspaceBindMount(
-                    source = File(context.filesDir, FileFolders.SKILLS).apply { mkdirs() },
-                    target = "/skills",
-                ),
-                WorkspaceBindMount(
-                    source = File(context.filesDir, FileFolders.TOOL_OUTPUTS).apply { mkdirs() },
-                    target = "/tool_outputs",
-                ),
-                WorkspaceBindMount(
-                    source = File(context.filesDir, FileFolders.UPLOAD).apply { mkdirs() },
-                    target = "/upload",
-                ),
-            ),
+                    source = File(context.filesDir, folder).apply { mkdirs() },
+                    target = target,
+                )
+            },
         )
     }
 
