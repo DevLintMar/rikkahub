@@ -88,6 +88,7 @@ import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.repository.FolderRepository
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
+import me.rerere.rikkahub.data.repository.lostUploadUrlsAfterDelete
 import me.rerere.rikkahub.web.BadRequestException
 import me.rerere.rikkahub.web.NotFoundException
 import me.rerere.rikkahub.utils.applyPlaceholders
@@ -719,7 +720,8 @@ class ChatService(
                     }
 
                     baseTools.addAll(createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), conversation.workspaceCwd))
-                    baseTools.addAll(createReadImageTool(workspaceId = null, workspaceRepository))
+                    // workspaceId 必须传：/upload 附件不需要它，但工作区内的 Rootfs 路径（/workspace、/tmp 等）需要
+                    baseTools.addAll(createReadImageTool(workspaceId = assistant.workspaceId?.toString()))
 
                     // MCP 工具按 server 分组
                     val rawTools = mcpManager.getAllAvailableTools()
@@ -804,8 +806,8 @@ class ChatService(
                     }
                     // 工作区工具
                     addAll(createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), conversation.workspaceCwd))
-                    // 图片懒加载读取工具（恒注册：/upload 全局可解析；工作区路径才需工作区）
-                    addAll(createReadImageTool(workspaceId = null, workspaceRepository))
+                    // 图片懒加载读取工具（恒注册：/upload 全局可解析；工作区路径需 workspaceId）
+                    addAll(createReadImageTool(workspaceId = assistant.workspaceId?.toString()))
                     // Skill 工具
                     skillTool?.let { add(it) }
                     // MCP 工具
@@ -1465,8 +1467,13 @@ class ChatService(
         saveConversation(conversationId, updatedConversation)
 
         // 引用计数回收：删除消息后失去引用且不再被任何会话消息引用的 upload 附件
-        // （checkFilesDelete 因 belt 跳过 upload，此处显式补充）
-        val lostFiles = currentConversation.files - updatedConversation.files.toSet()
+        // （checkFilesDelete 因 belt 跳过 upload，此处显式补充）。
+        // "失去引用"按 upload 文件名比较，不按 URL 字符串——同一物理文件可能有多种拼写，
+        // 见 lostUploadUrlsAfterDelete 的说明。
+        val lostFiles = lostUploadUrlsAfterDelete(
+            oldUrls = currentConversation.files.map { it.toString() },
+            newUrls = updatedConversation.files.map { it.toString() },
+        ).map { it.toUri() }
         Logging.log(TAG, "deleteMessage: lost ${lostFiles.size} file(s): ${lostFiles.joinToString(", ")}")
         if (lostFiles.isNotEmpty()) {
             conversationRepo.cleanupUploadFilesIfUnreferenced(lostFiles, conversationId.toString())

@@ -747,3 +747,25 @@ internal fun filterUnreferencedUploadUrls(
     val fileName = url.uploadFileNameOrNull() ?: return@filter false
     !isReferenced(fileName)
 }
+
+/**
+ * 删除消息后**真正失去引用**的附件 URL。
+ *
+ * upload 附件按**文件名**比较，而不是 URL 字符串：同一个物理文件可能以两种拼写出现在消息里
+ * （`context.filesDir` 经 `/data/data` ↔ `/data/user/0` 符号链接，read_image 等路径做过
+ * canonicalFile 化）。只比字符串会把"其实仍被本会话其它消息引用"的文件判成失去引用，
+ * 而随后的引用计数又**排除当前会话** → refs=0 → 误删：删除 AI 回复（其 read_image 工具结果
+ * 里带着同一张图）会连带删掉用户自己消息里的图片附件。
+ *
+ * 其余文件（工作区导出、生成图等）按 URL 精确比较。纯函数，不依赖 Android，供单测直接验证。
+ */
+internal fun lostUploadUrlsAfterDelete(
+    oldUrls: List<String>,
+    newUrls: List<String>,
+): List<String> {
+    val newUrlSet = newUrls.toSet()
+    val newUploadNames = newUrls.mapNotNull { it.uploadFileNameOrNull() }.toSet()
+    return oldUrls.filterNot { url ->
+        url in newUrlSet || (url.uploadFileNameOrNull()?.let { it in newUploadNames } == true)
+    }
+}

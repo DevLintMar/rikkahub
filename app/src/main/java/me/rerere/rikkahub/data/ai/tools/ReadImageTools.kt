@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.data.ai.tools
 
 import android.content.Context
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -23,8 +24,9 @@ import me.rerere.rikkahub.data.ai.transformers.OcrTransformer
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
+import me.rerere.rikkahub.data.files.FileFolders
 import me.rerere.rikkahub.data.files.FilesManager
-import me.rerere.rikkahub.data.repository.WorkspaceRepository
+import me.rerere.rikkahub.data.files.WorkspaceFileUrlResolver
 import me.rerere.rikkahub.utils.retryOnFailure
 import org.koin.java.KoinJavaComponent.getKoin
 import java.io.File
@@ -36,8 +38,10 @@ import java.io.File
  * - 视觉模型：返回图片本体（三家 provider 的工具结果图片通道已存在）
  * - 非视觉模型：并行调用 OCR 模型转文本后一次性返回
  *
- * 恒注册（workspaceId 仅用于解析 file:///workspace/... 等 rootfs 路径；不传则只可用
- * file:///upload/... 与 http(s) URL，完全满足用户附加图片的读取）。
+ * 恒注册。URL 解析与 markdown 渲染共用一套 Rootfs 逻辑路径规则（[WorkspaceFileUrlResolver]）：
+ * - `file:///upload/...` 本地附件（**无需工作区**）
+ * - 工作区内任意绝对路径（`/workspace/...`、`/tmp/...`、`/skills/...` 等，需工作区）
+ * - `http(s)://` 网页图片（下载到 upload/，8MB 上限）
  * 历史记录在 [chat_message_tool_read_image_failed] 的封装统一见 [ReadImageResult]。
  */
 const val READ_IMAGE_MAX_IMAGES_PER_CALL = 8
@@ -49,22 +53,22 @@ private const val READ_IMAGE_MAX_DOWNLOAD_BYTES = 8L * 1024 * 1024
 /** http 下载失败自动重试：1 次初始 + 3 次重试 = 4 次尝试（网络波动等瞬时错误） */
 private const val DOWNLOAD_MAX_ATTEMPTS = 4
 
-private val READ_IMAGE_EXTENSIONS = setOf(
-    "png", "jpg", "jpeg", "gif", "webp", "bmp", "heic", "heif", "avif",
-)
+/** 判断图片类型需要读取的文件头长度 */
+private const val IMAGE_HEADER_BYTES = 16
 
 fun createReadImageTool(
     workspaceId: String?,
-    workspaceRepository: WorkspaceRepository,
 ): List<Tool> {
     return listOf(
         Tool(
             name = "read_image",
             description = """
                 Read one or more images by URL. Accepts:
-                - file:///upload/... — images the user attached to the chat (always available)
-                - file:///workspace/... or other absolute workspace paths (requires a workspace-enabled assistant)
-                - http:// or https:// links — downloaded and read
+                - file:///upload/... — images the user attached to the chat (always available, works without a workspace)
+                - file:///workspace/... — files in the workspace files area
+                - any other absolute path inside the workspace rootfs, e.g. file:///tmp/chart.png or file:///skills/.../x.png
+                - http:// or https:// links — downloaded and read (max 8 MB)
+                The file:// prefix may be omitted. Paths inside the workspace need a workspace-enabled assistant.
                 Up to $READ_IMAGE_MAX_IMAGES_PER_CALL images per call; any extra URLs are omitted and reported in the result.
                 For vision-capable models, the images themselves are returned — you will see them directly.
                 For models without vision, each image is OCR'd by a dedicated vision model and returned as text wrapped in <image_file_ocr> tags (all images are processed in parallel).
@@ -107,8 +111,17 @@ fun createReadImageTool(
                 // 并行读取各图（视觉直接读文件；非视觉并行 OCR），全部完成后一次性汇总
                 val results = coroutineScope {
                     processed.map { url ->
-                        async { readSingleImage(workspaceId, workspaceRepository, url, hasVision) }
+                        async { readSingleImage(workspaceId, url, hasVision) }
                     }.awaitAll()
+                }
+                results.forEach { result ->
+                    // 诊断写入请求日志页：图片解析不到/格式不对/编码不出时，这里能看到实际路径与原因
+                    Logging.log(
+                        TAG,
+                        "read_image ${result.mode}: ${result.url}" +
+                            (result.imageUri?.let { " -> $it" } ?: "") +
+                            (result.text?.let { " | ${it.take(200)}" } ?: "")
+                    )
                 }
                 // 图片本体作为 Image parts 返回（provider 侧编码后视觉模型真正看到）
                 val imageParts = results.mapNotNull { it.imageUri }
@@ -152,21 +165,13 @@ private data class ReadImageResult(
 
 private suspend fun readSingleImage(
     workspaceId: String?,
-    workspaceRepository: WorkspaceRepository,
     url: String,
     hasVision: Boolean,
 ): ReadImageResult {
-    val extension = url.substringAfterLast('.', "").lowercase()
-    if (extension !in READ_IMAGE_EXTENSIONS) {
-        return ReadImageResult(
-            url = url,
-            mode = "error",
-            text = "Not an image file. Use workspace_read for non-image files.",
-        )
-    }
-
     val uri = try {
-        resolveImageFileUri(workspaceId, workspaceRepository, url)
+        resolveImageFileUri(workspaceId, url)
+    } catch (e: CancellationException) {
+        throw e
     } catch (e: Exception) {
         return ReadImageResult(
             url = url,
@@ -184,49 +189,93 @@ private suspend fun readSingleImage(
 }
 
 /**
- * URL → 图片文件的 file:// URL（本地缓存副本）。
- * - file:///upload/... → filesDir/upload（全局可解析；没有工作区时该挂载依然存在）
- * - file:///workspace/... 与其它绝对路径 → 工作区 rootfs 读取后落盘 upload/
- * - http(s)://... → 下载到 upload/（上限 8MB）
- * canonicalFile 防路径穿越。其它 scheme 一律拒绝。
+ * URL → 可直接读取的图片 file:// URL。
+ * - `http(s)://...` → 下载到 upload/
+ * - 已在 upload 里的附件 → 原样引用，不复制
+ * - 工作区内的文件（`/workspace/...`、`/tmp/...`、`/skills/...`）→ **复制**一份进 upload 再引用
+ *
+ * 复制而不是直接引用工作区原文件：工具结果里的 Image part 会进 `Conversation.files`，
+ * 删除该消息时清理逻辑会把它当附件删掉（checkFilesDelete 只对 upload 目录留手），
+ * 直接引用工作区路径会导致工作区里的原文件被删。上限 8MB；非图片内容、路径穿越一律拒绝。
  */
 internal suspend fun resolveImageFileUri(
     workspaceId: String?,
-    workspaceRepository: WorkspaceRepository,
     url: String,
 ): String {
-    val context = getKoin().get<Context>()
-    val filesDir = context.filesDir
-    if (url.startsWith("file:///upload/")) {
-        val rel = url.removePrefix("file:///upload/")
-        val root = File(filesDir, "upload").canonicalFile
-        val target = root.resolve(rel).canonicalFile
-        require(target.startsWith(root)) { "Image not found under /upload: $url" }
-        require(target.isFile) { "Image not found under /upload: $url" }
-        return "file://" + target.absolutePath.replace('\\', '/')
+    val trimmed = url.trim()
+    if (trimmed.startsWith("http://", ignoreCase = true) || trimmed.startsWith("https://", ignoreCase = true)) {
+        return downloadImageToUpload(trimmed)
     }
-    if (url.startsWith("http://") || url.startsWith("https://")) {
-        return downloadImageToUpload(url)
+    val filesDir = getKoin().get<Context>().filesDir
+    val file = WorkspaceFileUrlResolver.resolveFile(filesDir, workspaceId, trimmed)
+        ?: error("Image not found: $url (file:// paths are resolved inside the workspace sandbox, not on the device)")
+    val extension = inspectLocalImage(file, url)
+    return if (isInUploadDir(filesDir, file)) {
+        "file://" + file.absolutePath.replace('\\', '/')
+    } else {
+        val bytes = withContext(Dispatchers.IO) { file.readBytes() }
+        getKoin().get<FilesManager>().createChatFilesByByteArrays(listOf(bytes), extension).first().toString()
     }
-    // 工作区 / rootfs 路径：读取字节后落盘为 file:// 图片（保留扩展名）
-    require(!workspaceId.isNullOrBlank()) {
-        "Workspace paths require a workspace-enabled assistant; only file:///upload/... and http(s) URLs are available here"
+}
+
+/** 本地图片校验：必须存在、非空、不超限、内容确实是图片；返回按文件头判断出的扩展名。 */
+private suspend fun inspectLocalImage(file: File, url: String): String = withContext(Dispatchers.IO) {
+    require(file.isFile) { "Image not found: $url" }
+    val size = file.length()
+    require(size in 1..READ_IMAGE_MAX_DOWNLOAD_BYTES) {
+        "Image is empty or too large (> ${READ_IMAGE_MAX_DOWNLOAD_BYTES / 1024 / 1024}MB): $url"
     }
-    val extension = url.substringAfterLast('.', "").lowercase().ifEmpty { "png" }
-    val bytes = withContext(Dispatchers.IO) {
-        val size = workspaceRepository.rootfsFileSize(workspaceId, url)
-        require(size in 1..8L * 1024 * 1024) { "Image is too large or empty: $url" }
-        val buffer = java.io.ByteArrayOutputStream(size.toInt())
-        workspaceRepository.exportRootfsFile(workspaceId, url, buffer)
-        buffer.toByteArray()
-    }
-    val filesManager = getKoin().get<FilesManager>()
-    val uri = filesManager.createChatFilesByByteArrays(listOf(bytes), extension).first()
-    return uri.toString()
+    val header = ByteArray(IMAGE_HEADER_BYTES)
+    val read = runCatching { file.inputStream().use { it.read(header) } }.getOrDefault(-1)
+    require(read > 0) { "Image is empty: $url" }
+    sniffImageExtension(header.copyOf(read))
+        ?: error("Not an image file. Use workspace_read for non-image files: $url")
+}
+
+/** 文件是否位于 `<filesDir>/upload`（符号链接两种拼写都认） */
+private fun isInUploadDir(filesDir: File, file: File): Boolean {
+    val uploadRoot = runCatching { File(filesDir, FileFolders.UPLOAD).canonicalFile.path }.getOrNull()
+        ?: return false
+    val canonical = runCatching { file.canonicalFile.path }.getOrNull() ?: return false
+    return canonical.startsWith(uploadRoot + File.separator)
 }
 
 /**
- * 下载 http(s) 图片到 upload/，返回 file:// URL。上限 8MB，超限或失败抛出。
+ * 按文件头判断图片格式，返回扩展名；不是图片返回 null。
+ * 比看扩展名可靠：AI/网页给的 URL 常常没有扩展名、带 query，或扩展名与实际内容不符。
+ * 纯逻辑，供单测直接调用。
+ */
+internal fun sniffImageExtension(header: ByteArray): String? {
+    fun ascii(from: Int, to: Int): String =
+        if (header.size >= to) header.copyOfRange(from, to).toString(Charsets.US_ASCII) else ""
+
+    // HEIF/HEIC/AVIF：ISO-BMFF 容器，"ftyp" box 在字节 4..8，主品牌码在 8..12
+    if (ascii(4, 8) == "ftyp") {
+        when (ascii(8, 12)) {
+            "heic", "heix", "heim", "heis",
+            "hevc", "hevx", "hevm", "hevs",
+            "mif1", "msf1", "heif",
+                -> return "heic"
+
+            "avif", "avis" -> return "avif"
+        }
+    }
+    if (header.size >= 2 && header[0] == 0xFF.toByte() && header[1] == 0xD8.toByte()) return "jpg"
+    if (header.size >= 8 && header.copyOfRange(0, 8).contentEquals(
+            byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+        )
+    ) {
+        return "png"
+    }
+    if (ascii(0, 4) == "RIFF" && ascii(8, 12) == "WEBP") return "webp"
+    val gifHeader = ascii(0, 6)
+    if (gifHeader == "GIF89a" || gifHeader == "GIF87a") return "gif"
+    if (header.size >= 2 && header[0] == 'B'.code.toByte() && header[1] == 'M'.code.toByte()) return "bmp"
+    return null
+}
+
+/**
+ * 下载 http(s) 图片到 upload/，返回 file:// URL。上限 8MB，超限或非图片抛出。
  * 网络波动等瞬时错误自动重试（1 次初始 + 3 次重试），全部失败才抛出；文件落盘只做一次。
  */
 private suspend fun downloadImageToUpload(url: String): String {
@@ -256,7 +305,9 @@ private suspend fun downloadImageToUpload(url: String): String {
             response.close()
         }
     }
-    val extension = url.substringBefore('?').substringAfterLast('.', "").lowercase().ifEmpty { "png" }
+    // 扩展名按下载到的内容判断：网页图片常常没有扩展名或带 query（?w=100），URL 后缀不可信
+    val extension = sniffImageExtension(bytes)
+        ?: error("Downloaded content is not an image: $url")
     return getKoin().get<FilesManager>()
         .createChatFilesByByteArrays(listOf(bytes), extension)
         .first()
