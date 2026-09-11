@@ -77,7 +77,6 @@ import me.rerere.rikkahub.ui.components.table.DataTable
 import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.ui.theme.JetbrainsMono
 import me.rerere.rikkahub.utils.toDp
-import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.html.HtmlGenerator
 import org.intellij.markdown.parser.MarkdownParser
 import org.jsoup.Jsoup
@@ -108,17 +107,16 @@ private fun preProcess(content: String): String {
 // ---- HTML generation ----
 
 private val flavour by lazy {
-    GFMFlavourDescriptor(makeHttpsAutoLinks = true, useSafeLinks = true)
+    // 单波浪 ~x~ 按纯文本渲染（只有 ~~x~~ 是删除线），见 SingleTildeStrikethrough.kt
+    SingleTildeSafeGfmFlavour(makeHttpsAutoLinks = true, useSafeLinks = true)
 }
 
 private val parser by lazy { MarkdownParser(flavour) }
 
 private fun generateMarkdownHtml(content: String): String {
     val preprocessed = preProcess(content)
-    // 单波浪假删除线抑制：~x~ 不是删除线，转义为 \~x~（见 SingleTildeStrikeGuard）
-    val guarded = escapeSingleTildeStrikethrough(parser, preprocessed)
-    val tree = parser.buildMarkdownTreeFromString(guarded)
-    return HtmlGenerator(guarded, tree, flavour).generateHtml()
+    val tree = parser.buildMarkdownTreeFromString(preprocessed)
+    return HtmlGenerator(preprocessed, tree, flavour).generateHtml()
 }
 
 // ---- Main composable ----

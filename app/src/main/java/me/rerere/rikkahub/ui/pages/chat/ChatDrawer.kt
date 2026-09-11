@@ -2,7 +2,6 @@ package me.rerere.rikkahub.ui.pages.chat
 
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -810,9 +809,6 @@ private fun FolderBar(
     // 拖拽期间的本地顺序镜像：onMove 立即交换（拖拽跟手），拖拽结束后一次性持久化。
     // 不直接以 Room Flow 顺序做交换源——Flow 回流有延迟，拖拽中多次 onMove 会索引错位。
     var localFolders by remember { mutableStateOf(folders) }
-    LaunchedEffect(folders) {
-        localFolders = folders
-    }
     // 拖拽位移映射到 folders 列表下标：首项「聊天」chip 占 index 0，文件夹从 index 1 开始
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
         val fromIndex = from.index - 1
@@ -824,8 +820,12 @@ private fun FolderBar(
             }
         }
     }
+    LaunchedEffect(folders) {
+        // 拖拽中不接收回流顺序，避免把本地镜像重置回拖拽前的顺序造成跳动
+        if (!reorderableState.isAnyItemDragging) localFolders = folders
+    }
     // 拖拽结束（从有拖拽变为无拖拽）时把最终顺序一次性持久化；
-    // Room Flow 回流后与 localFolders 一致，LaunchedEffect 不再触发
+    // Room Flow 回流后与 localFolders 一致
     val currentFolders by rememberUpdatedState(folders)
     LaunchedEffect(reorderableState) {
         var wasDragging = false
@@ -852,7 +852,6 @@ private fun FolderBar(
                 label = stringResource(R.string.chat_page_folder_default),
                 selected = selectedFolderId == null,
                 onClick = { onSelect(null) },
-                onLongClick = {},
             )
         }
         itemsIndexed(localFolders, key = { _, folder -> folder.id }) { _, folder ->
@@ -866,8 +865,8 @@ private fun FolderBar(
                         label = folder.name,
                         icon = HugeIcons.Folder01,
                         selected = selectedFolderId == folder.id,
-                        // 长按已被拖拽占用（longPressDraggableHandle 消费长按），
-                        // 单击选中；再次单击已选中的文件夹时弹出操作菜单（重命名/删除）
+                        // 长按 = 拖拽排序（见 dragHandleModifier）；
+                        // 单击选中；再次单击已选中的文件夹弹出操作菜单（重命名/删除）
                         onClick = {
                             if (selectedFolderId == folder.id) {
                                 menuExpanded = true
@@ -875,17 +874,15 @@ private fun FolderBar(
                                 onSelect(folder.id)
                             }
                         },
-                        onLongClick = {},
-                        modifier = Modifier
-                            .scale(if (isDragging) 0.95f else 1f)
-                            .longPressDraggableHandle(
-                                onDragStarted = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
-                                },
-                                onDragStopped = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
-                                },
-                            ),
+                        modifier = Modifier.scale(if (isDragging) 0.95f else 1f),
+                        dragHandleModifier = Modifier.longPressDraggableHandle(
+                            onDragStarted = {
+                                haptic.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
+                            },
+                            onDragStopped = {
+                                haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
+                            },
+                        ),
                     )
                     DropdownMenu(
                         expanded = menuExpanded,
@@ -917,7 +914,6 @@ private fun FolderBar(
                 icon = HugeIcons.FolderAdd,
                 selected = false,
                 onClick = onCreate,
-                onLongClick = {},
             )
         }
     }
@@ -928,9 +924,9 @@ private fun FolderChip(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit,
     icon: ImageVector? = null,
     modifier: Modifier = Modifier,
+    dragHandleModifier: Modifier = Modifier,
 ) {
     Surface(
         shape = CircleShape,
@@ -941,10 +937,11 @@ private fun FolderChip(
         },
         modifier = modifier
             .clip(CircleShape)
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick,
-            )
+            // 只用 clickable（不带长按）：combinedClickable 的 onLongClick 会消费长按，
+            // 使外层拖拽手柄永远收不到长按而拖不动
+            .clickable(onClick = onClick)
+            // 拖拽手柄置于链最内层：指针事件先到内层，长按才能稳定抢占为拖拽
+            .then(dragHandleModifier)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),

@@ -236,10 +236,8 @@ private fun ASTNode.containsHtml(): Boolean {
 
 private fun parseMarkdown(content: String): MarkdownParseResult {
     val preprocessed = preProcess(content)
-    // 单波浪假删除线抑制：~x~ 不是删除线，转义为 \~x~（见 SingleTildeStrikeGuard）
-    val guarded = escapeSingleTildeStrikethrough(parser, preprocessed)
-    val astTree = parser.buildMarkdownTreeFromString(guarded)
-    return MarkdownParseResult(guarded, astTree, astTree.containsHtml())
+    val astTree = parser.buildMarkdownTreeFromString(preprocessed)
+    return MarkdownParseResult(preprocessed, astTree, astTree.containsHtml())
 }
 
 /**
@@ -753,8 +751,13 @@ private fun MarkdownNode(
 
         // GFM 特殊元素
         GFMElementTypes.STRIKETHROUGH -> {
+            // 只有 ~~x~~ 是删除线；~x~（单波浪）按纯文本渲染（波浪原样显示）
+            val raw = node.getTextInNode(content)
+            val isStrike = isDoubleTildeStrikethrough(raw)
             Text(
-                text = node.getTextInNode(content), textDecoration = TextDecoration.LineThrough, modifier = modifier
+                text = if (isStrike) raw.trim('~') else raw,
+                textDecoration = if (isStrike) TextDecoration.LineThrough else null,
+                modifier = modifier
             )
         }
 
@@ -1372,8 +1375,11 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
         }
 
         node.type == GFMElementTypes.STRIKETHROUGH -> {
-            withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) {
-                node.children.trim(GFMTokenTypes.TILDE, 2).fastForEach {
+            // 只有 ~~x~~ 是删除线；~x~（单波浪）按纯文本渲染（波浪原样显示、不加删除线）
+            val isStrike = isDoubleTildeStrikethrough(node.getTextInNode(content))
+            withStyle(if (isStrike) SpanStyle(textDecoration = TextDecoration.LineThrough) else SpanStyle()) {
+                val children = if (isStrike) node.children.trim(GFMTokenTypes.TILDE, 2) else node.children
+                children.fastForEach {
                     appendMarkdownNodeContent(
                         node = it,
                         content = content,
