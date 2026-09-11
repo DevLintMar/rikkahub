@@ -27,8 +27,8 @@ class SearchToolsTest {
         val schema = searchTool.parameters() as InputSchema.Obj
 
         // query 必填；service 也必须显式给（多渠道工具）
-        assertTrue(schema.required.contains("query"))
-        assertTrue(schema.required.contains("service"))
+        assertTrue(schema.required.orEmpty().contains("query"))
+        assertTrue(schema.required.orEmpty().contains("service"))
         // 日期区间与域名过滤：Exa 的证据/新鲜度参数（fork 的 snake_case 键）
         assertTrue(schema.properties.containsKey("start_published_date"))
         assertTrue(schema.properties.containsKey("end_published_date"))
@@ -41,7 +41,7 @@ class SearchToolsTest {
         val scrapeTool = createSearchTools(exaSettings()).single { it.name == "scrape_web" }
         val schema = scrapeTool.parameters() as InputSchema.Obj
 
-        assertTrue(schema.required.contains("urls"))
+        assertTrue(schema.required.orEmpty().contains("urls"))
         assertTrue(schema.properties.containsKey("max_age_hours"))
     }
 }
