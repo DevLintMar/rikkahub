@@ -12,7 +12,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonArrayBuilder
-import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
@@ -35,7 +34,10 @@ import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.provider.providers.PartGroup
+import me.rerere.ai.provider.providers.TOOL_RESULT_IMAGE_ATTACHED_NOTE
 import me.rerere.ai.provider.providers.groupPartsByToolBoundary
+import me.rerere.ai.provider.providers.toolResultImagesForUserMessage
+import me.rerere.ai.provider.providers.toolResultText
 import me.rerere.ai.registry.ModelRegistry
 import me.rerere.ai.ui.MessageChunk
 import me.rerere.ai.ui.UIMessage
@@ -50,6 +52,7 @@ import me.rerere.ai.util.mergeCustomBody
 import me.rerere.ai.util.parseErrorDetail
 import me.rerere.ai.util.stringSafe
 import me.rerere.ai.util.toHeaders
+import me.rerere.common.android.Logging
 import me.rerere.common.http.await
 import me.rerere.common.http.jsonArrayOrNull
 import me.rerere.common.http.jsonObjectOrNull
@@ -518,14 +521,31 @@ class ChatCompletionsAPI(
                     contentBuffer.clear()
                     reasoningPart = null // 清空，下一个 group 可能有新的 reasoning
 
-                    // 紧跟 tool 结果消息
+                    // 紧跟 tool 结果消息。Chat Completions 规范限制 tool 消息的 content 只能是文本
+                    // （image_url 会被服务端拒绝：400 Invalid input / Invalid content type，
+                    // param 指向 messages.N.content），因此工具结果里的图片不放进 tool 消息。
                     group.tools.forEach { tool ->
                         add(buildJsonObject {
                             put("role", "tool")
                             put("name", tool.toolName)
                             put("tool_call_id", tool.toolCallId)
-                            put("content", tool.toToolResultContent(supportInputModalities))
+                            put("content", tool.toolResultText(supportInputModalities))
                         })
+                    }
+
+                    // 图片紧接着全部 tool 消息之后作为一条 user 消息随附：OpenAI 要求 tool_calls 的
+                    // 所有响应消息紧跟其 assistant 消息，中间插入其它 role 会让整个请求非法，
+                    // 所以同一组（并行）工具调用的图片必须合并到一条 user 消息里，且晚于所有 tool 消息。
+                    val hoistedImages = group.tools.flatMap { tool ->
+                        tool.toolResultImagesForUserMessage(supportInputModalities)
+                    }
+                    if (hoistedImages.isNotEmpty()) {
+                        Logging.log(
+                            TAG,
+                            "hoisted ${hoistedImages.size} tool-result image(s) into a follow-up user message " +
+                                "(Chat Completions tool message content is text-only)"
+                        )
+                        addToolResultImagesMessage(hoistedImages)
                     }
                 }
             }
@@ -592,9 +612,14 @@ class ChatCompletionsAPI(
                                             put("url", encodedImage.base64)
                                         })
                                     }.onFailure {
-                                        it.printStackTrace()
+                                        // 不留空 text 块：部分服务端会拒绝空文本内容
+                                        Log.w(TAG, "encode assistant image failed: ${part.url}", it)
+                                        Logging.log(
+                                            TAG,
+                                            "encode assistant image failed: ${part.url} (${it.message})"
+                                        )
                                         put("type", "text")
-                                        put("text", "")
+                                        put("text", "Error: failed to encode image: ${it.message}")
                                     }
                                 })
                             }
@@ -649,9 +674,11 @@ class ChatCompletionsAPI(
                                             put("url", encodedImage.base64)
                                         })
                                     }.onFailure {
-                                        it.printStackTrace()
+                                        // 不留空 text 块：部分服务端会拒绝空文本内容
+                                        Log.w(TAG, "encode image failed: ${part.url}", it)
+                                        Logging.log(TAG, "encode image failed: ${part.url} (${it.message})")
                                         put("type", "text")
-                                        put("text", "")
+                                        put("text", "Error: failed to encode image: ${it.message}")
                                     }
                                 })
                             }
@@ -664,51 +691,35 @@ class ChatCompletionsAPI(
         })
     }
 
-    private fun UIMessagePart.Tool.toToolResultContent(supportInputModalities: List<Modality>): JsonElement {
-        // 只考虑文字和图片;只有模型支持图片输入时,图片才作为多模态内容回传,否则以文本占位,避免发给不支持的模型报错
-        val supportsImageInput = Modality.IMAGE in supportInputModalities
-        val hasImageToSend = output.any { it is UIMessagePart.Image && supportsImageInput }
-        return if (!hasImageToSend) {
-            JsonPrimitive(output.mapNotNull { part ->
-                when (part) {
-                    is UIMessagePart.Text -> part.text
-                    is UIMessagePart.Image -> "[Image output omitted: current model does not support image input]"
-                    else -> null
-                }
-            }.joinToString("\n"))
-        } else {
-            buildJsonArray {
-                output.forEach { part ->
-                    when (part) {
-                        is UIMessagePart.Text -> {
-                            if (part.text.isNotBlank()) {
-                                add(buildJsonObject {
-                                    put("type", "text")
-                                    put("text", part.text)
-                                })
-                            }
-                        }
-
-                        is UIMessagePart.Image -> {
-                            add(buildJsonObject {
-                                part.encodeBase64().onSuccess { encodedImage ->
-                                    put("type", "image_url")
-                                    put("image_url", buildJsonObject {
-                                        put("url", encodedImage.base64)
-                                    })
-                                }.onFailure {
-                                    Log.w(TAG, "encode tool result image failed: ${part.url}", it)
-                                    put("type", "text")
-                                    put("text", "Error: Failed to encode image to base64")
-                                }
+    /** 一条只携带工具结果图片的 user 消息（编码失败时退化为可读的文本说明，不留空 text 块）。 */
+    private fun JsonArrayBuilder.addToolResultImagesMessage(images: List<UIMessagePart.Image>) {
+        add(buildJsonObject {
+            put("role", "user")
+            putJsonArray("content") {
+                add(buildJsonObject {
+                    put("type", "text")
+                    put("text", TOOL_RESULT_IMAGE_ATTACHED_NOTE)
+                })
+                images.forEach { image ->
+                    add(buildJsonObject {
+                        image.encodeBase64().onSuccess { encodedImage ->
+                            put("type", "image_url")
+                            put("image_url", buildJsonObject {
+                                put("url", encodedImage.base64)
                             })
+                        }.onFailure {
+                            Log.w(TAG, "encode tool result image failed: ${image.url}", it)
+                            Logging.log(
+                                TAG,
+                                "encode tool result image failed: ${image.url} (${it.message})"
+                            )
+                            put("type", "text")
+                            put("text", "Error: failed to encode image (${image.url}): ${it.message}")
                         }
-
-                        else -> {}
-                    }
+                    })
                 }
             }
-        }
+        })
     }
 
     private fun parseMessage(jsonObject: JsonObject): UIMessage {

@@ -51,6 +51,7 @@ import me.rerere.ai.util.mergeCustomBody
 import me.rerere.ai.util.parseErrorDetail
 import me.rerere.ai.util.stringSafe
 import me.rerere.ai.util.toHeaders
+import me.rerere.common.android.Logging
 import me.rerere.common.http.await
 import me.rerere.common.http.jsonPrimitiveOrNull
 import okhttp3.MediaType.Companion.toMediaType
@@ -487,9 +488,11 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                     put("data", encoded.base64)
                 })
             }.onFailure {
+                // 不留空 text 块：Anthropic 会拒绝空文本内容，且空块会让模型完全看不到图片原因
                 Log.w(TAG, "encode image failed: $url", it)
+                Logging.log(TAG, "encode image failed: $url (${it.message})")
                 put("type", "text")
-                put("text", "")
+                put("text", "Error: failed to encode image ($url): ${it.message}")
             }
         }
 
