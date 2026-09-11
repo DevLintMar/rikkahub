@@ -2,7 +2,7 @@
 
 **日期**：2026-09-11（当日第三份；前两份为 `2026-09-11-read-image-retry-folder-drag-tilde-render-fix-next-phase.md` 与 `2026-09-11-file-url-sandbox-tool-image-timeout-next-phase.md`）
 **目的**：上下文清理前的完整交接。新会话读本文档即可续接。
-**状态**：master HEAD = `1695064a`，工作树干净。sync 分支 CI 全绿（`34612251023` success）。
+**状态**：master 的最后一个**代码**提交 = `0aff63d7`（haze 回退），CI 全绿（`34617957749`）；本文档及其补记为它之后的 docs 提交。工作树干净。分支 `sync/upstream-2026-09-10` 保留在 `4ca2bafe` 供对照。
 
 ---
 
