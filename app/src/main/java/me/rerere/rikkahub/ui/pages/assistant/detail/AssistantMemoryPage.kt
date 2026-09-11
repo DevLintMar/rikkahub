@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -26,6 +27,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEach
@@ -129,6 +132,47 @@ private fun AssistantMemoryContent(
     var pendingDeleteActiveMemory by remember { mutableStateOf<AssistantMemory?>(null) }
 
     // 已保存记忆 添加/编辑对话框（标题 + 描述 + 内容）
+    var showTimeReminderIntervalDialog by remember(assistant.id) { mutableStateOf(false) }
+    var timeReminderIntervalInput by remember(assistant.id) { mutableStateOf("") }
+
+    if (showTimeReminderIntervalDialog) {
+        val interval = timeReminderIntervalInput.toIntOrNull()?.takeIf { it > 0 }
+        AlertDialog(
+            onDismissRequest = { showTimeReminderIntervalDialog = false },
+            title = { Text(stringResource(R.string.assistant_page_time_reminder_interval)) },
+            text = {
+                TextField(
+                    value = timeReminderIntervalInput,
+                    onValueChange = { timeReminderIntervalInput = it },
+                    label = { Text(stringResource(R.string.assistant_page_time_reminder_interval_label)) },
+                    supportingText = { Text(stringResource(R.string.assistant_page_time_reminder_interval_hint)) },
+                    isError = interval == null,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = interval != null,
+                    onClick = {
+                        interval?.let {
+                            onUpdateAssistant(assistant.copy(timeReminderIntervalMinutes = it))
+                        }
+                        showTimeReminderIntervalDialog = false
+                    },
+                ) {
+                    Text(stringResource(R.string.assistant_page_save))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimeReminderIntervalDialog = false }) {
+                    Text(stringResource(R.string.assistant_page_cancel))
+                }
+            },
+        )
+    }
+
+    // 记忆对话框
     memoryDialogState.EditStateContent { memory, update ->
         AlertDialog(
             onDismissRequest = { memoryDialogState.dismiss() },
@@ -300,6 +344,9 @@ private fun AssistantMemoryContent(
                     )
                 }
             )
+        }
+
+        CardGroup {
             item(
                 headlineContent = { Text(stringResource(R.string.assistant_page_edit_saved_memories)) },
                 supportingContent = {
@@ -321,6 +368,17 @@ private fun AssistantMemoryContent(
                     )
                 }
             )
+            if (assistant.enableTimeReminder) {
+                item(
+                    headlineContent = { Text(stringResource(R.string.assistant_page_time_reminder_interval)) },
+                    supportingContent = { Text(stringResource(R.string.assistant_page_time_reminder_interval_desc)) },
+                    trailingContent = { Text(stringResource(R.string.assistant_page_time_reminder_interval_value, assistant.timeReminderIntervalMinutes)) },
+                    onClick = {
+                        timeReminderIntervalInput = assistant.timeReminderIntervalMinutes.toString()
+                        showTimeReminderIntervalDialog = true
+                    },
+                )
+            }
         }
 
         // 活跃记忆区（多条）
@@ -483,11 +541,6 @@ private fun MemoryItem(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Text(
-                    text = "#${memory.id}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                )
                 Text(
                     text = memory.content,
                     maxLines = 5,

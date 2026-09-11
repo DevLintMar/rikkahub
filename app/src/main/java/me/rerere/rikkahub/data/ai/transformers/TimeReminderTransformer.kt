@@ -11,8 +11,6 @@ import java.time.format.TextStyle
 import java.util.Locale
 import kotlin.time.toJavaInstant
 
-private const val TIME_GAP_THRESHOLD_SECONDS = 3600L // 1 小时
-
 /**
  * 时间提醒注入转换器
  *
@@ -27,6 +25,7 @@ object TimeReminderTransformer : InputMessageTransformer {
         return applyTimeReminder(
             messages,
             alwaysInsert = ctx.assistant.timeReminderAlwaysInsert,
+            intervalMinutes = ctx.assistant.timeReminderIntervalMinutes,
         )
     }
 }
@@ -34,7 +33,9 @@ object TimeReminderTransformer : InputMessageTransformer {
 internal fun applyTimeReminder(
     messages: List<UIMessage>,
     alwaysInsert: Boolean = false,
+    intervalMinutes: Int = 60,
 ): List<UIMessage> {
+    val thresholdSeconds = intervalMinutes.coerceAtLeast(1).toLong() * 60
     val result = mutableListOf<UIMessage>()
     val tz = TimeZone.currentSystemDefault()
 
@@ -51,7 +52,7 @@ internal fun applyTimeReminder(
                 val prevInstant = previous.createdAt.toInstant(tz)
                 val gapSeconds = (currInstant - prevInstant).inWholeSeconds
 
-                if (alwaysInsert || gapSeconds > TIME_GAP_THRESHOLD_SECONDS) {
+                if (alwaysInsert || gapSeconds > thresholdSeconds) {
                     result.add(buildTimeReminderMessage(gapSeconds, currInstant))
                 }
             }
@@ -73,7 +74,7 @@ private fun buildTimeReminderMessage(gapSeconds: Long?, instant: Instant): UIMes
     } else {
         "<time_reminder>Current time: $dayOfWeek, $timeStr</time_reminder>"
     }
-    return UIMessage.user(content)
+    return UIMessage.user(content).copy(isSynthetic = true)
 }
 
 private fun formatGap(seconds: Long): String {

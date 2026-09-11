@@ -1,5 +1,6 @@
 package me.rerere.highlight
 
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -129,6 +130,9 @@ fun HighlightText(
     Text(
         modifier = modifier,
         text = annotatedString,
+        // 禁用代码块连字（移植上游 7b92f89e）：calt/liga/clig 会把 -> 显示成箭头等，
+        // 与代码原义不符。其余样式仍从 LocalTextStyle 继承。
+        style = LocalTextStyle.current.copy(fontFeatureSettings = "'calt' 0, 'liga' 0, 'clig' 0"),
         fontSize = fontSize,
         fontFamily = fontFamily,
         fontStyle = fontStyle,

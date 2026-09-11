@@ -49,6 +49,7 @@ data class Assistant(
     val enabledSkills: Set<String> = emptySet(),        // 启用的 skill 名称列表
     val enableTimeReminder: Boolean = false,            // 时间间隔提醒注入
     val timeReminderAlwaysInsert: Boolean = false,      // 时间提醒总是插入（忽略间隔阈值）
+    val timeReminderIntervalMinutes: Int = 60,          // 时间提醒间隔（分钟，至少 1 分钟）
     val enableSubAgentAutoApproval: Boolean = false,     // 子代理免批准
     val allowConversationSystemPrompt: Boolean = false, // 允许对话单独重写 system prompt
     val allowConversationPromptInjection: Boolean = false, // 允许对话单独绑定提示词注入

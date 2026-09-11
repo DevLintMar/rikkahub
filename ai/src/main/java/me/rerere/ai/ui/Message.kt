@@ -4,9 +4,9 @@ import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.TokenUsage
-import me.rerere.ai.provider.Model
 import me.rerere.ai.util.json
 import kotlin.math.roundToInt
 import kotlin.time.Clock
@@ -24,126 +24,11 @@ data class UIMessage(
     val finishedAt: LocalDateTime? = null,
     val modelId: Uuid? = null,
     val usage: TokenUsage? = null,
-    val translation: String? = null
+    val translation: String? = null,
+    // 请求期间生成的内部消息；该标记仅在内存中使用
+    @Transient
+    val isSynthetic: Boolean = false,
 ) {
-    private fun appendChunk(chunk: MessageChunk): UIMessage {
-        val choice = chunk.choices.getOrNull(0)
-        val message = choice?.delta ?: choice?.message
-        return message?.let { delta ->
-            // Handle Parts
-            var newParts = delta.parts.fold(parts) { acc, deltaPart ->
-                when (deltaPart) {
-                    is UIMessagePart.Text -> {
-                        // Skip empty text deltas
-                        if (deltaPart.text.isEmpty()) {
-                            acc
-                        } else {
-                            val lastPart = acc.lastOrNull()
-                            if (lastPart is UIMessagePart.Text) {
-                                // Append to the last Text part
-                                acc.dropLast(1) + lastPart.copy(text = lastPart.text + deltaPart.text)
-                            } else {
-                                // Create new Text part
-                                acc + deltaPart
-                            }
-                        }
-                    }
-
-                    is UIMessagePart.Image -> {
-                        val lastPart = acc.lastOrNull()
-                        if (lastPart is UIMessagePart.Image) {
-                            // Append to the last Image part (for streaming base64)
-                            acc.dropLast(1) + lastPart.copy(
-                                url = lastPart.url + deltaPart.url,
-                                metadata = deltaPart.metadata ?: lastPart.metadata
-                            )
-                        } else {
-                            // Create new Image part
-                            acc + UIMessagePart.Image(
-                                url = "data:image/png;base64,${deltaPart.url}",
-                                metadata = deltaPart.metadata,
-                            )
-                        }
-                    }
-
-                    is UIMessagePart.Reasoning -> {
-                        // Skip empty reasoning deltas
-                        if (deltaPart.reasoning.isEmpty() && deltaPart.metadata == null) {
-                            acc
-                        } else {
-                            val lastPart = acc.lastOrNull()
-                            if (lastPart is UIMessagePart.Reasoning) {
-                                // Append to the last Reasoning part
-                                acc.dropLast(1) + UIMessagePart.Reasoning(
-                                    reasoning = lastPart.reasoning + deltaPart.reasoning,
-                                    createdAt = lastPart.createdAt,
-                                    finishedAt = null,
-                                ).also {
-                                    it.metadata = deltaPart.metadata ?: lastPart.metadata
-                                }
-                            } else {
-                                // Create new Reasoning part
-                                acc + deltaPart
-                            }
-                        }
-                    }
-
-                    is UIMessagePart.Tool -> {
-                        if (deltaPart.toolCallId.isBlank()) {
-                            // No ID yet - append to the last Tool if it also has no ID
-                            val lastTool = acc.lastOrNull { it is UIMessagePart.Tool } as? UIMessagePart.Tool
-                            if (lastTool != null) {
-                                acc.map { part ->
-                                    if (part === lastTool) part.merge(deltaPart) else part
-                                }
-                            } else {
-                                acc + deltaPart.copy()
-                            }
-                        } else {
-                            // Has ID - find and update by ID, or insert new
-                            val existsPart = acc.find {
-                                it is UIMessagePart.Tool && it.toolCallId == deltaPart.toolCallId
-                            } as? UIMessagePart.Tool
-                            if (existsPart == null) {
-                                acc + deltaPart.copy()
-                            } else {
-                                acc.map { part ->
-                                    if (part is UIMessagePart.Tool && part.toolCallId == deltaPart.toolCallId) {
-                                        part.merge(deltaPart)
-                                    } else part
-                                }
-                            }
-                        }
-                    }
-
-                    else -> {
-                        println("delta part append not supported: $deltaPart")
-                        acc
-                    }
-                }
-            }
-            // Handle Reasoning End
-            if (parts.filterIsInstance<UIMessagePart.Reasoning>()
-                    .isNotEmpty() && delta.parts.filterIsInstance<UIMessagePart.Reasoning>()
-                    .isEmpty()
-            ) {
-                newParts = newParts.map { part ->
-                    if (part is UIMessagePart.Reasoning && part.finishedAt == null) {
-                        part.copy(finishedAt = Clock.System.now())
-                    } else part
-                }
-            }
-            // Handle annotations
-            val newAnnotations = delta.annotations.ifEmpty {
-                annotations
-            }
-            copy(
-                parts = newParts,
-                annotations = newAnnotations,
-            )
-        } ?: this
-    }
-
     fun summaryAsText(maxLength: Int = Int.MAX_VALUE): String {
         val text = "[${role.name}]: " + parts.joinToString(separator = "\n") { part ->
             when (part) {
@@ -185,10 +70,6 @@ data class UIMessage(
         it is UIMessagePart.Image && it.url.startsWith("data:")
     }
 
-    operator fun plus(chunk: MessageChunk): UIMessage {
-        return this.appendChunk(chunk)
-    }
-
     companion object {
         fun system(prompt: String) = UIMessage(
             role = MessageRole.SYSTEM,
@@ -204,28 +85,6 @@ data class UIMessage(
             role = MessageRole.ASSISTANT,
             parts = listOf(UIMessagePart.Text(prompt))
         )
-    }
-}
-
-/**
- * 处理MessageChunk合并
- *
- * @receiver 已有消息列表
- * @param chunk 消息chunk
- * @param model 模型, 可以不传，如果传了，会把模型id写入到消息，标记是哪个模型输出的消息
- * @return 新消息列表
- */
-fun List<UIMessage>.handleMessageChunk(chunk: MessageChunk, model: Model? = null): List<UIMessage> {
-    require(this.isNotEmpty()) {
-        "messages must not be empty"
-    }
-    val choice = chunk.choices.getOrNull(0) ?: return this
-    val message = choice.delta ?: choice.message ?: return this
-    if (this.last().role != message.role) {
-        return this + (UIMessage(modelId = model?.id, role = message.role, parts = emptyList()) + chunk)
-    } else {
-        val last = this.last() + chunk
-        return this.dropLast(1) + last
     }
 }
 
@@ -261,6 +120,9 @@ fun List<UIMessagePart>.isEmptyUIMessage(): Boolean {
             is UIMessagePart.Reasoning -> message.reasoning.isBlank()
             is UIMessagePart.Video -> message.url.isBlank()
             is UIMessagePart.Audio -> message.url.isBlank()
+            is UIMessagePart.Tool,
+            is UIMessagePart.ServerTool,
+                -> false
             else -> true
         }
     }
@@ -350,7 +212,7 @@ private fun List<UIMessage>.alignContextStart(startIndex: Int): Int {
 /**
  * Sort message parts by type priority:
  * - Reasoning (-1): shown first
- * - Text, Tool, ToolCall, ToolResult, Search (0): middle
+ * - Text, Tool, ServerTool, ToolCall, ToolResult, Search (0): middle
  * - Image, Video, Audio, Document (1): shown last
  *
  * WARNING: This function is intended for migration only.
@@ -373,6 +235,7 @@ fun List<UIMessagePart>.toSortedMessageParts(): List<UIMessagePart> {
             is UIMessagePart.Reasoning -> -1
             is UIMessagePart.Text -> 0
             is UIMessagePart.Tool -> 0
+            is UIMessagePart.ServerTool -> 0
             is UIMessagePart.ToolCall -> 0
             is UIMessagePart.ToolResult -> 0
             is UIMessagePart.Search -> 0
@@ -638,19 +501,3 @@ fun <T> List<T>.migrateToolNodes(
 
     return result
 }
-
-@Serializable
-data class MessageChunk(
-    val id: String,
-    val model: String,
-    val choices: List<UIMessageChoice>,
-    val usage: TokenUsage? = null,
-)
-
-@Serializable
-data class UIMessageChoice(
-    val index: Int,
-    val delta: UIMessage?,
-    val message: UIMessage?,
-    val finishReason: String?
-)

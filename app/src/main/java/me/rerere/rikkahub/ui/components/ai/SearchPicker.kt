@@ -54,15 +54,20 @@ import me.rerere.rikkahub.ui.components.ui.ToggleSurface
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.context.Navigator
 import me.rerere.rikkahub.ui.pages.setting.SearchAbilityTagLine
-import me.rerere.search.SearchServiceOptions
 import org.koin.compose.koinInject
+
+enum class SearchMode {
+    OFF,
+    LOCAL,
+    BUILT_IN,
+}
 
 @Composable
 fun SearchPickerButton(
     enableSearch: Boolean,
     settings: Settings,
     modifier: Modifier = Modifier,
-    onToggleSearch: (Boolean) -> Unit,
+    onUpdateSearchMode: (SearchMode) -> Unit,
     onUpdateSearchService: (List<Uuid>) -> Unit,
     model: Model?,
 ) {
@@ -125,9 +130,9 @@ fun SearchPickerButton(
                 SearchPicker(
                     enableSearch = enableSearch,
                     settings = settings,
-                    onToggleSearch = onToggleSearch,
-                    onUpdateSearchService = { index ->
-                        onUpdateSearchService(index)
+                    onUpdateSearchMode = onUpdateSearchMode,
+                    onUpdateSearchService = { ids ->
+                        onUpdateSearchService(ids)
                     },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -148,7 +153,7 @@ private fun SearchPicker(
     settings: Settings,
     model: Model?,
     modifier: Modifier = Modifier,
-    onToggleSearch: (Boolean) -> Unit,
+    onUpdateSearchMode: (SearchMode) -> Unit,
     onUpdateSearchService: (List<Uuid>) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -171,7 +176,7 @@ private fun SearchPicker(
             enableSearch = enableSearch,
             onDismiss = onDismiss,
             navBackStack = navBackStack,
-            onToggleSearch = onToggleSearch,
+            onUpdateSearchMode = onUpdateSearchMode,
             modifier = modifier,
             settings = settings,
             onUpdateSearchService = onUpdateSearchService
@@ -184,7 +189,7 @@ private fun AppSearchSettings(
     enableSearch: Boolean,
     onDismiss: () -> Unit,
     navBackStack: Navigator,
-    onToggleSearch: (Boolean) -> Unit,
+    onUpdateSearchMode: (SearchMode) -> Unit,
     modifier: Modifier,
     settings: Settings,
     onUpdateSearchService: (List<Uuid>) -> Unit
@@ -226,7 +231,9 @@ private fun AppSearchSettings(
             }
             Switch(
                 checked = enableSearch,
-                onCheckedChange = onToggleSearch
+                onCheckedChange = { checked ->
+                    onUpdateSearchMode(if (checked) SearchMode.LOCAL else SearchMode.OFF)
+                }
             )
         }
     }

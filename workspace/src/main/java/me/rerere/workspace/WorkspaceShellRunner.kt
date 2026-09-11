@@ -20,6 +20,7 @@ data class WorkspaceShellContext(
     val timeoutMillis: Long,
     val stdin: ByteArray? = null,
     val bindMounts: List<WorkspaceBindMount> = emptyList(),
+    val shellCompatibilityMode: Boolean = false,
     /**
      * 逐行输出回调(用于实时展示), 在收集线程里调用(非协程上下文), 需自行桥接到协程。
      * 默认为 null, 保持向后兼容。
@@ -51,6 +52,15 @@ fun Process.readResult(
     val stdout = StreamCollector(inputStream, onLine = onLine)
     val stderr = StreamCollector(errorStream, onLine = onLine)
     val stdinWriter = stdin?.let { bytes -> StreamWriter(outputStream, bytes) }
+    if (stdinWriter == null) {
+        // 没有 stdin 输入时立即关闭管道, 让子进程读到 EOF;
+        // 否则 cat/gh/kubectl 等按 isatty 判断的工具会把这根永不写入的管道当成待输入流而永久阻塞
+        try {
+            outputStream.close()
+        } catch (_: IOException) {
+            // 子进程已提前退出导致管道关闭, 忽略
+        }
+    }
     try {
         val finished = waitFor(timeoutMillis, TimeUnit.MILLISECONDS)
         if (!finished) {

@@ -24,6 +24,7 @@ import me.rerere.rikkahub.utils.toLocalString
 import me.rerere.search.SearchService
 import me.rerere.search.retryOnQuota
 import java.time.LocalDate
+import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 private const val MAX_SCRAPE_TEXT_CHARS = 32 * 1024
@@ -111,7 +112,8 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                     appendLine("Today is ${LocalDate.now().toLocalString(true)}.")
                     appendLine()
                     appendLine("Response format:")
-                    appendLine("- items[].id (short id), title, url, text")
+                    appendLine("- retrievedAt is the local retrieval time, never a publication date")
+                    appendLine("- items[].id (short id), title, url, publishedDate (if supplied), highlights (if supplied), text")
                     appendLine("- images[]: image urls related to the query (may be empty)")
                     appendLine()
                     appendLine("Citations:")
@@ -158,7 +160,7 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                     val commonOptions = settings.searchCommonOptions.copy(resultSize = numResults)
                     val result = retryOnQuota(options) { o ->
                         service.search(args.jsonObject, commonOptions, o)
-                    }
+                    }.map { it.copy(retrievedAt = Clock.System.now().toString()) }
                     val results =
                         JsonInstantPretty.encodeToJsonElement(result.getOrThrow()).jsonObject.let { json ->
                             val map = json.toMutableMap()
@@ -199,7 +201,7 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                             appendLine("Each service supports its own extra parameters, marked with [Service] in the parameter descriptions below.")
                         }
                         appendLine("Pass one or more URLs via `urls` (Tavily/Exa accept multiple; single-URL services use the first).")
-                        appendLine("Responses include per-URL metadata (title, status, published date); failed URLs are reported with their error.")
+                        appendLine("Responses include per-URL metadata (title, status, published date); retrievedAt is the local retrieval time, not a publication date; failed URLs are reported with their error.")
                     }.trimEnd(),
                     parameters = {
                         InputSchema.Obj(
@@ -235,7 +237,7 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                         }
                         val result = retryOnQuota(options) { o ->
                             service.scrape(JsonObject(scrapeParams), settings.searchCommonOptions, o)
-                        }
+                        }.map { it.copy(retrievedAt = Clock.System.now().toString()) }
                         val payload = JsonInstantPretty.encodeToJsonElement(result.getOrThrow()).jsonObject
                         val entries = payload["urls"]?.jsonArray.orEmpty()
                         // 每 URL 独立截断：预算均分，避免多 URL 时总量失控；truncated/totalChars 全局汇总

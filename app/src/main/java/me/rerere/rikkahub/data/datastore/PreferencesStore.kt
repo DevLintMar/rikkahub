@@ -2,7 +2,9 @@ package me.rerere.rikkahub.data.datastore
 
 import android.content.Context
 import android.util.Log
+import androidx.datastore.core.DataStore
 import androidx.datastore.core.IOException
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.SharedPreferencesMigration
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
@@ -80,16 +82,16 @@ class SettingsStore(
         val THEME_ID = stringPreferencesKey("theme_id")
         val CUSTOM_THEMES = stringPreferencesKey("custom_themes")
         val DISPLAY_SETTING = stringPreferencesKey("display_setting")
+        val NETWORK_SETTING = stringPreferencesKey("network_setting")
         val DEVELOPER_MODE = booleanPreferencesKey("developer_mode")
 
         // 模型选择
         val FAVORITE_MODELS = stringPreferencesKey("favorite_models")
         val SELECT_MODEL = stringPreferencesKey("chat_model")
         val FAST_MODEL = stringPreferencesKey("fast_model")
-        val TITLE_MODEL = stringPreferencesKey("title_model")
+        val FAST_MODEL_REASONING_LEVEL = stringPreferencesKey("fast_model_reasoning_level")
         val TRANSLATE_MODEL = stringPreferencesKey("translate_model")
         val ENABLE_SUGGESTION = booleanPreferencesKey("enable_suggestion")
-        val SUGGESTION_MODEL = stringPreferencesKey("suggestion_model")
         val IMAGE_GENERATION_MODEL = stringPreferencesKey("image_generation_model")
         val TITLE_PROMPT = stringPreferencesKey("title_prompt")
         val TRANSLATION_PROMPT = stringPreferencesKey("translation_prompt")
@@ -159,6 +161,73 @@ class SettingsStore(
 
         // 赞助提醒
         val SPONSOR_ALERT_DISMISSED_AT = intPreferencesKey("sponsor_alert_dismissed_at")
+
+        // Uses the same DataStore singleton without starting settings flows or requiring Koin.
+        internal suspend fun restoreBeforeInitialization(context: Context, settings: Settings) {
+            require(!settings.init) { "Cannot restore uninitialized settings" }
+            persistSettings(context.settingsStore, settings)
+        }
+
+        private suspend fun persistSettings(dataStore: DataStore<Preferences>, settings: Settings) {
+            dataStore.edit { preferences ->
+                preferences[DYNAMIC_COLOR] = settings.dynamicColor
+                preferences[THEME_ID] = settings.themeId
+                preferences[CUSTOM_THEMES] = JsonInstant.encodeToString(settings.customThemes)
+                preferences[DEVELOPER_MODE] = settings.developerMode
+                preferences[DISPLAY_SETTING] = JsonInstant.encodeToString(settings.displaySetting)
+                preferences[NETWORK_SETTING] = JsonInstant.encodeToString(settings.networkSetting)
+
+                preferences[FAVORITE_MODELS] = JsonInstant.encodeToString(settings.favoriteModels)
+                preferences[SELECT_MODEL] = settings.chatModelId.toString()
+                preferences[FAST_MODEL] = settings.fastModelId.toString()
+                preferences[FAST_MODEL_REASONING_LEVEL] = settings.fastModelReasoningLevel.name
+                preferences[TRANSLATE_MODEL] = settings.translateModeId.toString()
+                preferences[ENABLE_SUGGESTION] = settings.enableSuggestion
+                preferences[IMAGE_GENERATION_MODEL] = settings.imageGenerationModelId.toString()
+                preferences[TITLE_PROMPT] = settings.titlePrompt
+                preferences[TRANSLATION_PROMPT] = settings.translatePrompt
+                preferences[TRANSLATE_THINKING_BUDGET] = settings.translateThinkingBudget
+                preferences[SUGGESTION_PROMPT] = settings.suggestionPrompt
+                preferences[OCR_MODEL] = settings.ocrModelId.toString()
+                preferences[OCR_PROMPT] = settings.ocrPrompt
+                preferences[COMPRESS_MODEL] = settings.compressModelId.toString()
+                preferences[COMPRESS_PROMPT] = settings.compressPrompt
+
+                preferences[PROVIDERS] = JsonInstant.encodeToString(settings.providers)
+
+                preferences[ASSISTANTS] = JsonInstant.encodeToString(settings.assistants)
+                preferences[SELECT_ASSISTANT] = settings.assistantId.toString()
+                preferences[ASSISTANT_TAGS] = JsonInstant.encodeToString(settings.assistantTags)
+
+                preferences[SEARCH_SERVICES] = JsonInstant.encodeToString(settings.searchServices)
+                preferences[SEARCH_COMMON] = JsonInstant.encodeToString(settings.searchCommonOptions)
+                preferences[SEARCH_SELECTED_IDS] = JsonInstant.encodeToString(settings.searchServiceSelectedIds)
+
+                preferences[MCP_SERVERS] = JsonInstant.encodeToString(settings.mcpServers)
+                preferences[WEBDAV_CONFIG] = JsonInstant.encodeToString(settings.webDavConfig)
+                preferences[S3_CONFIG] = JsonInstant.encodeToString(settings.s3Config)
+                preferences[TTS_PROVIDERS] = JsonInstant.encodeToString(settings.ttsProviders)
+                settings.selectedTTSProviderId?.let {
+                    preferences[SELECTED_TTS_PROVIDER] = it.toString()
+                } ?: preferences.remove(SELECTED_TTS_PROVIDER)
+                preferences[DEFAULT_TTS_PLAYBACK_SPEED] = settings.defaultTTSPlaybackSpeed.coerceIn(0.5f, 2.0f)
+                preferences[ASR_PROVIDERS] = JsonInstant.encodeToString(settings.asrProviders)
+                settings.selectedASRProviderId?.let {
+                    preferences[SELECTED_ASR_PROVIDER] = it.toString()
+                } ?: preferences.remove(SELECTED_ASR_PROVIDER)
+                preferences[MODE_INJECTIONS] = JsonInstant.encodeToString(settings.modeInjections)
+                preferences[LOREBOOKS] = JsonInstant.encodeToString(settings.lorebooks)
+                preferences[QUICK_MESSAGES] = JsonInstant.encodeToString(settings.quickMessages)
+                preferences[WEB_SERVER_ENABLED] = settings.webServerEnabled
+                preferences[WEB_SERVER_PORT] = settings.webServerPort
+                preferences[WEB_SERVER_JWT_ENABLED] = settings.webServerJwtEnabled
+                preferences[WEB_SERVER_ACCESS_PASSWORD] = settings.webServerAccessPassword
+                preferences[WEB_SERVER_LOCALHOST_ONLY] = settings.webServerLocalhostOnly
+                preferences[BACKUP_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.backupReminderConfig)
+                preferences[LAUNCH_COUNT] = settings.launchCount
+                preferences[SPONSOR_ALERT_DISMISSED_AT] = settings.sponsorAlertDismissedAt
+            }
+        }
     }
 
     private val dataStore = context.settingsStore
@@ -195,11 +264,12 @@ class SettingsStore(
                     ?: DEFAULT_AUTO_MODEL_ID,
                 fastModelId = preferences[FAST_MODEL]?.let { Uuid.parse(it) }
                     ?: DEFAULT_AUTO_MODEL_ID,
-                titleModelId = preferences[TITLE_MODEL]?.let { Uuid.parse(it) },
+                fastModelReasoningLevel = preferences[FAST_MODEL_REASONING_LEVEL]
+                    ?.let { value -> ReasoningLevel.entries.find { it.name == value } }
+                    ?: ReasoningLevel.AUTO,
                 translateModeId = preferences[TRANSLATE_MODEL]?.let { Uuid.parse(it) }
                     ?: DEFAULT_AUTO_MODEL_ID,
                 enableSuggestion = preferences[ENABLE_SUGGESTION] != false,
-                suggestionModelId = preferences[SUGGESTION_MODEL]?.let { Uuid.parse(it) },
                 imageGenerationModelId = preferences[IMAGE_GENERATION_MODEL]?.let { Uuid.parse(it) } ?: Uuid.random(),
                 titlePrompt = preferences[TITLE_PROMPT] ?: DEFAULT_TITLE_PROMPT,
                 translatePrompt = preferences[TRANSLATION_PROMPT] ?: DEFAULT_TRANSLATION_PROMPT,
@@ -224,6 +294,7 @@ class SettingsStore(
                 } ?: emptyList(),
                 developerMode = preferences[DEVELOPER_MODE] == true,
                 displaySetting = JsonInstant.decodeFromString(preferences[DISPLAY_SETTING] ?: "{}"),
+                networkSetting = JsonInstant.decodeFromString(preferences[NETWORK_SETTING] ?: "{}"),
                 searchServices = searchServices,
                 searchCommonOptions = preferences[SEARCH_COMMON]?.let {
                     JsonInstant.decodeFromString(it)
@@ -385,75 +456,7 @@ class SettingsStore(
             return
         }
         settingsFlow.value = settings
-        dataStore.edit { preferences ->
-            preferences[DYNAMIC_COLOR] = settings.dynamicColor
-            preferences[THEME_ID] = settings.themeId
-            preferences[CUSTOM_THEMES] = JsonInstant.encodeToString(settings.customThemes)
-            preferences[DEVELOPER_MODE] = settings.developerMode
-            preferences[DISPLAY_SETTING] = JsonInstant.encodeToString(settings.displaySetting)
-
-            preferences[FAVORITE_MODELS] = JsonInstant.encodeToString(settings.favoriteModels)
-            preferences[SELECT_MODEL] = settings.chatModelId.toString()
-            preferences[FAST_MODEL] = settings.fastModelId.toString()
-            settings.titleModelId?.let {
-                preferences[TITLE_MODEL] = it.toString()
-            } ?: preferences.remove(TITLE_MODEL)
-            preferences[TRANSLATE_MODEL] = settings.translateModeId.toString()
-            preferences[ENABLE_SUGGESTION] = settings.enableSuggestion
-            settings.suggestionModelId?.let {
-                preferences[SUGGESTION_MODEL] = it.toString()
-            } ?: preferences.remove(SUGGESTION_MODEL)
-            preferences[IMAGE_GENERATION_MODEL] = settings.imageGenerationModelId.toString()
-            preferences[TITLE_PROMPT] = settings.titlePrompt
-            preferences[TRANSLATION_PROMPT] = settings.translatePrompt
-            preferences[TRANSLATE_THINKING_BUDGET] = settings.translateThinkingBudget
-            preferences[SUGGESTION_PROMPT] = settings.suggestionPrompt
-            preferences[OCR_MODEL] = settings.ocrModelId.toString()
-            preferences[OCR_PROMPT] = settings.ocrPrompt
-            preferences[COMPRESS_MODEL] = settings.compressModelId.toString()
-            preferences[COMPRESS_PROMPT] = settings.compressPrompt
-            if (settings.subAgentModelId != null) {
-                preferences[SUB_AGENT_MODEL] = settings.subAgentModelId.toString()
-            } else {
-                preferences.remove(SUB_AGENT_MODEL)
-            }
-
-            preferences[PROVIDERS] = JsonInstant.encodeToString(settings.providers)
-
-            preferences[ASSISTANTS] = JsonInstant.encodeToString(settings.assistants)
-            preferences[SELECT_ASSISTANT] = settings.assistantId.toString()
-            preferences[ASSISTANT_TAGS] = JsonInstant.encodeToString(settings.assistantTags)
-
-            preferences[SEARCH_SERVICES] = JsonInstant.encodeToString(settings.searchServices)
-            preferences[SEARCH_COMMON] = JsonInstant.encodeToString(settings.searchCommonOptions)
-            preferences[SEARCH_SELECTED_IDS] = JsonInstant.encodeToString(settings.searchServiceSelectedIds)
-
-            preferences[MCP_SERVERS] = JsonInstant.encodeToString(settings.mcpServers)
-            preferences[WEBDAV_CONFIG] = JsonInstant.encodeToString(settings.webDavConfig)
-            preferences[S3_CONFIG] = JsonInstant.encodeToString(settings.s3Config)
-            preferences[TTS_PROVIDERS] = JsonInstant.encodeToString(settings.ttsProviders)
-            settings.selectedTTSProviderId?.let {
-                preferences[SELECTED_TTS_PROVIDER] = it.toString()
-            } ?: preferences.remove(SELECTED_TTS_PROVIDER)
-            preferences[DEFAULT_TTS_PLAYBACK_SPEED] = settings.defaultTTSPlaybackSpeed.coerceIn(0.5f, 2.0f)
-            preferences[ASR_PROVIDERS] = JsonInstant.encodeToString(settings.asrProviders)
-            settings.selectedASRProviderId?.let {
-                preferences[SELECTED_ASR_PROVIDER] = it.toString()
-            } ?: preferences.remove(SELECTED_ASR_PROVIDER)
-            preferences[MODE_INJECTIONS] = JsonInstant.encodeToString(settings.modeInjections)
-            preferences[LOREBOOKS] = JsonInstant.encodeToString(settings.lorebooks)
-            preferences[QUICK_MESSAGES] = JsonInstant.encodeToString(settings.quickMessages)
-            preferences[WEB_SERVER_ENABLED] = settings.webServerEnabled
-            preferences[WEB_SERVER_PORT] = settings.webServerPort
-            preferences[WEB_SERVER_JWT_ENABLED] = settings.webServerJwtEnabled
-            preferences[WEB_SERVER_ACCESS_PASSWORD] = settings.webServerAccessPassword
-            preferences[WEB_SERVER_LOCALHOST_ONLY] = settings.webServerLocalhostOnly
-            preferences[KEEP_ALIVE_ENABLED] = settings.keepAliveEnabled
-            preferences[BACKUP_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.backupReminderConfig)
-            preferences[LAUNCH_COUNT] = settings.launchCount
-            preferences[SPONSOR_ALERT_DISMISSED_AT] = settings.sponsorAlertDismissedAt
-            preferences[EMBEDDER] = JsonInstant.encodeToString(settings.embedder)
-        }
+        persistSettings(dataStore, settings)
     }
 
     suspend fun update(fn: (Settings) -> Settings) {
@@ -570,17 +573,17 @@ data class Settings(
     val customThemes: List<CustomTheme> = emptyList(),
     val developerMode: Boolean = false,
     val displaySetting: DisplaySetting = DisplaySetting(),
+    val networkSetting: NetworkSetting = NetworkSetting(),
     val favoriteModels: List<Uuid> = emptyList(),
     val chatModelId: Uuid = Uuid.random(),
     val fastModelId: Uuid = Uuid.random(),
-    val titleModelId: Uuid? = null,
+    val fastModelReasoningLevel: ReasoningLevel = ReasoningLevel.AUTO,
     val imageGenerationModelId: Uuid = Uuid.random(),
     val titlePrompt: String = DEFAULT_TITLE_PROMPT,
     val translateModeId: Uuid = Uuid.random(),
     val translatePrompt: String = DEFAULT_TRANSLATION_PROMPT,
     val translateThinkingBudget: Int = 0,
     val enableSuggestion: Boolean = true,
-    val suggestionModelId: Uuid? = null,
     val suggestionPrompt: String = DEFAULT_SUGGESTION_PROMPT,
     val ocrModelId: Uuid = Uuid.random(),
     val ocrPrompt: String = DEFAULT_OCR_PROMPT,
@@ -634,6 +637,15 @@ val Settings.selectedSearchServices: List<SearchServiceOptions>
     }
 
 @Serializable
+data class NetworkSetting(
+    val userAgent: String = "",
+    val proxyUrl: String = "",
+    val proxyUsername: String = "",
+    val proxyPassword: String = "",
+    val enableAutoRetry: Boolean = true,
+)
+
+@Serializable
 enum class ChatFontFamily {
     @SerialName("default")
     DEFAULT,
@@ -660,7 +672,7 @@ data class DisplaySetting(
     val showTokenUsage: Boolean = true,
     val showThinkingContent: Boolean = true,
     val autoCloseThinking: Boolean = true,
-    val showUpdates: Boolean = true,
+    val updateCheckDisabledUntilEpochMillis: Long = 0L,
     val showMessageJumper: Boolean = true,
     val messageJumperOnLeft: Boolean = false,
     val fontSizeRatio: Float = 1.0f,

@@ -1,4 +1,10 @@
-# Keep source locations so obfuscated release stack traces can be retraced.
+# Release builds may shrink and optimize code, but must not rename symbols.
+-dontobfuscate
+
+# Kotlin reflection is used to instantiate serializable settings classes at runtime.
+-keep @kotlinx.serialization.Serializable class * { *; }
+
+# Keep source locations so release stack traces retain useful line information.
 -keepattributes SourceFile,LineNumberTable
 
 # Ktor references JVM-only management APIs from its debug detector.
@@ -34,12 +40,7 @@
     private *;
 }
 
-# kotlinx serialization
--keep @kotlinx.serialization.Serializable class * {*;}
-
-# fork 刻意不混淆（release 保持可读堆栈），保留原行为
--dontobfuscate
-
-# auth0/jackson: TypeReference subclasses rely on runtime generic signatures.
+# The embedded Ktor server signs and verifies JWTs through Auth0/Jackson at runtime.
+# Keep their implementation intact because R8 optimization can break JWT payload parsing.
 -keep class com.fasterxml.jackson.** { *; }
 -keep class com.auth0.jwt.** { *; }
