@@ -72,11 +72,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import com.dokar.sonner.ToastType
-import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.blur.HazeBlurStyle
-import dev.chrisbanes.haze.blur.hazeBlur
-import dev.chrisbanes.haze.blur.material3.Material3
+import dev.chrisbanes.haze.blur.blurEffect
+import dev.chrisbanes.haze.blur.materials.HazeMaterials
+import dev.chrisbanes.haze.hazeEffect
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collectLatest
 import kotlin.uuid.Uuid
@@ -148,9 +147,7 @@ fun ChatInput(
     val toaster = LocalToaster.current
     val assistant = settings.getCurrentAssistant()
     val hazeTintColor = MaterialTheme.colorScheme.surfaceContainerLow
-    val inputHazeStyle = HazeBlurStyle.Material3 {
-        blurRadius(12.dp)
-    }
+    val inputHazeStyle = HazeMaterials.thin(containerColor = hazeTintColor)
 
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
@@ -228,10 +225,13 @@ fun ChatInput(
                     .fillMaxWidth()
                     .clip(containerShape)
                     .then(
-                        if (settings.displaySetting.enableBlurEffect) Modifier.hazeBlur(
-                            input = HazeInput.Sources(hazeState),
-                            style = inputHazeStyle,
-                        )
+                        if (settings.displaySetting.enableBlurEffect) Modifier.hazeEffect(
+                            state = hazeState
+                        ) {
+                            blurEffect {
+                                style = inputHazeStyle
+                            }
+                        }
                         else Modifier
                     ),
                 shape = containerShape,
