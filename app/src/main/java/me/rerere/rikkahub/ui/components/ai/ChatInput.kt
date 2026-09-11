@@ -118,7 +118,6 @@ import org.koin.compose.koinInject
 import kotlin.time.Duration.Companion.seconds
 import me.rerere.rikkahub.ui.pages.chat.VoicePhase
 import me.rerere.rikkahub.ui.pages.chat.VoiceSessionState
-import kotlin.uuid.Uuid
 
 @Composable
 fun ChatInput(

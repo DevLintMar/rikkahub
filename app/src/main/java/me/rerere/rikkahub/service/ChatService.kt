@@ -589,7 +589,8 @@ class ChatService(
                         conversationId,
                         title = context.getString(R.string.error_title_regenerate_message)
                     )
-                    return@launch
+                    // 上游把这里改成了 launchGenerationJob（前台服务保活），标签随之改名
+                    return@launchGenerationJob
                 }
 
                 if (message.role == MessageRole.USER) {

@@ -121,6 +121,8 @@ fun List<ThinkingStep>.thinkingAggregate(): Pair<Long, Int> {
                 thoughtMs += (end - r.createdAt).inWholeMilliseconds
             }
             is ThinkingStep.ToolStep -> if (step.tool.isExecuted) toolCount++
+            // 服务端工具（如内置搜索）：以 isFinished 判定已执行，与其余两处渲染分支口径一致
+            is ThinkingStep.ServerToolStep -> if (step.tool.isFinished) toolCount++
         }
     }
     return thoughtMs to toolCount
