@@ -21,6 +21,8 @@ b482d591 fix(test): required 是 nullable，用 orEmpty() 取用
 eac621b9 test(search): 让上游的 SearchToolsTest 对齐 fork 的 Settings 与渠道参数契约
 fa07ca61 fix: 修掉上游合并后 :app 的 9 处编译错误（CI 34607604330 报出）
 cab3a656 merge: 同步上游 2689e753（158 commits）   ← 父提交 = 7042fa80 + 2689e753
+09ac2c19 docs: 交接文档——同步上游 2689e753（158 commits）+ 生成循环重构
+7c4e44f9 chore: huge-icons 换回 1.3        ← master HEAD
 ```
 
 ### 一、pin 的选择（本次最重要的判断）
@@ -122,8 +124,21 @@ CI 记录（全部为 `nightly-build-debug.yml`）：
 | `34607604330` | cab3a656 | ❌ | `:app` 9 处编译错误（**六个库模块已全绿**）|
 | `34609183017` | fa07ca61 | ❌ | Gradle Build 通过；单测停在 `SearchToolsTest` 编译 |
 | `34610192790` | eac621b9 | ❌ | `required` nullable |
-| `34612251023` | 4ca2bafe | ✅ | sync 分支**全绿**（编译 + 单测 + Room v27 schema 校验）|
-| master 的 `1695064a` | — | 见 §7 | 合并后单独触发 |
+| `34612251023` | 4ca2bafe | ✅ | sync 分支**全绿** |
+| `34616257886` | **7c4e44f9** | ✅ | **master 全绿**（编译 + 单测 + Room v27 schema 校验）← 当前 master HEAD |
+
+（master 在 `1695064a` 上的那次 run `34613243157` 被中断未取结果；`7c4e44f9` 是它的后代且通过，故 master 已验证。）
+
+### 六、图标集回退（合并后的用户反馈）
+
+上游 `02a0c81c`（2026-08-23「chore: 更新依赖」）把 `huge-icons` 从 **1.3 升到 1.4**，整套图标字形改版 → 用户要求换回 1.3。这是本仓库唯一的图标集版本改动（`lucide-icons` 在区间内未变；其余改图标行的提交都是新功能在用图标，非换版）。
+
+1.4 做过一次大小写规范化，本仓库受影响**仅一处**：`HugeIcons.Fullscreen`(1.4) → `HugeIcons.FullScreen`(1.3)，位于 `ChatInput.kt` 与 `TextArea.kt`。只改版本号会编译不过。
+
+**核对方法**（本机 Gradle 缓存里没有这个库，`find-hugeicons` 技能查 JAR 的路子走不通）：用两份独立证据 —— `D:/Temp/hugeicons-list.txt`（4688 个名字，含 `FullScreen`、不含 `Fullscreen` ⇒ 1.3 命名）与 `app/src/release/generated/baselineProfiles/baseline-prof.txt`（fork 自身在 1.3 时代的构建产物，含 `FullScreenKt`）。把源码全部 156 个 `HugeIcons.*` 与之交叉比对：**只有 `Fullscreen` 一个缺失**，其余 155 个（含 `Internet`/`Tiktok`/`DragDropVertical` 这些 1.4 之后才引入代码的名字）都在 1.3 中存在。
+
+⚠️ 同一次上游提交也升了 `haze`（`2.0.0-alpha05 → beta01`，现 `beta02`）。**haze 保留不动** —— 它影响聊天页背景模糊观感，容易被误认为图标变化。
+
 
 ---
 
@@ -180,6 +195,7 @@ CI 记录（全部为 `nightly-build-debug.yml`）：
 - **`SearchPicker` 用混合方案**而非纯粹取 ours（原因见 §1.5）
 - **MCP 无效服务器名的行为改为上游版**：现在会暂停消息队列（fork 原来只报错不暂停）
 - **搜索门控用上游的 `shouldUseExternalWebSearch`**（`enableWebSearch && BuiltInTools.Search !in model.tools`）而非 fork 的裸 `enableWebSearch`；若 fork 要求总是用外挂搜索，需同时改 `ChatToolFactory.kt` 与 `ChatService.kt:811`
+- **`huge-icons` 钉在 1.3**（上游已 1.4）：上游 1.4 改了整套图标字形，用户要求保留 1.3 观感。**下次同步上游会重现这个冲突** —— 记得改回 1.3 并把 `Fullscreen` 反向改回 `FullScreen`。详见 memory `huge-icons-pinned-1-3`
 - **`pre` 变体未验证**：`nightly-build-pre.yml` 历史上从未跑过，本次也没跑
 - **`baselineProfiles/*.txt` 已过期**：里面还记录着已不存在的 `GenerationHandler` 构造器
 
@@ -231,7 +247,7 @@ CI 记录（全部为 `nightly-build-debug.yml`）：
 
 ## 7. 停靠点
 
-- **已完成**：上游 158 提交同步（pin `2689e753`）、33 个冲突解决、5 个静默破绽 + 9 处编译错误 + 2 轮测试问题修复、生成循环重构（`GenerationLoop` + `ChatToolFactory`）、DB v27、版本 3.2.0。sync 分支 CI 全绿（`34612251023`）。
-- **待确认**：master `1695064a` 的 CI 结果 —— **若红，先看 §1.4 那张表是否还有同类问题**（编译错误集中在 `:app`）。
+- **已完成**：上游 158 提交同步（pin `2689e753`）、33 个冲突解决、5 个静默破绽 + 9 处编译错误 + 2 轮测试问题修复、生成循环重构（`GenerationLoop` + `ChatToolFactory`）、DB v27、版本 3.2.0、huge-icons 回退 1.3。**master `7c4e44f9` CI 全绿**（`34616257886`）。
+- **待确认**：无阻塞项。设备核验见 §5-①。
 - **下一阶段**：无明确用户需求。候选：设备核验本阶段改动（尤其生成循环与备份恢复）、清理诊断日志、release/pre CI 验证、OCR 超时/取消、Exa 请求侧证据参数（若要补全 §5.2 的偏差）。
 - **恢复动作**：读本文档 §4/§5；开始前先让用户设备核验。
