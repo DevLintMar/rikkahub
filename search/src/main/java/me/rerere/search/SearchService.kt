@@ -52,6 +52,7 @@ interface SearchService<T : SearchServiceOptions> {
                 is SearchServiceOptions.TavilyOptions -> TavilySearchService
                 is SearchServiceOptions.ExaOptions -> ExaSearchService
                 is SearchServiceOptions.ZhipuOptions -> ZhipuSearchService
+                is SearchServiceOptions.DoubaoOptions -> DoubaoSearchService
                 is SearchServiceOptions.BingLocalOptions -> BingSearchService
                 is SearchServiceOptions.SearXNGOptions -> SearXNGService
                 is SearchServiceOptions.LinkUpOptions -> LinkUpService
@@ -105,18 +106,25 @@ data class SearchResult(
     val answer: String? = null,
     val items: List<SearchResultItem>,
     val images: List<String> = emptyList(),
+    /** Local time at which this result was retrieved; not a publication date. */
+    val retrievedAt: String? = null,
 ) {
     @Serializable
     data class SearchResultItem(
         val title: String,
         val url: String,
         val text: String,
+        /** Provider-supplied publication date. Null means that no date was supplied. */
+        val publishedDate: String? = null,
+        val highlights: List<String> = emptyList(),
     )
 }
 
 @Serializable
 data class ScrapedResult(
     val urls: List<ScrapedResultUrl>,
+    /** Local time at which this result was retrieved; not a publication date. */
+    val retrievedAt: String? = null,
 )
 
 /**
@@ -142,6 +150,8 @@ data class ScrapedResultMetadata(
     val description: String? = null,
     val language: String? = null,
     val favicon: String? = null,
+    /** Provider-supplied publication date. Null means that no date was supplied. */
+    val publishedDate: String? = null,
 )
 
 @Serializable
@@ -161,6 +171,7 @@ sealed class SearchServiceOptions {
             BingLocalOptions::class to "Bing",
             RikkaHubOptions::class to "RikkaHub",
             ZhipuOptions::class to "智谱",
+            DoubaoOptions::class to "豆包",
             TavilyOptions::class to "Tavily",
             ExaOptions::class to "Exa",
             SearXNGOptions::class to "SearXNG",
@@ -190,6 +201,14 @@ sealed class SearchServiceOptions {
     data class ZhipuOptions(
         override val id: Uuid = Uuid.random(),
         override val apiKey: String = "",
+    ) : SearchServiceOptions()
+
+    @Serializable
+    @SerialName("doubao")
+    data class DoubaoOptions(
+        override val id: Uuid = Uuid.random(),
+        override val apiKey: String = "",
+        val mode: DoubaoSearchMode = DoubaoSearchMode.CUSTOM,
     ) : SearchServiceOptions()
 
     @Serializable
@@ -358,6 +377,15 @@ function search(query, resultSize) {
     }
 }
 
+@Serializable
+enum class DoubaoSearchMode {
+    @SerialName("global")
+    GLOBAL,
+
+    @SerialName("custom")
+    CUSTOM,
+}
+
 internal suspend fun Call.await(): Response {
     return suspendCancellableCoroutine { continuation ->
         enqueue(object : Callback {
@@ -410,6 +438,7 @@ fun <T : SearchServiceOptions> T.withSingleKey(key: String): T = when (this) {
     is SearchServiceOptions.GrokOptions -> copy(apiKey = key)
     is SearchServiceOptions.TinyfishOptions -> copy(apiKey = key)
     is SearchServiceOptions.SerperOptions -> copy(apiKey = key)
+    is SearchServiceOptions.DoubaoOptions -> copy(apiKey = key)
     else -> this
 } as T
 

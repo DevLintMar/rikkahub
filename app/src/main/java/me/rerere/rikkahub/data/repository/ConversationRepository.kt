@@ -68,6 +68,9 @@ class ConversationRepository(
         is ConversationFolderScope.Folder -> id.toString()
     }
 
+    suspend fun hasFileReference(fileUrl: String): Boolean =
+        messageNodeDAO.hasFileReference(JsonInstant.encodeToString(fileUrl))
+
     suspend fun getRecentConversations(
         assistantId: Uuid,
         scope: ConversationFolderScope = ConversationFolderScope.All,
@@ -408,7 +411,8 @@ class ConversationRepository(
     suspend fun searchMessages(
         keyword: String,
         sort: MessageSearchSort = MessageSearchSort.RELEVANCE,
-    ) = messageFtsManager.search(keyword, sort)
+        assistantId: Uuid? = null,
+    ) = messageFtsManager.search(keyword, sort, assistantId?.toString())
 
     data class ConversationSearchHit(
         val conversationId: String,

@@ -17,7 +17,7 @@ private fun JsonObject.string(name: String): String? =
     this[name]?.jsonPrimitive?.contentOrNull
 
 /**
- * 记忆工具集。由调用方（GenerationHandler）按门槛决定包含哪些：
+ * 记忆工具集。由调用方（ChatToolFactory）按门槛决定包含哪些：
  * - read_memory: enableMemory
  * - create_active_memory / edit_active_memory / delete_active_memory: enableMemory && enableEditActiveMemory
  * - write_memory / edit_memory / delete_memory: enableMemory && enableEditSavedMemories

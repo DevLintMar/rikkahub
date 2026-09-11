@@ -22,6 +22,7 @@ import me.rerere.workspace.WorkspaceStorageArea
 class WorkspaceDetailVM(
     private val id: String,
     private val repository: WorkspaceRepository,
+    private val terminalSessionManager: WorkspaceTerminalSessionManager,
 ) : ViewModel() {
     private val _state = MutableStateFlow(WorkspaceDetailState())
     val state = _state.asStateFlow()
@@ -34,6 +35,13 @@ class WorkspaceDetailVM(
 
     private val _installError = MutableStateFlow<String?>(null)
     val installError = _installError.asStateFlow()
+
+    private val _settingsError = MutableStateFlow<String?>(null)
+    val settingsError = _settingsError.asStateFlow()
+
+    fun dismissSettingsError() {
+        _settingsError.value = null
+    }
 
     init {
         loadWorkspace()
@@ -144,6 +152,11 @@ class WorkspaceDetailVM(
         }
     }
 
+    suspend fun resolveImageFile(
+        entry: WorkspaceFileEntry,
+        area: WorkspaceStorageArea,
+    ): File = repository.resolveFile(id, area, entry.path)
+
     /**
      * 把当前区域下的文件导出到 cacheDir 的临时文件, 完成后回调 [onReady].
      * 供分享 / 图片预览 / 交给系统应用打开等复用 (它们都需要一个 FileProvider 可访问的真实 File).
@@ -168,6 +181,20 @@ class WorkspaceDetailVM(
         }
     }
 
+    fun setShellCompatibilityMode(enabled: Boolean) {
+        viewModelScope.launch {
+            try {
+                repository.setShellCompatibilityMode(id, enabled)
+                val workspace = repository.getById(id)
+                _state.update { it.copy(workspace = workspace) }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _settingsError.value = error.message.orEmpty()
+            }
+        }
+    }
+
     fun setToolApproval(toolName: String, needsApproval: Boolean) {
         viewModelScope.launch {
             val workspace = state.value.workspace ?: return@launch
@@ -182,6 +209,7 @@ class WorkspaceDetailVM(
             val workspace = state.value.workspace ?: return@launch
             _installProgress.value = RootfsInstallProgress(stage = RootfsInstallStage.DOWNLOADING)
             try {
+                terminalSessionManager.closeWorkspace(workspace.root)
                 repository.installRootfs(workspace.id, url) { progress ->
                     _installProgress.value = progress
                 }

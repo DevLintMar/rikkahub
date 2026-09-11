@@ -4,13 +4,16 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,6 +25,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -90,7 +94,9 @@ import me.rerere.rikkahub.ui.modifier.shimmer
 import me.rerere.rikkahub.utils.JsonInstantPretty
 import me.rerere.rikkahub.utils.jsonPrimitiveOrNull
 import me.rerere.rikkahub.utils.openUrl
+import me.rerere.rikkahub.utils.toLocalString
 import org.koin.compose.koinInject
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZonedDateTime
@@ -291,7 +297,7 @@ object SearchWebToolUI : ToolUIRenderer {
             DefaultToolPreview(context = context)
             return
         }
-        SearchWebPreview(content = content)
+        SearchWebPreview(arguments = context.arguments, content = content)
     }
 }
 
@@ -1453,59 +1459,114 @@ private fun formatRangeTime(iso: String): String = runCatching {
 }.getOrDefault(iso)
 
 @Composable
-private fun SearchWebPreview(content: JsonElement) {
+private fun SearchWebPreview(
+    arguments: JsonElement,
+    content: JsonElement,
+) {
     val context = LocalContext.current
     val items = content.jsonObject["items"]?.jsonArray ?: emptyList()
+    val answer = content.getStringContent("answer")
+    val query = arguments.getStringContent("query") ?: ""
+    val parameters = arguments.jsonObjectOrNull?.entries?.filter { it.key != "query" }.orEmpty()
     val images = content.jsonObject["images"]?.jsonArray
         ?.mapNotNull { it.jsonPrimitive.contentOrNull }
         ?.filter { it.isNotBlank() }
         ?: emptyList()
 
-    Column(
-        modifier = Modifier.fillMaxWidth(),
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxHeight(0.8f)
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        content.getStringContent("answer")?.let { answer ->
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                )
-            ) {
-                MarkdownBlock(
-                    content = answer,
-                    modifier = Modifier
-                        .padding(16.dp)
-                        .fillMaxWidth(),
-                    style = MaterialTheme.typography.bodySmall
-                )
+        item {
+            Text(stringResource(R.string.chat_message_tool_search_prefix, query))
+        }
+
+        if (parameters.isNotEmpty()) {
+            item {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    parameters.forEach { (name, value) ->
+                        val displayValue = when (value) {
+                            is JsonArray -> value.joinToString(", ") {
+                                it.jsonPrimitiveOrNull?.contentOrNull ?: it.toString()
+                            }
+                            else -> value.jsonPrimitiveOrNull?.contentOrNull ?: value.toString()
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ) {
+                            Text(
+                                text = "$name: $displayValue",
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        }
+                    }
+                }
             }
         }
 
-        if (images.isNotEmpty()) {
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                items(images) { imageUrl ->
-                    AsyncImage(
-                        model = imageUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
+        if (answer != null) {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    )
+                ) {
+                    MarkdownBlock(
+                        content = answer,
                         modifier = Modifier
-                            .height(120.dp)
-                            .width(160.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { context.openUrl(imageUrl) },
+                            .padding(16.dp)
+                            .fillMaxWidth(),
+                        style = MaterialTheme.typography.bodySmall
                     )
                 }
             }
         }
 
+        if (images.isNotEmpty()) {
+            item {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    items(images) { imageUrl ->
+                        AsyncImage(
+                            model = imageUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .height(120.dp)
+                                .width(160.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { context.openUrl(imageUrl) },
+                        )
+                    }
+                }
+            }
+        }
+
         if (items.isNotEmpty()) {
-            items.forEach { item ->
-                val url = item.getStringContent("url") ?: return@forEach
-                val title = item.getStringContent("title") ?: return@forEach
-                val text = item.getStringContent("text") ?: return@forEach
+            items(items) { item ->
+                val url = item.getStringContent("url") ?: return@items
+                val title = item.getStringContent("title") ?: return@items
+                val text = item.getStringContent("text") ?: return@items
+                val publishedDate = item.getStringContent("publishedDate")?.takeIf { it.isNotBlank() }
+                val dateLabel = remember(publishedDate) {
+                    publishedDate?.let { value ->
+                        runCatching {
+                            LocalDate.parse(value, DateTimeFormatter.ISO_DATE_TIME)
+                        }.recoverCatching {
+                            LocalDate.parse(value, DateTimeFormatter.ISO_DATE)
+                        }.getOrNull()?.toLocalString(includeYear = true) ?: value
+                    }
+                }
 
                 Card(
                     onClick = { context.openUrl(url) },
@@ -1526,6 +1587,15 @@ private fun SearchWebPreview(content: JsonElement) {
                         )
                         Column {
                             Text(text = title, maxLines = 1)
+                            if (dateLabel != null) {
+                                Text(
+                                    text = dateLabel,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                             Text(
                                 text = text,
                                 maxLines = 2,
@@ -1543,11 +1613,13 @@ private fun SearchWebPreview(content: JsonElement) {
                 }
             }
         } else {
-            HighlightText(
-                code = JsonInstantPretty.encodeToString(content),
-                language = "json",
-                fontSize = 12.sp,
-            )
+            item {
+                HighlightText(
+                    code = JsonInstantPretty.encodeToString(content),
+                    language = "json",
+                    fontSize = 12.sp
+                )
+            }
         }
     }
 }

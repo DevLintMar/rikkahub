@@ -122,9 +122,8 @@ object OcrTransformer : InputMessageTransformer, KoinComponent {
                         customBody = model.customBodies,
                     ),
                 )
-                val choices = result.choices
-                check(choices.isNotEmpty()) { "OCR failed: empty response" }
-                checkNotNull(choices[0].message?.toText()) { "OCR failed: empty response" }
+                // 空响应视为失败（交由 retryOnFailure 重试），与上游 checkNotNull 语义一致
+                result.message.toText().ifBlank { error("OCR failed: empty response") }
             }
             Log.i(TAG, "performOcr: $content")
             val ocrResult = """

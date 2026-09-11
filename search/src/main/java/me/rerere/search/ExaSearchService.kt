@@ -152,44 +152,7 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
         serviceOptions: SearchServiceOptions.ExaOptions
     ): Result<SearchResult> = withContext(Dispatchers.IO) {
         runCatching {
-            val query = params["query"]?.jsonPrimitive?.content ?: error("query is required")
-            val contentType = params["content_type"]?.jsonPrimitive?.contentOrNull
-            val useHighlights = contentType != "text"
-            val searchType = params["type"]?.jsonPrimitive?.content ?: "auto"
-            val body = buildJsonObject {
-                put("query", JsonPrimitive(query))
-                put("numResults", JsonPrimitive(commonOptions.resultSize))
-                put("type", JsonPrimitive(searchType))
-                if (searchType == "deep") {
-                    put("outputSchema", buildJsonObject {
-                        put("type", "object")
-                        put("properties", buildJsonObject {
-                            put("answer", buildJsonObject { put("type", "string") })
-                        })
-                    })
-                }
-                params["category"]?.jsonPrimitive?.contentOrNull?.let { put("category", it) }
-                params["include_domains"].asSearchStringList()?.takeIf { it.isNotEmpty() }?.let { domains ->
-                    put("includeDomains", buildJsonArray {
-                        domains.forEach { add(JsonPrimitive(it)) }
-                    })
-                }
-                params["exclude_domains"].asSearchStringList()?.takeIf { it.isNotEmpty() }?.let { domains ->
-                    put("excludeDomains", buildJsonArray {
-                        domains.forEach { add(JsonPrimitive(it)) }
-                    })
-                }
-                params["start_published_date"]?.jsonPrimitive?.contentOrNull?.let { put("startPublishedDate", it) }
-                params["end_published_date"]?.jsonPrimitive?.contentOrNull?.let { put("endPublishedDate", it) }
-                params["user_location"]?.jsonPrimitive?.contentOrNull?.let { put("userLocation", it) }
-                put("contents", buildJsonObject {
-                    if (useHighlights) {
-                        put("highlights", true)
-                    } else {
-                        put("text", true)
-                    }
-                })
-            }
+            val body = buildSearchRequestBody(params, commonOptions.resultSize)
             val apiKey = keyRoulette.next(serviceOptions.apiKey, serviceOptions.id.toString())
 
             val request = Request.Builder()
@@ -201,7 +164,7 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
             val response = httpClient.newCall(request).execute()
             if (response.isSuccessful) {
                 val bodyRaw = response.body.string()
-                val response = runCatching {
+                val data = runCatching {
                     json.decodeFromString<ExaData>(bodyRaw)
                 }.onFailure {
                     it.printStackTrace()
@@ -209,18 +172,7 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
                     error("Failed to decode response: $bodyRaw")
                 }.getOrThrow()
 
-                return@withContext Result.success(
-                    SearchResult(
-                        answer = extractOutputAnswer(response.output),
-                        items = response.results.map {
-                            SearchResultItem(
-                                title = it.title,
-                                url = it.url,
-                                text = if (useHighlights && it.highlights != null) it.highlights.joinToString("\n").ifBlank { it.text ?: "" } else it.text ?: ""
-                            )
-                        },
-                        images = response.results.mapNotNull { it.image?.takeIf { url -> url.isNotBlank() } },
-                    ))
+                return@withContext Result.success(mapSearchResult(data, useHighlights(params)))
             } else {
                 println(response.body.string())
                 error("response failed #${response.code}")
@@ -234,34 +186,8 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
         serviceOptions: SearchServiceOptions.ExaOptions
     ): Result<ScrapedResult> = withContext(Dispatchers.IO) {
         runCatching {
-            // 三键一致性：schema 键(snake_case) = 本处读取键 = 聚合键；body 写入键按 Exa 原生 camelCase
-            val urls = params["urls"].asSearchStringList()?.takeIf { it.isNotEmpty() }
-                ?: error("urls is required")
             val contentType = params["content_type"]?.jsonPrimitive?.contentOrNull
-            val maxCharacters = params["max_characters"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
-            val maxAgeHours = params["max_age_hours"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
-            val summaryQuery = params["summary_query"]?.jsonPrimitive?.contentOrNull
-            val extractLinks = params["extract_links"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
-
-            val body = buildJsonObject {
-                put("urls", buildJsonArray { urls.forEach { add(JsonPrimitive(it)) } })
-                when (contentType) {
-                    "highlights" -> put("highlights", buildJsonObject {
-                        maxCharacters?.let { put("maxCharacters", it) }
-                    })
-                    "summary" -> put("summary", buildJsonObject {
-                        summaryQuery?.takeIf(String::isNotBlank)?.let { put("query", it) }
-                    })
-                    // text 默认：未传 max_characters 时用官方默认 true，否则用对象控制体积
-                    else -> if (maxCharacters != null) {
-                        put("text", buildJsonObject { put("maxCharacters", maxCharacters) })
-                    } else {
-                        put("text", JsonPrimitive(true))
-                    }
-                }
-                maxAgeHours?.let { put("maxAgeHours", it) }
-                extractLinks?.takeIf { it > 0 }?.let { put("extras", buildJsonObject { put("links", it) }) }
-            }
+            val body = buildScrapeRequestBody(params)
             val apiKey = keyRoulette.next(serviceOptions.apiKey, serviceOptions.id.toString())
 
             val request = Request.Builder()
@@ -281,35 +207,7 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
                     error("Failed to decode response: $bodyRaw")
                 }.getOrThrow()
 
-                // 成功项 + 失败项：statuses 是 HTTP 200 内上报的单 URL 失败，不能静默丢弃
-                val entries = buildList {
-                    data.results.forEach { item ->
-                        add(
-                            ScrapedResultUrl(
-                                url = item.url,
-                                content = when (contentType) {
-                                    "highlights" -> item.highlights?.joinToString("\n").orEmpty()
-                                    "summary" -> item.summary.orEmpty()
-                                    else -> item.text.orEmpty()
-                                },
-                                images = item.image?.takeIf { it.isNotBlank() }?.let { listOf(it) } ?: emptyList(),
-                                publishedDate = item.publishedDate,
-                                author = item.author,
-                                metadata = ScrapedResultMetadata(
-                                    title = item.title,
-                                    favicon = item.favicon,
-                                ),
-                            )
-                        )
-                    }
-                    data.statuses.filter { it.status == "error" }.forEach { status ->
-                        val tag = status.error?.tag ?: "CRAWL_UNKNOWN_ERROR"
-                        val code = status.error?.httpStatusCode?.let { " $it" } ?: ""
-                        add(ScrapedResultUrl(url = status.id, error = "$tag$code"))
-                    }
-                }
-
-                return@withContext Result.success(ScrapedResult(urls = entries))
+                return@withContext Result.success(mapScrapedResult(data, contentType))
             } else {
                 val bodyText = response.body.string()
                 val detail = runCatching {
@@ -320,6 +218,137 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
             }
         }
     }
+
+    /**
+     * 三键一致性：schema 键(snake_case) = 本处读取键 = 聚合键；body 写入键按 Exa 原生 camelCase。
+     * type=deep 时附带 outputSchema，让 Exa 产出「answer」综合答案。
+     */
+    internal fun buildSearchRequestBody(
+        params: JsonObject,
+        resultSize: Int,
+    ) = buildJsonObject {
+        val query = params["query"]?.jsonPrimitive?.content ?: error("query is required")
+        val searchType = params["type"]?.jsonPrimitive?.content ?: "auto"
+        put("query", JsonPrimitive(query))
+        put("numResults", JsonPrimitive(resultSize))
+        put("type", JsonPrimitive(searchType))
+        if (searchType == "deep") {
+            put("outputSchema", buildJsonObject {
+                put("type", "object")
+                put("properties", buildJsonObject {
+                    put("answer", buildJsonObject { put("type", "string") })
+                })
+            })
+        }
+        params["category"]?.jsonPrimitive?.contentOrNull?.let { put("category", it) }
+        params["include_domains"].asSearchStringList()?.takeIf { it.isNotEmpty() }?.let { domains ->
+            put("includeDomains", buildJsonArray {
+                domains.forEach { add(JsonPrimitive(it)) }
+            })
+        }
+        params["exclude_domains"].asSearchStringList()?.takeIf { it.isNotEmpty() }?.let { domains ->
+            put("excludeDomains", buildJsonArray {
+                domains.forEach { add(JsonPrimitive(it)) }
+            })
+        }
+        params["start_published_date"]?.jsonPrimitive?.contentOrNull?.let { put("startPublishedDate", it) }
+        params["end_published_date"]?.jsonPrimitive?.contentOrNull?.let { put("endPublishedDate", it) }
+        params["user_location"]?.jsonPrimitive?.contentOrNull?.let { put("userLocation", it) }
+        put("contents", buildJsonObject {
+            if (useHighlights(params)) {
+                put("highlights", true)
+            } else {
+                put("text", true)
+            }
+        })
+    }
+
+    internal fun buildScrapeRequestBody(params: JsonObject) = buildJsonObject {
+        val urls = params["urls"].asSearchStringList()?.takeIf { it.isNotEmpty() }
+            ?: error("urls is required")
+        val contentType = params["content_type"]?.jsonPrimitive?.contentOrNull
+        val maxCharacters = params["max_characters"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+        val maxAgeHours = params["max_age_hours"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+        val summaryQuery = params["summary_query"]?.jsonPrimitive?.contentOrNull
+        val extractLinks = params["extract_links"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+
+        put("urls", buildJsonArray { urls.forEach { add(JsonPrimitive(it)) } })
+        when (contentType) {
+            "highlights" -> put("highlights", buildJsonObject {
+                maxCharacters?.let { put("maxCharacters", it) }
+            })
+            "summary" -> put("summary", buildJsonObject {
+                summaryQuery?.takeIf(String::isNotBlank)?.let { put("query", it) }
+            })
+            // text 默认：未传 max_characters 时用官方默认 true，否则用对象控制体积
+            else -> if (maxCharacters != null) {
+                put("text", buildJsonObject { put("maxCharacters", maxCharacters) })
+            } else {
+                put("text", JsonPrimitive(true))
+            }
+        }
+        maxAgeHours?.let { put("maxAgeHours", it) }
+        extractLinks?.takeIf { it > 0 }?.let { put("extras", buildJsonObject { put("links", it) }) }
+    }
+
+    /**
+     * 搜索结果聚合。上游新增的 publishedDate/highlights 证据字段会原样透出；
+     * content_type=highlights（默认）时同时把摘录并入 text，保持 fork 既有行为。
+     */
+    internal fun mapSearchResult(data: ExaData, useHighlights: Boolean = true): SearchResult = SearchResult(
+        answer = extractOutputAnswer(data.output),
+        items = data.results.map {
+            SearchResultItem(
+                title = it.title,
+                url = it.url,
+                text = if (useHighlights && it.highlights != null) {
+                    it.highlights.joinToString("\n").ifBlank { it.text ?: "" }
+                } else {
+                    it.text ?: ""
+                },
+                publishedDate = it.publishedDate,
+                highlights = it.highlights.orEmpty(),
+            )
+        },
+        images = data.results.mapNotNull { it.image?.takeIf { url -> url.isNotBlank() } },
+    )
+
+    /**
+     * 抓取结果聚合。成功项 + 失败项：statuses 是 HTTP 200 内上报的单 URL 失败，不能静默丢弃。
+     */
+    internal fun mapScrapedResult(data: ExaData, contentType: String?): ScrapedResult = ScrapedResult(
+        urls = buildList {
+            data.results.forEach { item ->
+                add(
+                    ScrapedResultUrl(
+                        url = item.url,
+                        content = when (contentType) {
+                            "highlights" -> item.highlights?.joinToString("\n").orEmpty()
+                            "summary" -> item.summary.orEmpty()
+                            else -> item.text.orEmpty()
+                        },
+                        images = item.image?.takeIf { it.isNotBlank() }?.let { listOf(it) } ?: emptyList(),
+                        publishedDate = item.publishedDate,
+                        author = item.author,
+                        metadata = ScrapedResultMetadata(
+                            title = item.title,
+                            favicon = item.favicon,
+                            publishedDate = item.publishedDate,
+                        ),
+                    )
+                )
+            }
+            data.statuses.filter { it.status == "error" }.forEach { status ->
+                val tag = status.error?.tag ?: "CRAWL_UNKNOWN_ERROR"
+                val code = status.error?.httpStatusCode?.let { " $it" } ?: ""
+                add(ScrapedResultUrl(url = status.id, error = "$tag$code"))
+            }
+        },
+    )
+
+    /** content_type 缺省或非 text 时走 highlights（默认，省 token） */
+    private fun useHighlights(params: JsonObject): Boolean =
+        params["content_type"]?.jsonPrimitive?.contentOrNull != "text"
 
     @Serializable
     data class ExaData(
@@ -372,9 +401,9 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
         @SerialName("url")
         val url: String,
         @SerialName("publishedDate")
-        val publishedDate: String?,
+        val publishedDate: String? = null,
         @SerialName("author")
-        val author: String?,
+        val author: String? = null,
         @SerialName("text")
         val text: String? = null,
         @SerialName("image")

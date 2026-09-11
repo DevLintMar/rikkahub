@@ -28,6 +28,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -38,6 +39,7 @@ import me.rerere.ai.provider.ModelType
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
+import me.rerere.ai.ui.StreamChunk
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
@@ -55,6 +57,7 @@ fun ProviderConnectionTester(
     var showTestDialog by remember { mutableStateOf(false) }
     val providerManager = koinInject<ProviderManager>()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     IconButton(onClick = { showTestDialog = true }) {
         Icon(HugeIcons.Connect, null)
@@ -93,19 +96,19 @@ fun ProviderConnectionTester(
                     }
 
                     TestResultItem(
-                        label = "非流式",
+                        label = stringResource(R.string.setting_provider_page_test_non_streaming),
                         state = nonStreamingState,
                         resultText = (nonStreamingState as? UiState.Success)?.data ?: ""
                     )
 
                     TestResultItem(
-                        label = "流式",
+                        label = stringResource(R.string.setting_provider_page_test_streaming),
                         state = streamingState,
                         resultText = streamingText
                     )
 
                     TestResultItem(
-                        label = "工具调用",
+                        label = stringResource(R.string.setting_provider_page_test_tool_call),
                         state = toolsState,
                         resultText = (toolsState as? UiState.Success)?.data ?: ""
                     )
@@ -126,18 +129,21 @@ fun ProviderConnectionTester(
                             launch {
                                 runCatching {
                                     nonStreamingState = UiState.Loading
-                                    val chunk = provider.generateText(
+                                    val result = provider.generateText(
                                         providerSetting = internalProvider,
-                                        messages = listOf(UIMessage.system("You are a helpful assistant"), UIMessage.user("hello")),
+                                        messages = listOf(
+                                            UIMessage.system("You are a helpful assistant"),
+                                            UIMessage.user("hello"),
+                                        ),
                                         params = TextGenerationParams(
                                             model = model!!,
                                             customHeaders = model!!.customHeaders,
                                             customBody = model!!.customBodies
                                         )
                                     )
-                                    val text = chunk.choices.firstOrNull()?.message?.parts
-                                        ?.filterIsInstance<UIMessagePart.Text>()
-                                        ?.joinToString("") { it.text } ?: ""
+                                    val text = result.message.parts
+                                        .filterIsInstance<UIMessagePart.Text>()
+                                        .joinToString("") { it.text }
                                     nonStreamingState = UiState.Success(text)
                                 }.onFailure { nonStreamingState = UiState.Error(it) }
                             }
@@ -146,7 +152,10 @@ fun ProviderConnectionTester(
                                     streamingState = UiState.Loading
                                     val flow = provider.streamText(
                                         providerSetting = internalProvider,
-                                        messages = listOf(UIMessage.system("You are a helpful assistant"), UIMessage.user("hello")),
+                                        messages = listOf(
+                                            UIMessage.system("You are a helpful assistant"),
+                                            UIMessage.user("hello"),
+                                        ),
                                         params = TextGenerationParams(
                                             model = model!!,
                                             customHeaders = model!!.customHeaders,
@@ -154,9 +163,9 @@ fun ProviderConnectionTester(
                                         )
                                     )
                                     flow.collect { chunk ->
-                                        chunk.choices.firstOrNull()?.delta?.parts
-                                            ?.filterIsInstance<UIMessagePart.Text>()
-                                            ?.forEach { streamingText += it.text }
+                                        if (chunk is StreamChunk.TextDelta) {
+                                            streamingText += chunk.text
+                                        }
                                     }
                                     streamingState = UiState.Success("")
                                 }.onFailure { streamingState = UiState.Error(it) }
@@ -169,9 +178,12 @@ fun ProviderConnectionTester(
                                         description = "Get the current date and time.",
                                         execute = { emptyList() }
                                     )
-                                    val chunk = provider.generateText(
+                                    val result = provider.generateText(
                                         providerSetting = internalProvider,
-                                        messages = listOf(UIMessage.system("You are a helpful assistant"), UIMessage.user("Use the get_current_time tool.")),
+                                        messages = listOf(
+                                            UIMessage.system("You are a helpful assistant"),
+                                            UIMessage.user("Use the get_current_time tool."),
+                                        ),
                                         params = TextGenerationParams(
                                             model = model!!,
                                             tools = listOf(testTool),
@@ -179,19 +191,26 @@ fun ProviderConnectionTester(
                                             customBody = model!!.customBodies
                                         )
                                     )
-                                    val message = chunk.choices.firstOrNull()?.message
-                                    val toolCall = message?.parts
-                                        ?.filterIsInstance<UIMessagePart.Tool>()
-                                        ?.firstOrNull()
-                                    val result = if (toolCall != null) {
-                                        "调用: ${toolCall.toolName}  入参: ${toolCall.input}"
+                                    val message = result.message
+                                    val toolCall = message.parts
+                                        .filterIsInstance<UIMessagePart.Tool>()
+                                        .firstOrNull()
+                                    val resultText = if (toolCall != null) {
+                                        context.getString(
+                                            R.string.setting_provider_page_test_tool_called,
+                                            toolCall.toolName,
+                                            toolCall.input
+                                        )
                                     } else {
-                                        val text = message?.parts
-                                            ?.filterIsInstance<UIMessagePart.Text>()
-                                            ?.joinToString("") { it.text } ?: ""
-                                        "未调用工具，响应: $text"
+                                        val text = message.parts
+                                            .filterIsInstance<UIMessagePart.Text>()
+                                            .joinToString("") { it.text }
+                                        context.getString(
+                                            R.string.setting_provider_page_test_tool_not_called,
+                                            text
+                                        )
                                     }
-                                    toolsState = UiState.Success(result)
+                                    toolsState = UiState.Success(resultText)
                                 }.onFailure { toolsState = UiState.Error(it) }
                             }
                         }
@@ -220,7 +239,9 @@ private fun TestResultItem(
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.width(64.dp)
+            modifier = Modifier.width(120.dp),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
         )
         when (state) {
             is UiState.Idle -> Text(
