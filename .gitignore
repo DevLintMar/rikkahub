@@ -12,3 +12,9 @@ local.properties
 .history
 .kotlin
 references
+# 签名密钥与 Firebase 配置绝不入库（CI 用 repo secrets 注入）
+*.keystore
+*.jks
+*.p12
+app.key
+google-services.json
