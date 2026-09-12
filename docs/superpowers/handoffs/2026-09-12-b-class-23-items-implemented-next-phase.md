@@ -136,10 +136,7 @@ commit 复查推翻的情况**：
 
 | run | 工作流 | conclusion | 说明 |
 |---|---|---|---|
-| `34697391688` | debug | ✅ **success**（`5bf5d59a`） | 覆盖四个批次全部改动。`Gradle Build` 与 `Unit Tests` **都 success**
-（含本轮新增的 3 个 Exa 用例），`Prepare signing key` / `Upload Room schema JSON` / `Point tag` /
-`Publish nightly debug prerelease` 全绿；**`--json jobs` 核过 0 个 skipped** —— 不是「24h 无提交」
-把 build 整个 skip 的假绿 |
+| `34697391688` | debug | ✅ **success**（`5bf5d59a`） | 覆盖四个批次全部改动。`Gradle Build` 与 `Unit Tests` **都 success**（含本轮新增的 3 个 Exa 用例），`Prepare signing key` / `Upload Room schema JSON` / `Point tag` / `Publish nightly debug prerelease` 全绿；**`--json jobs` 核过 0 个 skipped** —— 不是「24h 无提交」把 build 整个 skip 的假绿 |
 
 签名未漂移：debug run 的 `Prepare signing key` 打印 `SHA256: 47:B7:DE:…:5C:CD`，
 与 memory `signing-key-drift` 里冻结的 debug 指纹逐位一致。
