@@ -6,14 +6,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -1473,99 +1471,94 @@ private fun SearchWebPreview(
         ?.filter { it.isNotBlank() }
         ?: emptyList()
 
-    LazyColumn(
+    // 外层 ToolDetailSheet 的内容区是 Column + verticalScroll（见 ToolDetailSheet.kt），
+    // 同一方向上再嵌 LazyColumn 会拿到无限高约束并抛
+    // "Vertically scrollable component was measured with an infinity maximum height constraints"。
+    // 这里必须用非懒加载的 Column——外层本来就在滚动；横向的 LazyRow 不受此限，可以用。
+    Column(
         modifier = Modifier
-            .fillMaxHeight(0.8f)
+            .fillMaxWidth()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        item {
-            Text(stringResource(R.string.chat_message_tool_search_prefix, query))
-        }
+        Text(stringResource(R.string.chat_message_tool_search_prefix, query))
 
         if (parameters.isNotEmpty()) {
-            item {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    parameters.forEach { (name, value) ->
-                        val displayValue = when (value) {
-                            is JsonArray -> value.joinToString(", ") {
-                                it.jsonPrimitiveOrNull?.contentOrNull ?: it.toString()
-                            }
-                            else -> value.jsonPrimitiveOrNull?.contentOrNull ?: value.toString()
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                parameters.forEach { (name, value) ->
+                    val displayValue = when (value) {
+                        is JsonArray -> value.joinToString(", ") {
+                            it.jsonPrimitiveOrNull?.contentOrNull ?: it.toString()
                         }
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        ) {
-                            Text(
-                                text = "$name: $displayValue",
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                        }
+                        else -> value.jsonPrimitiveOrNull?.contentOrNull ?: value.toString()
                     }
-                }
-            }
-        }
-
-        if (answer != null) {
-            item {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                    )
-                ) {
-                    MarkdownBlock(
-                        content = answer,
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .fillMaxWidth(),
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
-        }
-
-        if (images.isNotEmpty()) {
-            item {
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    items(images) { imageUrl ->
-                        AsyncImage(
-                            model = imageUrl,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .height(120.dp)
-                                .width(160.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable { context.openUrl(imageUrl) },
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ) {
+                        Text(
+                            text = "$name: $displayValue",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
                         )
                     }
                 }
             }
         }
 
+        if (answer != null) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            ) {
+                MarkdownBlock(
+                    content = answer,
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .fillMaxWidth(),
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+
+        if (images.isNotEmpty()) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                items(images) { imageUrl ->
+                    AsyncImage(
+                        model = imageUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .height(120.dp)
+                            .width(160.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { context.openUrl(imageUrl) },
+                    )
+                }
+            }
+        }
+
         if (items.isNotEmpty()) {
-            items(items) { item ->
-                val url = item.getStringContent("url") ?: return@items
-                val title = item.getStringContent("title") ?: return@items
-                val text = item.getStringContent("text") ?: return@items
+            items.forEach { item ->
+                val url = item.getStringContent("url") ?: return@forEach
+                val title = item.getStringContent("title") ?: return@forEach
+                val text = item.getStringContent("text") ?: return@forEach
                 val publishedDate = item.getStringContent("publishedDate")?.takeIf { it.isNotBlank() }
-                val dateLabel = remember(publishedDate) {
-                    publishedDate?.let { value ->
-                        runCatching {
-                            LocalDate.parse(value, DateTimeFormatter.ISO_DATE_TIME)
-                        }.recoverCatching {
-                            LocalDate.parse(value, DateTimeFormatter.ISO_DATE)
-                        }.getOrNull()?.toLocalString(includeYear = true) ?: value
-                    }
+                // 非懒加载容器里不用 remember（没有 key 的循环内 remember 语义不清），日期解析开销可忽略
+                val dateLabel = publishedDate?.let { value ->
+                    runCatching {
+                        LocalDate.parse(value, DateTimeFormatter.ISO_DATE_TIME)
+                    }.recoverCatching {
+                        LocalDate.parse(value, DateTimeFormatter.ISO_DATE)
+                    }.getOrNull()?.toLocalString(includeYear = true) ?: value
                 }
 
                 Card(
@@ -1613,13 +1606,11 @@ private fun SearchWebPreview(
                 }
             }
         } else {
-            item {
-                HighlightText(
-                    code = JsonInstantPretty.encodeToString(content),
-                    language = "json",
-                    fontSize = 12.sp
-                )
-            }
+            HighlightText(
+                code = JsonInstantPretty.encodeToString(content),
+                language = "json",
+                fontSize = 12.sp,
+            )
         }
     }
 }
