@@ -196,6 +196,7 @@ gh run view <id> --json jobs                                       # 确认 buil
 | `scripts/prefs_key_audit.py` | Settings 键「声明/读取/写入」三集合比对（第 12 类） |
 | `scripts/sync_audit_lists.sh` | 生成上游/fork/双方都改 的文件与提交清单 |
 | `scripts/apk_signer.py` | 从任意 APK 抽 v2 签名者证书 SHA-256（核对签名漂移） |
+| `scripts/baseline_profile_audit.py` | baselineProfiles 过期检测：两份文件是否逐字节相同 + 规则里指向已删类的条目（`--strict` 时过期即退出码 1） |
 
 **本机还能做的白盒验证**：纯逻辑（正则、序列化、解析器）可以用本机 JDK 直接跑 —— Kotlin 的 `Regex`
 就是 `java.util.regex`，`<think>` 那条改动就是这么对照的（对照结果最终判定它**不是**回归，见 §3 前言）。注意 PATH 上的 `javac` 是 JDK 17 而
