@@ -1,5 +1,7 @@
 # Repository Guidelines
 
+本文档面向贡献者，概述本仓库的模块结构、开发流程，便于快速上手并保持一致的协作质量。
+
 ## Project Overview
 
 RikkaHub is a native Android LLM chat client that supports switching between different AI providers
@@ -8,11 +10,34 @@ Built with Jetpack Compose, Kotlin, and follows Material Design 3 principles.
 
 ## Build, Test, and Development Commands
 
+使用 Android Studio 或命令行 Gradle：
+
 ```bash
 ./gradlew assembleDebug          # 构建 Debug APK
 ./gradlew test                   # 运行所有模块的 JVM 单元测试
+./gradlew connectedDebugAndroidTest  # 运行设备/模拟器上的仪器测试
 ./gradlew lint                   # 运行 Android Lint
 ```
+
+构建应用需要在 `app/` 下提供 `google-services.json`（用于 Firebase）。
+`web` 模块会在 `preBuild` 阶段构建 `web-ui/` 并复制静态资源，需要本地可用 `pnpm`。
+
+## Coding Style & Naming Conventions
+
+本仓库使用 `.editorconfig` 统一格式：
+
+- Kotlin/Gradle 脚本：4 空格缩进，最大行长 120。
+- XML/JSON：2 空格缩进。
+- Markdown/YAML：2 空格缩进，允许尾随空格（用于对齐）。
+
+命名习惯：模块名为小写目录（如 `ai/`、`speech/`），Kotlin 类遵循 PascalCase，测试类以 `*Test` 结尾。
+
+## Testing Guidelines
+
+测试框架以 JUnit/AndroidX Test 为主。未设定强制覆盖率门槛，但新逻辑应配套新增/更新测试。测试文件命名建议：
+
+- 单元测试：`FooTest.kt`
+- 仪器测试：`FooInstrumentedTest.kt` 或 `*Test.kt`
 
 ## Module Structure
 
@@ -22,8 +47,11 @@ Built with Jetpack Compose, Kotlin, and follows Material Design 3 principles.
 - **document**: Document parsing module for handling PDF, DOCX, PPTX, and EPUB files
 - **highlight**: Code syntax highlighting implementation
 - **material3**: Material color utility extensions used by the app UI
+- **oauth**: OAuth 2.0 authorization (PKCE + dynamic client registration) with a loopback callback
+  server, used by MCP servers.
 - **search**: Search functionality SDK for multiple providers (Exa, Tavily, Zhipu, Bing, Brave, SearXNG, and others)
 - **speech**: Speech module for TTS and ASR implementations
+- **videogen**: Video generation SDK (Aliyun / MiniMax / Volcengine).
 - **web**: Embedded web server module that provides Ktor server startup function and hosts static frontend build files (
   built from web-ui/ React project)
 - **workspace**: Sandboxed per-workspace file system and shell execution environment exposed to the AI as tools.
@@ -74,3 +102,12 @@ Built with Jetpack Compose, Kotlin, and follows Material Design 3 principles.
 - If the user does not explicitly request localization, prioritize implementing functionality without considering
   localization. (e.g `Text("Hello world")`)
 - For `locale-tui` operations, use the `locale-tui-localization` skill.
+
+## 上游同步（fork 特有）
+
+本仓库是 [rikkahub/rikkahub](https://github.com/rikkahub/rikkahub) 的 fork，会周期性整体同步上游。
+同步前必读 `docs/superpowers/upstream-sync-checklist.md`（逐项机械检查）与 `docs/superpowers/audits/`（事故复盘）。
+
+三条要点：只 pin 上游最后一个 CI 绿提交（永不直接合上游 HEAD）；编译与单测结论只从 CI 取
+（本机无 Android 编译器，先 push 再 `gh workflow run nightly-build-debug.yml`）；真正的风险是
+「无冲突但静默破坏」，不是冲突数量。
