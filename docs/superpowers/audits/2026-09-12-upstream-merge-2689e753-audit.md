@@ -21,7 +21,7 @@
 > （§2-1 / §2-2 / §2-7 / §2-8 / §2-13 的 `.editorconfig`、`AGENTS.md`、`liveOutput` / §2-4）。
 > ⚠️ **两处更正**：§2-3a（输入框 IME 形态）与 §2-3b（`<think>` 行内标签）被审计判为「无人做过这个决定」，
 > 实际**上游各有专门的 `fix:` 提交**（`f86d6e82` / `85402745` + 7 个单测）→ 已改为**保留上游行为**，不算缺陷。
-> §6 的第 1 条已消化、A6 已决策为「保留上游行为」（上游 #1790）；**其余 §6 决策项仍未动**。
+> §6 的第 1 条已消化、A6 已决策为「保留上游行为」（上游 #1790）；§6 的第 2/3/4 条与 B 组 23 项已由 **§7 的决策表**覆盖；**§6 的第 5/6/7/9 条（`.gitignore` 锚定、keep 拆文件、`matchingFallbacks`、`WorkspaceShellContext` 双构造点）属 C 类结构性防复发，仍未动**。
 > 逐条落点见交接文档 `docs/superpowers/handoffs/2026-09-12-a-class-regressions-and-sync-rules-next-phase.md`。
 > 本文档保留原样作为事故复盘（每条带 `文件:行号` + 引入 sha + 复现命令）。
 
@@ -117,7 +117,7 @@
 
 ### 1.8 构建 / 依赖 / 模块
 
-新模块 `:videogen`（视频生成，Aliyun/MiniMax/Volcengine）、`:oauth`；`snakeyaml` 2.6（解析 skill frontmatter）；mcp SDK 制品换名 `kotlin-sdk-client`；AGP 9.3 的 `optimization {}` + `src/<variant>/keepRules/*.keep` 源集约定；Compose BOM `2026.06.01→2026.08.00`、material3 `alpha25→alpha27`、coil `3.5→3.6.2`、nav3Material `1.0.0-SNAPSHOT→1.3.0`、okhttp `5.4→5.5`、ktor `3.5.1→3.5.2`、sqlite-vector `0.9.92→1.0.0` 等一批升级。
+新模块 `:videogen`（视频生成，Aliyun/MiniMax/Volcengine）、`:oauth`；`snakeyaml` 2.6（解析 skill frontmatter）；mcp SDK 制品换名 `kotlin-sdk-client`；`src/<variant>/keepRules/*.keep` 源集约定（「AGP 9.3 的 `optimization {}`」不属本次新增，见 §7.1）；Compose BOM `2026.06.01→2026.08.00`、material3 `alpha25→alpha27`、coil `3.5→3.6.2`、nav3Material `1.0.0-SNAPSHOT→1.3.0`、okhttp `5.4→5.5`、ktor `3.5.1→3.5.2`、sqlite-vector `0.9.92→1.0.0` 等一批升级。
 
 ---
 
@@ -311,6 +311,53 @@
 9. 是否消除 `WorkspaceShellContext` 的双构造点（结构性防复发，§3）。
 
 ---
+
+## 7. B 类 23 项决策结果（2026-09-12 逐条拍板）
+
+> 本节是问题清单 B 组 23 项的最终处置。**决策不等于已实施** —— 落地进度看交接文档
+> `docs/superpowers/handoffs/2026-09-12-a-class-regressions-and-sync-rules-next-phase.md`。
+
+### 7.1 复核时发现的三处事实错误（先更正）
+
+| 本文档原文 | 事实 |
+|---|---|
+| §2-12「`isEmpty()` 语义变化 → `sendOnEnter` 下只贴图片时回车直接发送（**以前是换行**）」 | **错**。旧逻辑在该场景是**按键完全没反应**：`sendOnEnter` 开着时 `imeAction = ImeAction.Send`（ChatInput.kt:600），IME 那颗键是"发送"动作键、不插换行，而 `isEmpty()=true` 让 `onKeyboardAction` 的守卫（:603）直接短路；发送按钮也是灰的。**输入了文字按回车 = 发送，这一点新旧一致**。另外上游改的其实是**两处**：`isEmpty()` → `isBlank()`（防只打空格发出空消息）+ 追加 `&& messageContent.isEmpty()`（纯附件可发）。 |
+| §2-3e / §2-11 / §2-12「`SearchMode.BUILT_IN` 是死值」 | 性质不是"死值"，是**合并把两侧拼在了一起**：上游 `8c3f8240` 的设计是两张 `SearchModeCard` 都走 `onUpdateSearchMode`（fork 侧当时根本没有 `SearchMode`，用的是 `onToggleSearch: (Boolean)`，见 `7042fa80:SearchPicker.kt:65`）；合并取了 fork 的界面 + 上游的管道名，而内置搜索那张卡保留了 fork 直写 `model.tools` 的写法 → 枚举留下了却无人产出。 |
+| §1.8「AGP 9.3 的 `optimization {}`（本次上游新增）」 | `optimization { enable = true }` **在分叉点 `4b6449e3` 的 `app/build.gradle.kts:73-77` 就有**，不是本次新增。与它并存的是 fork 自己后加的 `pre` build type（`8b1a140c`）所用的旧 DSL。 |
+
+### 7.2 决策表
+
+| # | 项 | 决策 | 落地要点 |
+|---|---|---|---|
+| B1 | Exa 请求侧只进来一半 | **补齐请求侧** | `buildSearchRequestBody` 的 `contents` 同时给 `text` + `highlights`，并透传 `max_age_hours` → `maxAgeHours` |
+| B2 | `SearchMode.BUILT_IN` 无人产出 | **删掉 BUILT_IN，回到两态** | 枚举删 `BUILT_IN`；删 `ChatPage.kt:385` 分支与 `BuiltInTools` import。承认 `model.tools` 是内置搜索唯一真相源 |
+| B3 | 两条判据不同源 | **统一以 `model.tools` 为准** | `SearchPicker.kt:163-164` 的 modelId 启发式改为与 `shouldUseExternalWebSearch` 同源；可能需给模型注册表加"支持服务端搜索"标记 |
+| B4 | `enableWebSearch` 静默失效 | **接受语义，把静默变显式** | 门控不动；开关打开且模型有内置搜索时，toast / 选择器改为提示"该模型使用内置搜索" |
+| B5 | MCP 非法名 `pause()` 队列 | **保留 pause，提示写清** | 只在 `ChatService.kt:854` 的报错文案里补"消息队列已暂停" |
+| B6 | 标题/建议模型改走快速模型 | **接受上游 + 写更新日志** | 上游 `9365c297 fix: …并移除单独的标题和建议模型配置` **close #1768** → 按判据保留；只需记录"配过独立标题模型的用户会回退到快速模型" |
+| B7 | `isEmpty()` 语义变化 | **全部接受上游** | 无代码改动 |
+| B8 | 网络自动重试默认开 | **接受默认开** | 无代码改动 |
+| B9 | 审批改为"等前一个 job 结束" | **接受上游** | 上游 `55506496 fix: 修复连续工具审批丢失及取消状态误标` → 按判据保留；`afterPreviousGeneration` 与 `isPending` 陈旧审批守卫都保留 |
+| B10 | 子代理绕过新机制 | **只补截断 + `sessionId`** | `SubAgentRuntime.kt` 的 `toolDef.execute` 结果套 `clipToolOutput`；`TextGenerationParams` 补 `sessionId` |
+| B11 | 32KB 落盘的是已裁剪文本 | **调换顺序：先落盘再裁剪** | `GenerationLoop.kt:301` 改成 `clipToolOutput(maybeTruncateToolOutput(toolCallId, output.parts, hasShellAccess))`；无 shell 权限时仍落到 100KB 兜底 |
+| B12 | `/tool_outputs` 每次冷启清空 | **不清空，改容量/TTL 上限** | `RikkaHubApp.kt:174` 的 `cleanupToolOutputs` 从 `deleteRecursively()` 改为按总量/时间的清理 |
+| B13 | 赞助商 provider 自动注入 | **两处都移除** | `DEFAULT_PROVIDERS`（APIMart :70 / MaruCode :270）与 `RECOMMENDED_PROVIDERS`（:48 / :89）都删。`PreferencesStore.kt:354` 的补全循环正是"删了又回来"的根因 |
+| B14 | Qwen Audio 3.0 TTS 无迁移 | **加模型名迁移** | 读取时把 `qwen3-tts*` 映射到 `qwen-audio-3.0-tts-plus`；`{WorkspaceId}` 的 baseUrl 另给可操作提示 |
+| B15 | 上游搜索选择 UI 未采纳 | **保留 fork UI，删 6 个孤儿串** | 与 B2 一致；只留仍在用的 `search_picker_title` |
+| B16 | 终端 bind mount 第三处硬编码 | **改成消费同一常量** | `WorkspaceTerminalSession.kt:39-57` 改遍历 `FileFolders.ROOTFS_BIND_MOUNTS` |
+| B17 | html/svg 预览按钮硬编码中文 | **走 stringResource + 补六 locale** | `WorkspaceFileEditorPage.kt:96` 的 `"源码"/"预览"` 抽成新串 |
+| B18 | 5 个未翻译串 | **补 4 个 + 删 1 个死串** | 补 4 个 `workspace_terminal_*`（无障碍 contentDescription）；`assistant_page_context_message_limit_too_small` 全仓引用 0 → 删 |
+| B19 | baselineProfiles 过期 | **保留 + 加过期检测守卫** | 不删（大量规则对现存类仍有效）；加脚本检测"引用的类是否还存在"；重新生成需有设备的机器，记进待办 |
+| B20 | `compose_compiler_config.conf` 悬空 | **删悬空 + 补 `StreamChunk`** | 删 `UIMessageChoice` / `MessageChunk` 两条，加 `me.rerere.ai.ui.StreamChunk` |
+| B21 | 自定义 action/scheme 未按变体隔离 | **改成 `applicationId` 派生** | `AndroidManifest.xml:95/177` 与 `RouteActivity.kt:147` / `KeepAliveService.kt:31` 的常量改 `${applicationId}`；`shortcuts.xml:22` 换 string resource。顺带修掉写死的上游包名 |
+| B22 | `pre` 用旧混淆 DSL | **对齐 release 的 DSL** | `app/build.gradle.kts:129-138` 改用 `optimization { enable = true }`，与 13 个库模块的 `initWith(getByName("release"))` 一致；需跑一次 pre CI 确认能出包 |
+| B23 | 测试断言旧包名 / 发布说明包名错 | **修断言 + 修发布说明** | `ExampleInstrumentedTest.kt:20` 改用 `BuildConfig.APPLICATION_ID`；`nightly-build-pre.yml:126` 的 `xyz.lynsei.rikkahub` 改为 `.pre` |
+
+### 7.3 按判据保留上游的四条（备查）
+
+B6 / B9 属于"上游有专门的 `fix:` 提交、且 close 了 issue"；B7 与上游新抽出的 `SendButton` 是一套设计。
+按 §2.2 的判据（`fix:` / close issue / 带配套单测 三者任一成立 = 上游有意行为），这四条都**不回退**。
+A 类的 A4/A5 是同一判据救回来的先例。
 
 ## 附录 A：共用证据清单（本次生成，可直接复用）
 
