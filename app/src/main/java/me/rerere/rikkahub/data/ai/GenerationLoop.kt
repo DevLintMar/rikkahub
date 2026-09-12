@@ -36,6 +36,7 @@ import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.ai.transformers.InputMessageTransformer
 import me.rerere.rikkahub.data.ai.transformers.MessageTransformer
 import me.rerere.rikkahub.data.ai.transformers.OutputMessageTransformer
+import me.rerere.rikkahub.data.ai.tools.clipToolOutput
 import me.rerere.rikkahub.data.ai.tools.inferToolState
 import me.rerere.rikkahub.data.ai.tools.toolErrorMessage
 import me.rerere.rikkahub.data.files.FileFolders
@@ -56,7 +57,6 @@ import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 private const val TAG = "GenerationLoop"
-private const val MAX_TOOL_RESULT_LENGTH = 100_000
 private const val MAX_TOOL_OUTPUT_CHARS = 32 * 1024
 private const val TOOL_OUTPUT_PREVIEW_CHARS = 4 * 1024
 private const val MAX_PROVIDER_NETWORK_RETRIES = 3
@@ -297,11 +297,15 @@ class GenerationLoop(
                                     is ToolOutput.Progress -> updateToolLive(tool.toolCallId, null)
                                     is ToolOutput.Completed -> {
                                         completed = tool.copy(
-                                            // 先做 100KB 硬截断兜底，再由上游的 32KB 阈值决定是否落盘到 /tool_outputs
-                                            output = maybeTruncateToolOutput(
-                                                toolCallId = tool.toolCallId,
-                                                output = clipToolOutput(output.parts),
-                                                hasShellAccess = hasShellAccess,
+                                            // 顺序要紧：先按 32KB 阈值把**完整**输出落盘到
+                                            // /tool_outputs（返回预览 + cat 指针），再走 100KB 硬截断
+                                            // 兜底。反过来的话落盘的是裁过的文本，模型 cat 也拿不到全量。
+                                            output = clipToolOutput(
+                                                maybeTruncateToolOutput(
+                                                    toolCallId = tool.toolCallId,
+                                                    output = output.parts,
+                                                    hasShellAccess = hasShellAccess,
+                                                )
                                             ),
                                             toolState = inferToolState(output.parts),
                                         )
@@ -574,17 +578,6 @@ class GenerationLoop(
             else -> R.string.chat_generation_network_disconnected
         }
         return context.getString(messageRes)
-    }
-
-    /** 硬性安全网：文本输出超 100KB 截断并加标记（兜底 MCP/use_skill 非信封大输出）。 */
-    private fun clipToolOutput(parts: List<UIMessagePart>): List<UIMessagePart> {
-        val textParts = parts.filterIsInstance<UIMessagePart.Text>()
-        val nonTextParts = parts.filter { it !is UIMessagePart.Text }
-        val totalChars = textParts.sumOf { it.text.length }
-        if (totalChars <= MAX_TOOL_RESULT_LENGTH) return parts
-        val clipped = textParts.joinToString("\n") { it.text }
-            .take(MAX_TOOL_RESULT_LENGTH) + "…[truncated]"
-        return listOf(UIMessagePart.Text(clipped)) + nonTextParts
     }
 
     private fun maybeTruncateToolOutput(

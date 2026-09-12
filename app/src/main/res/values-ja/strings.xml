@@ -1255,6 +1255,7 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_page_import_failed">インポートに失敗しました: %1$s</string>
   <string name="setting_mcp_page_name_invalid">名前は英数字のみ使用可能です。</string>
   <string name="error_mcp_invalid_server_name">無効なMCPサーバー名です（英数字のみ使用可能）：%1$s</string>
+  <string name="error_mcp_invalid_server_name_queue_paused">メッセージキューは一時停止しました。サーバー名を修正してから、メッセージキューパネルで再開してください。</string>
   <string name="setting_asr_configure_base_url">Base URL</string>
   <string name="setting_asr_configure_sample_rate">サンプルレート</string>
   <string name="setting_asr_configure_segment_duration">セグメント長</string>

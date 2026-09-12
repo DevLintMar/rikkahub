@@ -1255,6 +1255,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_page_import_failed">가져오기 실패: %1$s</string>
   <string name="setting_mcp_page_name_invalid">이름은 영어 문자와 숫자만 포함할 수 있습니다.</string>
   <string name="error_mcp_invalid_server_name">유효하지 않은 MCP 서버 이름입니다 (영숫자만 허용됨): %1$s</string>
+  <string name="error_mcp_invalid_server_name_queue_paused">메시지 큐가 일시정지되었습니다. 서버 이름을 수정한 뒤 메시지 큐 패널에서 다시 시작하세요.</string>
   <string name="setting_asr_configure_base_url">Base URL</string>
   <string name="setting_asr_configure_sample_rate">샘플 레이트</string>
   <string name="setting_asr_configure_segment_duration">세그먼트 길이</string>

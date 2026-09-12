@@ -14,6 +14,7 @@ import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.StreamChunkHandler
 import me.rerere.rikkahub.AppScope
+import me.rerere.rikkahub.data.ai.tools.clipToolOutput
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.findModelById
@@ -107,6 +108,9 @@ class SubAgentRuntime(
             maxTokens = assistant.maxTokens,
             tools = tools,
             reasoningLevel = assistant.reasoningLevel,
+            // 与主循环一样带上会话 id（provider 侧映射成 X-Session-ID 等请求头），
+            // 同一次子代理任务的多轮请求因此落在同一会话上，prompt cache 能命中
+            sessionId = Uuid.random().toString(),
         )
 
         var currentMessages: List<UIMessage> = messages
@@ -149,8 +153,10 @@ class SubAgentRuntime(
                         """{"error":"[${error.javaClass.name}] ${error.message ?: "Unknown error"}","stack":"${error.stackTraceToString().replace("\"", "\\\"")}"}"""
                     ))
                 }
+                // 子代理此前完全没有上限：工具输出有多大就原样拼进下一条 user 消息。
+                // 与主循环共用 clipToolOutput，一次大输出不再撑爆上下文。
                 currentMessages = currentMessages + UIMessage.user(
-                    prompt = output.joinToString("\n") { part ->
+                    prompt = clipToolOutput(output).joinToString("\n") { part ->
                         when (part) {
                             is UIMessagePart.Text -> part.text
                             else -> "[${part::class.simpleName}]"

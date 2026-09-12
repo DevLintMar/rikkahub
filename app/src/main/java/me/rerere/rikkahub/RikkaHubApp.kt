@@ -55,6 +55,10 @@ import org.koin.core.context.startKoin
 
 private const val TAG = "RikkaHubApp"
 
+/** /tool_outputs 的保留期与总量上限（冷启增量清理，见 cleanupToolOutputs） */
+private const val TOOL_OUTPUT_TTL_MILLIS = 7L * 24 * 60 * 60 * 1000
+private const val TOOL_OUTPUT_MAX_BYTES = 64L * 1024 * 1024
+
 const val CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID = "chat_completed"
 const val CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID = "chat_live_update"
 const val WEB_SERVER_NOTIFICATION_CHANNEL_ID = "web_server"
@@ -171,13 +175,28 @@ class RikkaHubApp : Application() {
         }
     }
 
+    /**
+     * /tool_outputs 的增量清理。
+     *
+     * 原来是冷启直接 deleteRecursively()，但消息历史里已经写进了
+     * `cat /tool_outputs/xxx.txt` 的指针 —— 跨重启的历史会话会让模型白跑一次（404）。
+     * 改成按 TTL + 总量上限清理：近期用过的输出继续可读，磁盘也不会无限增长。
+     */
     private fun cleanupToolOutputs() {
         get<AppScope>().launch(Dispatchers.IO) {
             runCatching {
                 val dir = File(filesDir, FileFolders.TOOL_OUTPUTS)
-                if (dir.exists()) {
-                    dir.deleteRecursively()
-                }
+                if (!dir.isDirectory) return@runCatching
+                val now = System.currentTimeMillis()
+                val files = dir.listFiles()?.filter { it.isFile }.orEmpty()
+                files.filter { now - it.lastModified() > TOOL_OUTPUT_TTL_MILLIS }
+                    .forEach { it.delete() }
+                var total = 0L
+                files.sortedByDescending { it.lastModified() }
+                    .forEach { file ->
+                        total += file.length()
+                        if (total > TOOL_OUTPUT_MAX_BYTES) file.delete()
+                    }
             }
         }
     }

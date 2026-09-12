@@ -372,7 +372,11 @@ class SettingsStore(
                     assistants.add(defaultAssistant.copy())
                 }
             }
-            val ttsProviders = it.ttsProviders.ifEmpty { DEFAULT_TTS_PROVIDERS }.toMutableList()
+            // Qwen Audio 3.0 换了配置结构：qwen3-tts* 已下线，旧配置只会在播放时
+            // 撞 require()。在读配置这一步就地迁移，UI 与播放路径都不会再看到旧模型名。
+            val ttsProviders = it.ttsProviders.ifEmpty { DEFAULT_TTS_PROVIDERS }
+                .map(::migrateLegacyTtsProvider)
+                .toMutableList()
             DEFAULT_TTS_PROVIDERS.forEach { defaultTTSProvider ->
                 if (ttsProviders.none { provider -> provider.id == defaultTTSProvider.id }) {
                     ttsProviders.add(defaultTTSProvider.copyProvider())
@@ -774,6 +778,19 @@ fun Settings.getSelectedASRProvider(): ASRProviderSetting? {
         asrProviders.find { it.id == id }
     } ?: asrProviders.firstOrNull()
 }
+
+/**
+ * 旧版 Qwen3 TTS 模型（qwen3-tts*）已下线，读配置时直接迁到继任者。
+ *
+ * 只迁模型名：音色（voice）在各模型间不通用，迁移后若报音色无效，用户在 TTS 设置里
+ * 重选一次即可（下拉框已经是按模型列出的合法取值）。
+ */
+private fun migrateLegacyTtsProvider(provider: TTSProviderSetting): TTSProviderSetting =
+    if (provider is TTSProviderSetting.Qwen && provider.model.startsWith("qwen3-tts")) {
+        provider.copy(model = "qwen-audio-3.0-tts-plus")
+    } else {
+        provider
+    }
 
 fun Model.findProvider(providers: List<ProviderSetting>, checkOverwrite: Boolean = true): ProviderSetting? {
     val provider = findModelProviderFromList(providers) ?: return null

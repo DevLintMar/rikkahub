@@ -851,13 +851,16 @@ class ChatService(
                     workspaceCwd = conversation.workspaceCwd,
                 )
             } catch (error: InvalidMcpServerNamesException) {
+                // 这条失败路径会把整个会话的消息队列暂停（见下一行），提示里必须说清楚，
+                // 否则用户只看到「队列不跑了」，不知道去哪恢复。
                 sessions[conversationId]?.messageQueue?.pause()
                 addError(
                     error = IllegalStateException(
                         context.getString(
                             R.string.error_mcp_invalid_server_name,
                             error.names.joinToString(", "),
-                        )
+                        ) + "\n\n" +
+                            context.getString(R.string.error_mcp_invalid_server_name_queue_paused)
                     ),
                     conversationId = conversationId,
                 )
