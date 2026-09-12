@@ -8,7 +8,9 @@ import me.rerere.ai.ui.UIMessagePart
 import kotlin.time.Clock
 import kotlin.time.Instant
 
-private val THINKING_REGEX = Regex("\\A\\s*<think>([\\s\\S]*?)(</think>|$)")
+// 不锚定行首：模型常在正文后再写 <think>...</think>，行内出现时也要抽成 reasoning 块。
+// 第 2 组必须是捕获组 —— 下游用 groups[2] == "</think>" 判断思考是否已收尾。
+private val THINKING_REGEX = Regex("<think>([\\s\\S]*?)(</think>|$)", RegexOption.DOT_MATCHES_ALL)
 
 // 部分供应商不会返回reasoning parts, 所以需要这个transformer
 object ThinkTagTransformer : OutputMessageTransformer {

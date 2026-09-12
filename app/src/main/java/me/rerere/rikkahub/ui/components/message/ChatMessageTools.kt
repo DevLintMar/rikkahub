@@ -127,7 +127,10 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
 
     var showResult by remember { mutableStateOf(false) }
     var showDenyDialog by remember { mutableStateOf(false) }
-    val isPending = tool.approvalState is ToolApprovalState.Pending
+    // 必须与 AskUserToolStep 及 ChatService 的审批守卫同口径（Tool.isPending = 未执行 && Pending）：
+    // 用裸 approvalState 判断的话，被"停止生成"掐断的工具（有 output + 仍是 Pending）会渲染出
+    // 点了没反应的 ✓/✕ 死按钮。
+    val isPending = tool.isPending
     val isDenied = tool.approvalState is ToolApprovalState.Denied
     val isFailed = tool.toolState == ToolState.FAILED
     val hasExtraContent = renderer.hasSummary(context) || images.isNotEmpty()
