@@ -151,7 +151,7 @@ GFM 规范允许单波浪删除线，本项目 fork 也实现了它，但 fork �
 
 ### ② 遗留 Minor / defer（不阻塞）
 
-- **release / pre CI 未跑**：convention plugin + rikkahub.keep + optimization 混淆路径未验证（历史挂起延续）
+- **release / pre CI 未跑**：convention plugin + rikkahub.keep + optimization 混淆路径未验证（历史挂起延续）—— ✅ **2026-09-12 已解决**：`release` 已多次真跑且绿；`pre` 自 `1a542d72` 起真跑并绿 —— 此前那些 success 是 `check` 判「24h 无提交」把 `build` 整个 skip 后的假绿）
 - **诊断日志仍在**（belt skipped / FILES_DELETE / cleanup refs / ChatImg / ScrollFrameSampler）：设备确认后清理
 - **引用计数 LIKE 查询性能**：`countMessageNodesContaining` 全表 LIKE 扫描，会话多时删除操作可能略慢——当前规模可接受
 - **`MarkdownUtils.stripMarkdown` 的 `~~` 处理**：该函数（TTS 用）不涉及本次改动，但若将来统一删除线语义可一并核对

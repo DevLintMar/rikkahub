@@ -211,7 +211,7 @@
 
 ### ③ 遗留 Minor / defer（延续）
 
-- **release / pre CI 未跑**：convention plugin + rikkahub.keep + optimization 混淆路径未验证（历史挂起延续）
+- **release / pre CI 未跑**：convention plugin + rikkahub.keep + optimization 混淆路径未验证（历史挂起延续）—— ✅ **2026-09-12 已解决**：`release` 已多次真跑且绿；`pre` 自 `1a542d72` 起真跑并绿 —— 此前那些 success 是 `check` 判「24h 无提交」把 `build` 整个 skip 后的假绿）
 - **诊断日志仍在**（belt skipped / FILES_DELETE / cleanup refs / ChatImg / ScrollFrameSampler / 本阶段新增的 read_image 与 hoisted-image 日志）：设备确认后清理
 - **引用计数 LIKE 查询性能**：`countMessageNodesContaining` 全表 LIKE 扫描
 - **历史挂起**（更早交接延续）：Firecrawl crawl/batch、Jina 多 URL、Exa ids 复用、Metaso scope、乱召回、Task 12 ripgrep、UpdateChecker `return@flow`

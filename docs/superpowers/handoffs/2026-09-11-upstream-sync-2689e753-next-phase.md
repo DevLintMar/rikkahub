@@ -30,7 +30,7 @@ cab3a656 merge: 同步上游 2689e753（158 commits）   ← 父提交 = 7042fa8
 
 上游 HEAD `288a034c`「chore: 更新依赖」deleted `gradle/libs.versions.toml`（-197 行）**且未提供替代**：`build-logic/settings.gradle.kts` 仍 `from(files("../gradle/libs.versions.toml"))`，`app/build.gradle.kts` 引用 `libs.` 88 次、根 `build.gradle.kts` 8 次。核实发现该提交只有 `close-blank-issues` 一个 check-run，`state: pending`。最后一个被 CI 验证过的是 `2689e753`（Daily Build 连续两次 success）。
 
-**注意**：pin 到 `2689e753` 后，`gradle/libs.versions.toml` **自动合并成功**（我们的 `ratex`/`nav2`/`androidx-navigation2`/`haze-blur-materials` 与上游新增的 `snakeyaml` 等并存），不再是冲突 —— 这是 pin 带来的额外收益。
+**注意**：pin 到 `2689e753` 后，`gradle/libs.versions.toml` **自动合并成功**（我们的 `ratex`/`haze-blur-materials` 与上游新增的 `snakeyaml` 等并存 —— ⚠️ **2026-09-12 更正**：`nav2`/`androidx-navigation2` 其实已被上游删除且静默生效，现仓库已无这两个 alias），不再是冲突 —— 这是 pin 带来的额外收益。
 
 ### 二、解冲突过程中发现的 5 个静默破绽（都不带冲突标记）
 
@@ -48,14 +48,14 @@ cab3a656 merge: 同步上游 2689e753（158 commits）   ← 父提交 = 7042fa8
 
 - 删除 `data/ai/GenerationHandler.kt`；`generateText` → `GenerationLoop`；`translateText` → 上游新抽出的 `TranslationHandler`；工具装配搬进 `ChatToolFactory`
 - `ChatToolFactory.kt` 是上游**新增**文件，按上游旧 API 调用，但在 fork 上 **4 个签名都不存在**：`buildMemoryTools(json, onCreation, onUpdate, onDelete)`、`memoryRepository.addMemory(id, content)`、`memoryRepository.updateContent(id, content)`、`createConversationTools(repo, assistantId)` → 已重写为 fork 实际 API
-- 移植进 `ChatToolFactory.createTools` 的 fork 工具（顺序即注册顺序）：记忆工具（11 参版，仅 `enableMemory`）→ `createSearchTools` → `localTools.getTools` 再映射（`"sub_agent"`→`buildSubAgentTool(...)`、`"run_workflow"`→`buildWorkflowTool(...)`）→ `createConversationTools`（4 参，含文件夹）→ 工作区工具 → **`createReadImageTool`** → 技能工具 → MCP 分组
+- 移植进 `ChatToolFactory.createTools` 的 fork 工具（顺序即注册顺序）：记忆工具（12 参版，仅 `enableMemory`；⚠️ 2026-09-12 更正原写的「11 参」）→ `createSearchTools` → `localTools.getTools` 再映射（`"sub_agent"`→`buildSubAgentTool(...)`、`"run_workflow"`→`buildWorkflowTool(...)`）→ `createConversationTools`（4 参，含文件夹）→ 工作区工具 → **`createReadImageTool`** → 技能工具 → MCP 分组
 - 子代理上下文 `SubAgentToolContext(baseTools, mcpToolGroups, skillTool, subAgentTool=null, workflowTool=null)` 保留（在 factory 内构造）
 - `ChatService` **恢复了 `localTools` 依赖**：上游的 auto-merge 把它删了，但 fork 的 `handleSubAgentRecall` 需要 `localTools.subAgentRuntime.getTaskInfos()` —— 不恢复则 hunk 4 的并集无法编译
 - 其余 fork 成员全部保留并一一确认：`pendingNotifications`、`checkPendingRecall`、`handleSubAgentRecall`、`fireRecall`、`lostUploadUrlsAfterDelete`、keep-alive 集成
 
 **DB 升到 v27**（两个分支把两个不同 schema 撞在了同一版本号下）：
 
-- 我们 v26 = `message_embeddings` 表 + 记忆的 `title/description/is_active`；上游 v25 = `workspaces.shell_compatibility_mode`
+- 我们 v25 = `message_embeddings` 表、v26 = 记忆的 `title/description/is_active`（⚠️ **2026-09-12 更正**：`message_embeddings` 是 v25 引入的，v26 只加记忆三列）；上游 v25 = `workspaces.shell_compatibility_mode`
 - 新增 `Migration_26_27`，**先 `PRAGMA table_info` 探测列是否存在再 ALTER** —— 上游自己的 v25 就带这列，而 fork 支持恢复外来备份，直接 ALTER 会撞 `duplicate column name`
 - `AppDatabase.version = 27`；`27.json` 由 CI 生成后拉回提交。核对生成的 schema 确认是双方并集；也核对 CI 重新生成的 `25.json` 与仓库中逐字节相同（identityHash 除外）→ 证明「25.json 取 ours」的判断正确
 - `26.json` **不存在且不会存在**：我们从 26 直接跳到 27，没有 v26 的构建产物。这与仓库既有状态一致（此前也没有 26.json）
@@ -97,7 +97,7 @@ CI run `34610192790`：`InputSchema.Obj.required` 是 `List<String>?`（`propert
 - **两侧各自加了不同的东西时，「同一版本号下两个不同 schema」是陷阱**：DB 版本号必须顺延，且迁移要容忍外来库（fork 支持跨包名恢复）。
 
 ### 生成循环
-- 上游的 `ChatToolFactory` 是**更好的结构**（集中装配 + 审批恢复走同一条路径），值得采纳；但它的记忆 API 是旧的，必须换成 fork 的 11 参版。
+- 上游的 `ChatToolFactory` 是**更好的结构**（集中装配 + 审批恢复走同一条路径），值得采纳；但它的记忆 API 是旧的，必须换成 fork 的 12 参版（8 回调 + json + memoryAssistantId + includeActiveEdit + includeSavedEdit；⚠️ 2026-09-12 更正原写的「11 参」）。
 - `ToolOutput`/`executeFlow` 流式工具模型是 fork 约 100 个提交的工作基础（工具实时输出 UI），上游没有 → 在 `GenerationLoop` 的 `execute` 分支里保留 `executeFlow(args).collect { ... }` 分支。
 - 上游的 `maybeTruncateToolOutput`（32KB → 落盘 `/tool_outputs/` 并给模型 `cat` 指针）与 fork 的 `clipToolOutput`（100KB 硬截断兜底）**两者都保留**，执行顺序 `maybeTruncateToolOutput(clipToolOutput(parts))`。
 - git 在这两个截断函数上做过一次**错位对齐**（把两侧函数体对成「公共尾部」），产出引用未定义变量的代码 —— 遇到重命名+大改时要注意这类artifact。
@@ -206,6 +206,7 @@ CI 记录（全部为 `nightly-build-debug.yml`）：
 
 1. **生成循环重构**：普通对话、工具调用、工具审批（含连续审批）、停止生成、重新生成 —— 这是本次改动最大的地方
 2. **工具实时输出**：工作区 shell 命令应流式显示（`ToolOutput.OutputDelta` 通路）
+   —— ⚠️ **2026-09-12 更正：这一条做不到**。`liveOutput` 只有生产者没有 UI 消费者（`ui/` 下读取点为 0；UI 端是更早的 fork 提交 `c21225e1` 自己删掉的），`executeFlow`/`OutputDelta` 现在只用于收集完整结果。按「有意不做」处理，不再作为验收项。
 3. **read_image**：视觉模型出图、工具结果图片不再 `invalid input`、死链 http 图片 20 秒失败
 4. **上游新功能抽验**：工作区 Shell 兼容模式 + 终端多 Tab + html/svg 预览、消息发送队列、语音模式
 5. **备份/恢复**：S3 与 WebDAV 备份 → 恢复，确认 `upload/`、`images/`、头像都在；跨包名恢复（debug↔release）仍能重定位 `file://` 路径
@@ -219,7 +220,7 @@ CI 记录（全部为 `nightly-build-debug.yml`）：
 - **Exa 的新鲜度/证据请求侧参数未采纳**：上游 `a8f8c3a1` 把证据参数改成 camelCase 并始终请求 text+highlights，与 fork 的 snake_case 契约冲突。已采用「输出侧保留证据字段、请求侧保持 fork 语义」，故上游那部分特性只进来了一半
 - **`SearchPicker` 用混合方案**而非纯粹取 ours（原因见 §1.5）
 - **MCP 无效服务器名的行为改为上游版**：现在会暂停消息队列（fork 原来只报错不暂停）
-- **搜索门控用上游的 `shouldUseExternalWebSearch`**（`enableWebSearch && BuiltInTools.Search !in model.tools`）而非 fork 的裸 `enableWebSearch`；若 fork 要求总是用外挂搜索，需同时改 `ChatToolFactory.kt` 与 `ChatService.kt:811`
+- **搜索门控用上游的 `shouldUseExternalWebSearch`**（`enableWebSearch && BuiltInTools.Search !in model.tools`）而非 fork 的裸 `enableWebSearch`；若 fork 要求总是用外挂搜索，需同时改 `ChatToolFactory.kt` 与 `ChatService.kt:812`（⚠️ 2026-09-12 更正：原写 `:811`）
 - **`huge-icons` 钉在 1.3**（上游已 1.4）：上游 1.4 改了整套图标字形，用户要求保留 1.3 观感。**下次同步上游会重现这个冲突** —— 记得改回 1.3 并把 `Fullscreen` 反向改回 `FullScreen`。详见 memory `huge-icons-pinned-1-3`
 - **`haze` 钉在 2.0.0-alpha03**（上游已 beta02）：beta 的样式语义会让输入框从半透明变全透明（原因见 §3-七）。**下次同步也会重现** —— 改回 alpha03 并同步改别名/依赖/`ChatInput.kt` 的 API 调用。详见 memory `haze-pinned-alpha03`
 - **`pre` 变体未验证**：`nightly-build-pre.yml` 历史上从未跑过，本次也没跑
@@ -227,8 +228,9 @@ CI 记录（全部为 `nightly-build-debug.yml`）：
 
 ### ③ 历史挂起（延续）
 
-- **release / pre CI 未跑**：convention plugin + `rikkahub.keep` + optimization 混淆路径未验证
-- **诊断日志仍在**（belt skipped / FILES_DELETE / cleanup refs / ChatImg / ScrollFrameSampler / read_image / hoisted-image）：设备确认后清理
+- **release / pre CI 未跑**：convention plugin + `rikkahub.keep` + optimization 混淆路径未验证（✅ **2026-09-12 已解决**：`release` 已多次真跑且绿；`pre` 自 `1a542d72` 起真跑并绿 —— 此前那些 success 是 `check` 判「24h 无提交」把 `build` 整个 skip 后的假绿）
+- **诊断日志仍在**（belt skipped / FILES_DELETE / cleanup refs / ChatImg / ScrollFrameSampler / read_image）：设备确认后清理
+  （⚠️ **2026-09-12 更正**：原列表里的 `hoisted-image` 已不存在 —— `ChatCompletionsAPI.kt` 里那条是解释「图片为何旁挂一条 user 消息」的常规日志，不是待清理的诊断日志）
 - **OCR 调用没有时间上界**（`OcrTransformer.performOcr` 走全局 10 分钟 readTimeout × 4 次重试）；与 `Call.await()` 缺 `invokeOnCancellation` 同源
 - **HTML 渲染路径点 `file://` 链接会崩**（`FileUriExposedException`）
 - **`ImageLazyLoadTransformer` 的降级路径**会把 upload/workspaces 之外的图标记成设备绝对路径（按新规则 read_image 读不到）

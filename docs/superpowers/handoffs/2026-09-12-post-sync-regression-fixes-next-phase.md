@@ -160,7 +160,7 @@ Column(modifier = Modifier.fillMaxSize()
 再叠加**上游同步本身的核验**（见 9-11 文档 §5-①，仍未做）：
 
 4. **生成循环重构**（本次改动最大处）：普通对话、工具调用、工具审批（含连续审批）、停止生成、重新生成
-5. **工具实时输出**：工作区 shell 命令应流式显示（`ToolOutput.OutputDelta` 通路）
+5. ~~**工具实时输出**：工作区 shell 命令应流式显示~~ —— ⚠️ **2026-09-12 更正：做不到**：`liveOutput` 无 UI 消费者（UI 端更早已被 fork 自己删掉）。按「有意不做」处理，不作验收项。
 6. **read_image**：视觉模型出图、不再 `invalid input`、死链 http 图片 20 秒失败
 7. **上游新功能抽验**：工作区 Shell 兼容模式 + 终端多 Tab + html/svg 预览、消息发送队列、语音模式
 8. **备份/恢复**：S3 与 WebDAV 备份 → 恢复，确认 `upload/`、`images/`、头像都在；跨包名恢复（debug↔release）仍能重定位 `file://`
@@ -179,13 +179,13 @@ Column(modifier = Modifier.fillMaxSize()
 - **Exa 请求侧证据参数未采纳**：上游 `a8f8c3a1` 把证据参数改成 camelCase 并始终请求 text+highlights，与 fork 的 snake_case 契约冲突。已「输出侧保留证据字段、请求侧保持 fork 语义」，该特性只进来一半
 - **`SearchPicker` 用混合方案**（保留 fork 多选 UI + 恢复上游 `SearchMode` 枚举），因为已合入的 `ChatInput.kt`/`ChatPage.kt` 同时需要两者
 - **MCP 无效服务器名行为改为上游版**（现在会暂停消息队列）
-- **搜索门控用上游的 `shouldUseExternalWebSearch`**（若要求总是用外挂搜索，需同时改 `ChatToolFactory.kt` 与 `ChatService.kt:811`）
+- **搜索门控用上游的 `shouldUseExternalWebSearch`**（若要求总是用外挂搜索，需同时改 `ChatToolFactory.kt` 与 `ChatService.kt:812`（⚠️ 2026-09-12 更正：原写 `:811`））
 - **`pre` 变体未验证**（`nightly-build-pre.yml` 历史上从未跑过）
 - **`baselineProfiles/*.txt` 已过期**（里面还记录着已不存在的 `GenerationHandler` 构造器）
 
 ### ④ 历史挂起（延续）
 
-- release / pre CI 未跑；诊断日志仍在（设备确认后清理）
+- release / pre CI 未跑；诊断日志仍在（设备确认后清理）—— ✅ **2026-09-12 已解决**：`release` 已多次真跑且绿；`pre` 自 `1a542d72` 起真跑并绿 —— 此前那些 success 是 `check` 判「24h 无提交」把 `build` 整个 skip 后的假绿）
 - **OCR 调用没有时间上界**（`OcrTransformer.performOcr` 走全局 10 分钟 readTimeout × 4 次重试）；与 `Call.await()` 缺 `invokeOnCancellation` 同源
 - **HTML 渲染路径点 `file://` 链接会崩**（`FileUriExposedException`）
 - **`ImageLazyLoadTransformer` 的降级路径**会把 upload/workspaces 之外的图标记成设备绝对路径

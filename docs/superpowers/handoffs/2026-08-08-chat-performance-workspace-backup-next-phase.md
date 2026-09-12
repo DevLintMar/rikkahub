@@ -90,7 +90,7 @@
 - 分支 `master`，HEAD = `dd0062b`（`fix(workspace): 导出失败——rootfs 符号链接按内容读导致 FileNotFound`），工作树干净
 - **debug CI 全绿**：dd0062b `31251322304` / 6e64183 `31249940995` / 88a45ff `31246494867` / 8f8ce3d `31244778066`（均核对 headSha）
 - 中途失败两处已修：89eb5fa `31249674387`（cacheDir File 包装编译错 → 6e64183）、f3a9a4a（memoryCacheHit 不存在 → 71dec49 / e7b9b1f）
-- release / pre 工作流**未跑**（convention plugin + keep 规则在 release 路径未验证，见 §5-②）
+- release / pre 工作流**未跑**（convention plugin + keep 规则在 release 路径未验证，见 §5-②）—— ✅ **2026-09-12 已解决**：`release` 已多次真跑且绿；`pre` 自 `1a542d72` 起真跑并绿 —— 此前那些 success 是 `check` 判「24h 无提交」把 `build` 整个 skip 后的假绿）
 
 ## 4. 恢复地图
 
@@ -113,7 +113,7 @@
 
 ### ② 遗留 Minor / defer（不阻塞）
 
-- **release / pre CI 未跑**：convention plugin + `rikkahub.keep` + `optimization{enable}` 在混淆路径未验证。建议触发 `nightly-build.yml` + `nightly-build-pre.yml` 确认 release 构建链（keep 规则真正生效的构建）。
+- **release / pre CI 未跑**：convention plugin + `rikkahub.keep` + `optimization{enable}` 在混淆路径未验证。建议触发 `nightly-build.yml` + `nightly-build-pre.yml` 确认 release 构建链（keep 规则真正生效的构建）。 （✅ **2026-09-12 已解决**：`release` 已多次真跑且绿；`pre` 自 `1a542d72` 起真跑并绿 —— 此前那些 success 是 `check` 判「24h 无提交」把 `build` 整个 skip 后的假绿）
 - **图片区滚动 slow16-33 仍偏高**（30fps 级）：已从"严重卡顿"改善到可接受；若继续压，方向 = 组合侧（recompose 范围 / `beyondBoundsItemCount` 预热 / 背景图+渐变+haze 模糊每帧成本）
 - **诊断日志仍在**（ScrollFrameSampler + ChatImg）：真机确认没问题后可清理（debug-only，release 零开销，不急着删）
 - 上一阶段遗留：workspaces/ 已独立备份但**应用主备份仍不含**（设计如此）；存储格式深改（相对路径持久化）未做；Firecrawl crawl/batch、Jina 多 URL、Exa ids 复用、Metaso scope（见 2026-08-07 交接 §5-②）

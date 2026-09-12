@@ -72,7 +72,7 @@
 
 - 分支 `master`，HEAD = `bd5c98e`（`fix(tools): 修 parseEnvelope 生产 bug + ThinkingBlock 测试时间戳抖动`），工作树干净
 - **debug CI 全绿**：`bd5c98e` → `31255172614` success（含 Unit Tests 步骤，179 tests 通过，headSha 核对一致）
-- release / pre 工作流**仍未跑**（convention plugin + keep 规则在混淆路径未验证，见 §5-②）
+- release / pre 工作流**仍未跑**（convention plugin + keep 规则在混淆路径未验证，见 §5-②）—— ✅ **2026-09-12 已解决**：`release` 已多次真跑且绿；`pre` 自 `1a542d72` 起真跑并绿 —— 此前那些 success 是 `check` 判「24h 无提交」把 `build` 整个 skip 后的假绿）
 
 ## 4. 恢复地图
 
@@ -97,7 +97,7 @@
 
 ### ② 遗留 Minor / defer（不阻塞）
 
-- **release / pre CI 未跑**：convention plugin + `rikkahub.keep` + `optimization{enable}` 在混淆路径未验证。建议触发 `nightly-build.yml` + `nightly-build-pre.yml` 确认 release 构建链（keep 规则真正生效的构建）。
+- **release / pre CI 未跑**：convention plugin + `rikkahub.keep` + `optimization{enable}` 在混淆路径未验证。建议触发 `nightly-build.yml` + `nightly-build-pre.yml` 确认 release 构建链（keep 规则真正生效的构建）。 （✅ **2026-09-12 已解决**：`release` 已多次真跑且绿；`pre` 自 `1a542d72` 起真跑并绿 —— 此前那些 success 是 `check` 判「24h 无提交」把 `build` 整个 skip 后的假绿）
 - **历史挂起**（2026-08-07 交接 §5-②）：Firecrawl crawl/batch、Jina 多 URL、Exa ids 复用、Metaso scope；乱召回（语义搜索 bug）、Task 12 ripgrep artifact 流水线、UpdateChecker.kt 删 `return@flow`。
 - **诊断日志仍在**（ScrollFrameSampler + ChatImg，debug-only）：真机确认后清理。
 - **图片区滚动 slow16-33 仍偏高**（30fps 级）：已可接受；继续压方向 = 组合侧（recompose 范围 / beyondBoundsItemCount 预热）。
