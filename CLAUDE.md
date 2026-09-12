@@ -17,8 +17,11 @@ Built with Jetpack Compose, Kotlin, and follows Material Design 3 principles.
 - **document**: Document parsing module for handling PDF, DOCX, PPTX, and EPUB files
 - **highlight**: Code syntax highlighting implementation
 - **material3**: Material color utility extensions used by the app UI
+- **oauth**: OAuth 2.0 authorization (PKCE + dynamic client registration) with a loopback callback
+  server, used by MCP servers
 - **search**: Search functionality SDK for multiple providers (Exa, Tavily, Zhipu, Bing, Brave, SearXNG, and others)
 - **speech**: Speech module for TTS and ASR implementations
+- **videogen**: Video generation SDK (Aliyun / MiniMax / Volcengine)
 - **web**: Embedded web server module that provides Ktor server startup function and hosts static frontend build files (
   built from web-ui/ React project)
 - **workspace**: Sandboxed per-workspace file system and shell execution environment exposed to the AI as tools.
@@ -89,3 +92,16 @@ Built with Jetpack Compose, Kotlin, and follows Material Design 3 principles.
 - English(en) is the default language. Chinese(zh), Japanese(ja), Traditional Chinese(zh-rTW), Korean(ko-rKR), and
   Russian(ru) are supported.
 - When localization is needed, use the `locale-tui-localization` skill for managing string resources.
+
+## 上游同步（fork 特有）
+
+本仓库是 [rikkahub/rikkahub](https://github.com/rikkahub/rikkahub) 的 fork。整体同步上游（不是日常 merge）前**必读**：
+
+- `docs/superpowers/upstream-sync-checklist.md` —— 逐项机械检查清单：铁律、fork 身份标识（丢了 CI 立刻红）、
+  12 类「无冲突但静默破坏」在本仓的具体锚点、CI 判定、设备核验。
+- `docs/superpowers/audits/` —— 历次同步的事故复盘（每条带 `文件:行号` + 引入 sha + 复现命令）。
+
+三条最常踩的：① 只 pin 上游**最后一个 CI 绿提交**，永不直接合上游 HEAD；② 本机无 Android 编译器，
+编译与单测结论只从 GitHub Actions 取（先 `git push` 再 `gh workflow run nightly-build-debug.yml`，
+并用 `--json jobs` 确认 `build` 没被 skip 成假绿）；③ 真正烧时间的不是冲突数，是「无冲突但静默破坏」——
+上游给 data class 加带默认值的字段、上游抽出的写入函数漏搬 fork 自有键、上游删掉的 config 文件。
