@@ -136,9 +136,16 @@ commit 复查推翻的情况**：
 
 | run | 工作流 | conclusion | 说明 |
 |---|---|---|---|
-| `34697391688` | debug | *见下* | `5bf5d59a`，本阶段 4 个批次的合并验证 |
+| `34697391688` | debug | ✅ **success**（`5bf5d59a`） | 覆盖四个批次全部改动。`Gradle Build` 与 `Unit Tests` **都 success**
+（含本轮新增的 3 个 Exa 用例），`Prepare signing key` / `Upload Room schema JSON` / `Point tag` /
+`Publish nightly debug prerelease` 全绿；**`--json jobs` 核过 0 个 skipped** —— 不是「24h 无提交」
+把 build 整个 skip 的假绿 |
 
-*（本节在 CI 出结果后补全；B22 想真验证需要额外跑一次 pre 工作流 —— 那会破例一次「平时只跑 debug」。）*
+签名未漂移：debug run 的 `Prepare signing key` 打印 `SHA256: 47:B7:DE:…:5C:CD`，
+与 memory `signing-key-drift` 里冻结的 debug 指纹逐位一致。
+
+**未跑**：`pre` / `release`。B22 想真验证「`assemblePre` 用新 DSL 能出包」需要额外跑一次 pre 工作流 ——
+那会破例一次「平时只跑 debug」，已列为待办（§5.2），**尚未执行**。
 
 ---
 
@@ -219,7 +226,7 @@ B 类里**真改了行为**的这些需要上设备：
 
 ## 7. 停靠点
 
-- **已完成**：B 类 23 项全部消化（19 项改代码分 4 批 + 4 项确认「不用改」）；审计文档 §7 记决策与三处更正；
+- **已完成**：B 类 23 项全部消化（19 项改代码分 4 批 + 4 项确认「不用改」）；**debug CI 在 `5bf5d59a` 全绿**（§3）；审计文档 §7 记决策与三处更正；
   新增 `CHANGELOG.md`、`ToolOutputLimits.kt`、`baseline_profile_audit.py`。
 - **待确认**：§5.1 的 9 条设备核验 ｜ §5.2 的一次 pre CI ｜ §5.3 里 C 类 4 条 + D 类历史挂起。
 - **下一阶段候选**：① 上设备过 §5.1；② 挑 §5.3 里"零风险高收益"的 C 类两条
