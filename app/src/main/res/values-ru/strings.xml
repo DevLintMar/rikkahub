@@ -1184,6 +1184,12 @@
   <string name="workspace_detail_downloading">Загрузка %1$s%2$s</string>
   <string name="workspace_detail_extracting">Извлечение %1$d элементов%2$s</string>
   <string name="workspace_detail_install_complete">Установка завершена</string>
+  <string name="workspace_file_source">Исходник</string>
+  <string name="workspace_file_preview">Просмотр</string>
+  <string name="workspace_terminal_tab">Терминал %1$d</string>
+  <string name="workspace_terminal_new_tab">Новая вкладка терминала</string>
+  <string name="workspace_terminal_close_tab">Закрыть терминал %1$d</string>
+  <string name="workspace_terminal_no_tabs">Нет открытых вкладок терминала</string>
   <string name="workspace_terminal_title">Терминал</string>
   <string name="workspace_terminal_title_with_name">%s · Терминал</string>
   <string name="workspace_terminal_not_installed">Пожалуйста, сначала установите Rootfs</string>

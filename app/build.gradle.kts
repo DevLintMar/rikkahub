@@ -131,11 +131,11 @@ android {
                 signingConfig = signingConfigs.getByName("pre")
             }
             applicationIdSuffix = ".pre"
-            isMinifyEnabled = true
-            isShrinkResources = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt")
-            )
+            // 与 release 同一套 AGP 9 DSL（旧的 isMinifyEnabled/proguardFiles 与
+            // optimization{} 语义不等价，pre 会测出与 release 不同的产物）
+            optimization {
+                enable = true
+            }
             buildConfigField("String", "VERSION_NAME", "\"${android.defaultConfig.versionName}\"")
             buildConfigField("String", "VERSION_CODE", "\"${android.defaultConfig.versionCode}\"")
         }

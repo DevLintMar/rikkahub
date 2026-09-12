@@ -1292,6 +1292,8 @@
   <string name="workspace_detail_downloading">Downloading %1$s%2$s</string>
   <string name="workspace_detail_extracting">Extracting %1$d items%2$s</string>
   <string name="workspace_detail_install_complete">Installation complete</string>
+  <string name="workspace_file_source">Source</string>
+  <string name="workspace_file_preview">Preview</string>
   <string name="workspace_terminal_title">Terminal</string>
   <string name="workspace_terminal_title_with_name">%s · Terminal</string>
   <string name="workspace_terminal_not_installed">Please install Rootfs first</string>
@@ -1449,7 +1451,6 @@
   <string name="assistant_page_context_message_limit_count">Context message limit: %d</string>
   <string name="assistant_page_context_message_limit_unlimited">Unlimited context messages</string>
   <string name="assistant_page_context_message_limit_hint">Enter 0 for unlimited; otherwise, larger values are better. Setting it to 0 or at least 20 is recommended.</string>
-  <string name="assistant_page_context_message_limit_too_small">The context message limit cannot be less than %1$d. It has been reset to %1$d.</string>
   <string name="assistant_page_context_message_limit_warning">Limiting context invalidates the prompt cache each time the context is trimmed. A larger limit trims less often; unlimited never trims and keeps the cache fully intact.</string>
   <string name="setting_update_reminder_enabled">Update reminders are enabled</string>
   <string name="setting_update_reminder_paused_until">Paused until %1$s</string>

@@ -1184,6 +1184,12 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="workspace_detail_downloading">ダウンロード中 %1$s%2$s</string>
   <string name="workspace_detail_extracting">抽出中 %1$dアイテム%2$s</string>
   <string name="workspace_detail_install_complete">インストール完了</string>
+  <string name="workspace_file_source">ソース</string>
+  <string name="workspace_file_preview">プレビュー</string>
+  <string name="workspace_terminal_tab">ターミナル %1$d</string>
+  <string name="workspace_terminal_new_tab">新しいターミナルタブ</string>
+  <string name="workspace_terminal_close_tab">ターミナル %1$d を閉じる</string>
+  <string name="workspace_terminal_no_tabs">開いているターミナルタブはありません</string>
   <string name="workspace_terminal_title">ターミナル</string>
   <string name="workspace_terminal_title_with_name">%s・ターミナル</string>
   <string name="workspace_terminal_not_installed">最初にRootfsをインストールしてください。</string>

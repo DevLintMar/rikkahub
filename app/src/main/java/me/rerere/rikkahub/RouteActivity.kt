@@ -144,7 +144,11 @@ import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
 
 private const val TAG = "RouteActivity"
-private const val ACTION_TRANSLATE = "me.rerere.rikkahub.action.TRANSLATE"
+// manifest 声明的是 ${applicationId}.action.TRANSLATE（release/debug/pre 各不相同）；
+// shortcuts.xml 的 translator 快捷方式是显式 intent（带 targetClass，不会跨变体投递），
+// 用的仍是固定的 xyz.lynsei.rikkahub.action.TRANSLATE。两种都认。
+private val ACTION_TRANSLATE = "${BuildConfig.APPLICATION_ID}.action.TRANSLATE"
+private const val ACTION_TRANSLATE_SHORTCUT = "xyz.lynsei.rikkahub.action.TRANSLATE"
 
 class RouteActivity : ComponentActivity() {
     private val highlighter by inject<Highlighter>()
@@ -232,7 +236,7 @@ class RouteActivity : ComponentActivity() {
             return
         }
         val destination = when (intent.action) {
-            ACTION_TRANSLATE -> Screen.Translator
+            ACTION_TRANSLATE, ACTION_TRANSLATE_SHORTCUT -> Screen.Translator
             Intent.ACTION_SEND -> Screen.ShareHandler(
                 text = intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty(),
                 streamUri = intent.getStringExtra(Intent.EXTRA_STREAM),

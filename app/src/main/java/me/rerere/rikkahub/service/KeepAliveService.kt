@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import me.rerere.rikkahub.BuildConfig
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.RouteActivity
 
@@ -28,7 +29,8 @@ class KeepAliveService : Service() {
         private const val TAG = "KeepAliveService"
         private const val CHANNEL_ID = "keep_alive_channel"
         private const val NOTIFICATION_ID = 30001
-        const val ACTION_RESTART_KEEP_ALIVE = "me.rerere.rikkahub.RESTART_KEEP_ALIVE"
+        // 与 manifest 的 ${applicationId}.RESTART_KEEP_ALIVE 一致（release/debug/pre 各不同）
+        val ACTION_RESTART_KEEP_ALIVE = "${BuildConfig.APPLICATION_ID}.RESTART_KEEP_ALIVE"
 
         fun isRunning(context: Context): Boolean {
             return try {

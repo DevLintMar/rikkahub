@@ -123,6 +123,6 @@ jobs:
           body: |
             Automatic daily pre-build (commit `${{ github.sha }}`)
 
-            > Pre-release build with a fixed signing key (`xyz.lynsei.rikkahub` package name).
+            > Pre-release build with a fixed signing key (`xyz.lynsei.rikkahub.pre` package name).
             > Compilation settings identical to release (minified, shrunk, proguarded).
           files: app/build/outputs/apk/pre/*.apk

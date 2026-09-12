@@ -18,8 +18,9 @@
         android:icon="@drawable/ic_translate"
         android:shortcutShortLabel="@string/translator_page_title"
         android:shortcutLongLabel="@string/translator_page_title">
+        <!-- 显式 intent（带 targetClass，不跨变体投递），动作名固定；RouteActivity 两种都认 -->
         <intent
-            android:action="me.rerere.rikkahub.action.TRANSLATE"
+            android:action="xyz.lynsei.rikkahub.action.TRANSLATE"
             android:targetClass="me.rerere.rikkahub.RouteActivity" />
     </shortcut>
 </shortcuts>

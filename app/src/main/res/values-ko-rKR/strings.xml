@@ -1184,6 +1184,12 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="workspace_detail_downloading">다운로드 중 %1$s%2$s</string>
   <string name="workspace_detail_extracting">추출 중: %1$d개 항목%2$s</string>
   <string name="workspace_detail_install_complete">설치 완료</string>
+  <string name="workspace_file_source">소스</string>
+  <string name="workspace_file_preview">미리보기</string>
+  <string name="workspace_terminal_tab">터미널 %1$d</string>
+  <string name="workspace_terminal_new_tab">새 터미널 탭</string>
+  <string name="workspace_terminal_close_tab">터미널 %1$d 닫기</string>
+  <string name="workspace_terminal_no_tabs">열린 터미널 탭이 없습니다</string>
   <string name="workspace_terminal_title">터미널</string>
   <string name="workspace_terminal_title_with_name">%s · 터미널</string>
   <string name="workspace_terminal_not_installed">먼저 Rootfs를 설치해 주세요.</string>

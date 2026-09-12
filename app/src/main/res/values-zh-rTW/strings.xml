@@ -1182,6 +1182,12 @@
   <string name="workspace_detail_downloading">正在下載 %1$s%2$s</string>
   <string name="workspace_detail_extracting">正在提取 %1$d 個項目%2$s</string>
   <string name="workspace_detail_install_complete">安裝完成</string>
+  <string name="workspace_file_source">原始碼</string>
+  <string name="workspace_file_preview">預覽</string>
+  <string name="workspace_terminal_tab">終端機 %1$d</string>
+  <string name="workspace_terminal_new_tab">新增終端機分頁</string>
+  <string name="workspace_terminal_close_tab">關閉終端機 %1$d</string>
+  <string name="workspace_terminal_no_tabs">沒有開啟的終端機分頁</string>
   <string name="workspace_terminal_title">終端</string>
   <string name="workspace_terminal_title_with_name">%s · 終端機</string>
   <string name="workspace_terminal_not_installed">請先安裝 Rootfs</string>
