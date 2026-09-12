@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.data.db.migrations
 
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -7,6 +8,25 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import me.rerere.rikkahub.utils.JsonInstant
 import me.rerere.rikkahub.utils.jsonPrimitiveOrNull
+
+/**
+ * 迁移里"先探测再 ALTER"用的工具：fork 支持恢复**别人的**备份（外来库可能已经有这一列/这张表），
+ * 无脑 ALTER 会以 `duplicate column name` 让整个迁移链失败。
+ */
+internal fun SupportSQLiteDatabase.hasColumn(table: String, column: String): Boolean =
+    query("PRAGMA table_info($table)").use { cursor ->
+        val nameIndex = cursor.getColumnIndex("name")
+        var found = false
+        if (nameIndex >= 0) {
+            while (cursor.moveToNext()) {
+                if (cursor.getString(nameIndex) == column) {
+                    found = true
+                    break
+                }
+            }
+        }
+        found
+    }
 
 internal val partTypeMapping = mapOf(
     "Text" to "text",

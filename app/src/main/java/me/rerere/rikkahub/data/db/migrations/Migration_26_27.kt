@@ -20,17 +20,3 @@ val Migration_26_27 = object : Migration(26, 27) {
     }
 }
 
-private fun SupportSQLiteDatabase.hasColumn(table: String, column: String): Boolean =
-    query("PRAGMA table_info($table)").use { cursor ->
-        val nameIndex = cursor.getColumnIndex("name")
-        var found = false
-        if (nameIndex >= 0) {
-            while (cursor.moveToNext()) {
-                if (cursor.getString(nameIndex) == column) {
-                    found = true
-                    break
-                }
-            }
-        }
-        found
-    }
