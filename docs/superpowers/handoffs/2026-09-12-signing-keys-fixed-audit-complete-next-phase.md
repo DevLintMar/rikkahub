@@ -146,16 +146,25 @@ D:\Temp\apk_signer.py                                从任意 APK 抽 v2 签名
 
 ## 5. 待办（唯一需要用户决策的部分）
 
-### 5.1 立即可修的合并回归（等用户发话，均 ≤10 行）
+### 5.1 立即可修的合并回归 —— ✅ 已全部修完（2026-09-12 同日）
 
-| 优先级 | 问题 | 位置 | 修法 |
-|---|---|---|---|
-| 🔴 | `persistSettings` 漏写 `SUB_AGENT_MODEL`/`EMBEDDER`/`KEEP_ALIVE_ENABLED` → 三项设置重启即回退、备份恢复不落地 | `PreferencesStore.kt:171-229` | 三行写回（`SUB_AGENT_MODEL` 用 `?.let{…} ?: remove(…)`） |
-| 🔴 | `shellCompatibilityMode` 没接流式 shell → AI 的 `workspace_shell` 拿不到开关 | `WorkspaceManager.kt:268`、`WorkspaceRepository.executeCommandStreaming` | 补参数并透传 |
-| 🟠 | `isPending` 同文件自相矛盾 → 被停止生成掐断的工具显示"死按钮" | `ChatMessageTools.kt:130` | 改成 `tool.isPending` |
-| 🟠 | `<think>` 正则收紧 → 行内思考不再抽成 reasoning 块 | `ThinkTagTransformer.kt:11` | 恢复宽松匹配或加兜底 |
-| 🟠 | 输入框键盘形态被静默改（是否恢复待定） | `ChatInput.kt:155/213` | 需要用户决定 |
+见交接文档 `2026-09-12-a-class-regressions-and-sync-rules-next-phase.md`（A 类 11 项）。
 
+| 状态 | 问题 | 落点 |
+|---|---|---|
+| ✅ | `persistSettings` 漏写 `SUB_AGENT_MODEL`/`EMBEDDER`/`KEEP_ALIVE_ENABLED` | `fix(settings): persistSettings 补写三个 fork 键` |
+| ✅ | `shellCompatibilityMode` 没接流式 shell（AI 的 `workspace_shell` 拿不到开关） | `fix(workspace): Shell 兼容模式接进流式路径与工作区备份` |
+| ✅ | 工作区导出/导入丢 Shell 兼容模式（A10） | 同上 |
+| ✅ | `isPending` 同文件自相矛盾（死按钮） | `fix(ui): 恢复合并前被静默改掉的三处界面/解析行为` |
+| ❌ 误判 | `<think>` 正则（行内思考不抽取）与输入框 IME 形态（A4）**都是上游有意的 `fix:` 提交**（`85402745` + 7 个单测 / `f86d6e82`）→ **保留上游行为**，不算回归 | 仅加说明注释 |
+| ✅ | `.editorconfig` 被删 / `AGENTS.md` 被顶替（A7/A8） | `chore(docs): 取回 .editorconfig、补回 AGENTS.md…` |
+| ✅ | 外来 v25 备份升 v27 开库失败（A11） | `fix(db): Migration_25_26 补建 message_embeddings…` |
+| ✅ 决策 | 合成消息不再过消息模版（A6）：**保留上游行为** —— 理由见 §6 技术约束最后一条 | 无代码改动 |
+| ✅ 结论 | `liveOutput` 无 UI 消费者（A9）：按「有意不做」处理 | 本文档 §7 与旧交接已就地更正 |
+
+### 5.2 待用户拍板的产品类（审计文档 §6 共 9 条）
+
+> 其中第 1 条（要不要现在修）已由本轮消化；`§6-1` 之外的 8 条**仍未动**。
 ### 5.2 待用户拍板的产品类（审计文档 §6 共 9 条）
 
 `enableWebSearch` 对带内置搜索的模型失效（是否要"总是外挂"）｜`SearchMode.BUILT_IN` 死值如何处理｜赞助商 provider（APIMart/MaruCode）是否移除｜`.gitignore` 的 `references` 改锚定｜keep 规则是否拆成独立文件｜`pre` 是否改用 `matchingFallbacks`｜`.editorconfig` 是否取回｜`AGENTS.md` 用哪一版｜`liveOutput` 的 UI 端是"有意不做"还是遗漏（涉及交接文档 §5-①-5 能否通过）。
@@ -181,6 +190,11 @@ D:\Temp\apk_signer.py                                从任意 APK 抽 v2 签名
 - 密钥/`.claude`/`CLAUDE.md` 这类"本机环境相关"的坑，同步后必须复核（`core.symlinks=false`）。
 
 ---
+
+- **合成消息（`isSynthetic`）不过消息模版是有意为之，别「修」回去**（2026-09-12 决策）：
+  上游 `942d0d28` close 了 #1790 —— 时间提醒每轮重建、`createdAt` 变，模版里的 `{{time}}`/`{{date}}`
+  渲染结果跟着变，而它在 `messages[0]`，会让整段 Anthropic prompt cache 前缀**逐轮失效**（每轮全量重算）。
+  代价是自定义模版不再包裹 system prompt / 注入段。
 
 ## 7. 停靠点
 

@@ -21,10 +21,12 @@ git diff --name-only "$BASE..$FORK" | sort > "$OUT/fork_files.txt"
 comm -12 "$OUT/fork_files.txt" "$OUT/upstream_files.txt" > "$OUT/both_touched_files.txt"
 
 : > "$OUT/both_touched_numstat.tsv"
+printf 'path\tfork +/-\tupstream +/-\n' >> "$OUT/both_touched_numstat.tsv"
 while IFS= read -r f; do
-    up=$(git diff --numstat "$BASE..$PIN"  -- "$f" | head -1)
-    fk=$(git diff --numstat "$BASE..$FORK" -- "$f" | head -1)
-    printf '%s\t%s\t%s\n' "$f" "${fk:-0\t0\t}" "${up:-0\t0\t}" >> "$OUT/both_touched_numstat.tsv"
+    up=$(git diff --numstat "$BASE..$PIN"  -- "$f" | head -1 | awk '{print $1"/"$2}')
+    fk=$(git diff --numstat "$BASE..$FORK" -- "$f" | head -1 | awk '{print $1"/"$2}')
+    # 二进制文件 numstat 是 "-/-"
+    printf '%s\t%s\t%s\n' "$f" "${fk:-0/0}" "${up:-0/0}" >> "$OUT/both_touched_numstat.tsv"
 done < "$OUT/both_touched_files.txt"
 
 echo "上游改动 $(wc -l < "$OUT/upstream_files.txt") 文件 / fork 改动 $(wc -l < "$OUT/fork_files.txt") 文件 / 双方都改 $(wc -l < "$OUT/both_touched_files.txt") 文件"

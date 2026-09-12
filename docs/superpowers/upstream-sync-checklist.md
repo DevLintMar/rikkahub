@@ -56,12 +56,19 @@ bash docs/superpowers/scripts/sync_audit_lists.sh <分叉点> <pin> <fork-合并
 | 三套签名配置 | `grep -n 'create("release")\|create("nightlyDebug")\|create("pre")' app/build.gradle.kts` | 三条都在，且都读 `local.properties` |
 | ABI 收窄 | `grep -n 'abiFilters' app/build.gradle.kts` | 只有 `arm64-v8a` |
 | 工作流 | `ls .github/workflows/` | 3 个 `nightly-*` + `close-blank-issues`（**`daily-build.yml` 已删**） |
-| 密钥来源 | `grep -n 'RELEASE_KEYSTORE_BASE64\|keytool -genkey\|actions/cache' .github/workflows/nightly-build.yml` | 只有前者；后两者**出现即签名漂移回归** |
+| 密钥来源（**签名漂移回归检测**） | `grep -n 'keytool -genkey' .github/workflows/nightly-build*.yml`（必须为空）<br>`grep -n 'keystore' .github/workflows/nightly-build*.yml`（只允许三种：从 secret `base64 -d` 解出、`keytool -list` 打印指纹、生成的 `local.properties` 里 `*.storeFile=`） | ⚠️ 注意别误判：workflow 里的 `actions/cache@v4` 是 **Gradle 缓存**（正常）。2026-09 那次漂移的成因是 `keytool -genkey` 现场生成钥匙 + `actions/cache` 存 keystore —— 缓存 7 天不被访问即淘汰，而 build job 有"24h 内无提交则 skip"门槛，停更期过后重跑就静默换了一把新钥匙 |
 | 单测门禁 | `grep -n 'testDebugUnitTest' .github/workflows/nightly-build-debug.yml` | 在（这是唯一的单测门禁） |
 
 ---
 
 ## 3. 合并后：静默破坏扫描（CI 抓不到的那一类）
+
+> **动手前先判性质：这是回归还是上游有意的修复？**
+> `git log --oneline -S '<被删/被改的标识符>' <分叉点>..<pin> -- <file>` 找到那条提交，再看
+> ① 标题是不是 `fix:`/有没有 close issue、② 有没有**配套单测**（`git show --stat --format='' <sha>`）。
+> 任一成立 = 上游有意的行为，**别"回退到 fork 行为"**；三者皆无（纯重构顺带）才是该恢复的静默回归。
+> 反例（2026-09 那轮真实踩过）：曾经把 `<think>` 行内标签与输入框 IME 形态当回归恢复，前者被 CI 的
+> `ThinkTagTransformerTest` 当场顶回、后者回头查到 `f86d6e82`「fix: 键盘弹出时 ChatInput 保持圆角和底部间距」。
 
 ### 3.1 第 11 类：data class 加字段 + 字段有默认值 ⇒ 平行代码路径静默漏传
 
@@ -97,7 +104,9 @@ python docs/superpowers/scripts/prefs_key_audit.py <分叉点之前fork的master
 | `cur_time` 占位符恢复 | 还在 | `grep -rn 'cur_time' app/src/main/java/me/rerere/rikkahub/data/ai/transformers/PlaceholderTransformer.kt` |
 | 高亮引擎 | Prism+QuickJS（**禁止复活上游纯 Kotlin 引擎**） | `git ls-files highlight/ \| wc -l` 必须仍是 **8**（`res/raw/prism.js` + `Highlighter.kt`/`HighlightText.kt`；上游是 **143** 个纯 Kotlin 文件） |
 | 连字修复 | `fontFeatureSettings = "'calt' 0, 'liga' 0, 'clig' 0"` | `grep -rn 'clig' highlight/` |
-| 工具信封容器 | **非懒加载 `Column`**（`ToolDetailSheet` 内容区是 `verticalScroll`，同轴嵌 LazyColumn 会拿无限高约束并抛 IllegalStateException，点开即崩） | `grep -n 'LazyColumn' app/src/main/java/me/rerere/rikkahub/ui/components/message/tools/BuiltinToolUIs.kt` 应只在横向不同轴的 `LazyRow` 处命中 |
+| 工具信封容器 | **非懒加载 `Column`**（`ToolDetailSheet` 内容区是 `verticalScroll`，同轴嵌 LazyColumn 会拿无限高约束并抛 IllegalStateException，点开即崩） | `grep -n 'LazyColumn(' app/src/main/java/me/rerere/rikkahub/ui/components/message/tools/BuiltinToolUIs.kt` **必须为空**（`LazyRow(` 是横向、不同轴，允许；文件里提到 `LazyColumn` 的注释是防崩说明，不是调用） |
+| 行内 `<think>` 不抽取 | 只认正文开头的 `<think>`（上游 `85402745` + `ThinkTagTransformerTest` 7 个断言）；**别改回 `<think>([\s\S]*?)(</think>|$)` 宽松匹配**，那会挂测试并吞掉字面标签 | `grep -n 'THINKING_REGEX =' app/src/main/java/me/rerere/rikkahub/data/ai/transformers/ThinkTagTransformer.kt` → 必须以 `\A\s*<think>` 开头 |
+| 输入框 IME 形态 | 键盘弹出时**保持圆角与 8dp 底间距**（上游 `f86d6e82`）；别加回 `isImeVisible` → 直角 + 0 间距 | `grep -n 'isImeVisible' app/src/main/java/me/rerere/rikkahub/ui/components/ai/ChatInput.kt` 应为空 |
 | 审批判断单一口径 | 谓词只用 `tool.isPending`（`Tool.isPending = !isExecuted && approvalState is Pending`） | `grep -rn 'val isPending = tool\.approvalState' app/src/main` 应为空；`when (tool.approvalState)` 的**分支**匹配（如 `GenerationLoop.kt:191`）是合法的，别误删 |
 
 ### 3.4 第 8 类：上游删掉 fork 未改过的文件（连带 config）
@@ -162,7 +171,7 @@ gh run view <id> --json jobs                                       # 确认 buil
 
 - `nightly-build-debug.yml` = 编译 + `:app:testDebugUnitTest`（唯一单测门禁）。
 - **合并类错误常分两轮暴露**：先 `:app:compileDebugKotlin`，修完才轮到测试源码编译。
-- 三个 workflow 都跑一遍（release 验混淆路径、pre 验变体解析），别只跑 debug。
+- **平时验证只跑 `nightly-build-debug.yml` 这一个**（用户 2026-09-12 明确要求）：它是唯一的单测门禁。release / pre 各有每日 cron（18:00 / 19:00 UTC）会自己跑，只有改动了**构建 / 混淆 / 变体**相关配置时才手动补跑它们。
 - 发布产物的签名可用 `python docs/superpowers/scripts/apk_signer.py <apk>` 反查指纹；
   三把密钥的预期指纹见 memory `signing-key-drift`。**签名一变，所有已装用户必须卸载重装。**
 
@@ -171,7 +180,7 @@ gh run view <id> --json jobs                                       # 确认 buil
 2026-09 那次 CI 全绿并合入 master 之后，用户才陆续发现三个 CI 根本发现不了的回归
 （图标集字形、输入框透明、工具信封点开即崩）。同步后至少过一遍：
 
-1. 聊天输入框：键盘弹出时底部两角应变直角并贴住 IME；haze 层应仍是半透明。
+1. 聊天输入框：键盘弹出时**保持圆角与 8dp 底间距**（上游 `f86d6e82` 的有意行为，别当回归）；haze 层应仍是半透明。
 2. 工具信封：点开不崩；流式执行的 shell 应有实时输出。
 3. 生成循环：连续审批、生成中点审批、网络自动重试、消息队列、语音模式。
 4. 备份/恢复：本地导入 + S3/WebDAV + **跨包名**（debug↔release↔pre）。
@@ -188,6 +197,11 @@ gh run view <id> --json jobs                                       # 确认 buil
 | `scripts/sync_audit_lists.sh` | 生成上游/fork/双方都改 的文件与提交清单 |
 | `scripts/apk_signer.py` | 从任意 APK 抽 v2 签名者证书 SHA-256（核对签名漂移） |
 
-**本机还能做的静态检查**（比空等 CI 强）：未解析 import 扫描、`libs.*` alias 全量比对、
+**本机还能做的白盒验证**：纯逻辑（正则、序列化、解析器）可以用本机 JDK 直接跑 —— Kotlin 的 `Regex`
+就是 `java.util.regex`，`<think>` 那条改动就是这么对照的（对照结果最终判定它**不是**回归，见 §3 前言）。注意 PATH 上的 `javac` 是 JDK 17 而
+`java` 可能是 JRE 8（`UnsupportedClassVersionError`），用 `"/c/Program Files/Java/jdk-17/bin/java"`；
+源码别写中文注释（会按 GBK 解析报错），或加 `javac -encoding UTF-8`。
+
+**其余静态检查**（比空等 CI 强）：未解析 import 扫描、`libs.*` alias 全量比对、
 `R.string.*` 全量比对、依赖版本/图标名交叉核对、冲突标记全树扫描、括号配平、重复 import 扫描。
 涉及 Compose 测量/滚动/布局约束的判断**先查 Context7 官方文档**再下结论。
