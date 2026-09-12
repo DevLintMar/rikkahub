@@ -73,20 +73,15 @@ jobs:
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
 
-      - name: Cache pre signing key
-        uses: actions/cache@v4
-        with:
-          path: app/pre.keystore
-          key: nightly-pre-keystore-v1
-
-      - name: Generate pre signing key (if not cached)
+      - name: Prepare signing key
         run: |
-          if [ ! -f app/pre.keystore ]; then
-            keytool -genkey -v -keystore app/pre.keystore \
-              -alias pre -keyalg RSA -keysize 2048 -validity 3650 \
-              -storepass android -keypass android \
-              -dname "CN=NightlyPre, OU=CI, O=Nightly, L=City, ST=State, C=US"
+          set -eu
+          if [ -z "${{ secrets.PRE_KEYSTORE_BASE64 }}" ]; then
+            echo "PRE_KEYSTORE_BASE64 secret 未配置，拒绝构建（避免产出换签名的包）"
+            exit 1
           fi
+          echo "${{ secrets.PRE_KEYSTORE_BASE64 }}" | base64 -d > app/pre.keystore
+          keytool -list -v -keystore app/pre.keystore -storepass android 2>/dev/null | grep -E 'Alias name|SHA256:' || true
 
       - name: Prepare build files
         run: |
@@ -122,6 +117,6 @@ jobs:
           body: |
             Automatic daily pre-build (commit `${{ github.sha }}`)
 
-            > Pre-release build with CI-generated signing key (`xyz.lynsei.rikkahub` package name).
+            > Pre-release build with a fixed signing key (`xyz.lynsei.rikkahub` package name).
             > Compilation settings identical to release (minified, shrunk, proguarded).
           files: app/build/outputs/apk/pre/*.apk

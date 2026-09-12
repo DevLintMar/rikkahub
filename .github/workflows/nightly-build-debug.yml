@@ -69,20 +69,15 @@ jobs:
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
 
-      - name: Cache debug signing key
-        uses: actions/cache@v4
-        with:
-          path: app/debug.keystore
-          key: nightly-debug-keystore-v1
-
-      - name: Generate debug signing key (if not cached)
+      - name: Prepare signing key
         run: |
-          if [ ! -f app/debug.keystore ]; then
-            keytool -genkey -v -keystore app/debug.keystore \
-              -alias debug -keyalg RSA -keysize 2048 -validity 3650 \
-              -storepass android -keypass android \
-              -dname "CN=NightlyDebug, OU=CI, O=Nightly, L=City, ST=State, C=US"
+          set -eu
+          if [ -z "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" ]; then
+            echo "DEBUG_KEYSTORE_BASE64 secret 未配置，拒绝构建（避免产出换签名的包）"
+            exit 1
           fi
+          echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > app/debug.keystore
+          keytool -list -v -keystore app/debug.keystore -storepass android 2>/dev/null | grep -E 'Alias name|SHA256:' || true
 
       - name: Prepare build files
         run: |
@@ -122,5 +117,5 @@ jobs:
           body: |
             自动每日构建（Debug，commit `${{ github.sha }}`）
 
-            > Debug 构建，使用 CI 生成的独立签名密钥。
+            > Debug 构建，使用固定的独立签名密钥。
           files: app/build/outputs/apk/debug/*.apk

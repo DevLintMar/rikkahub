@@ -69,20 +69,15 @@ jobs:
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
 
-      - name: Cache signing key
-        uses: actions/cache@v4
-        with:
-          path: app/release.keystore
-          key: nightly-release-keystore-v1
-
-      - name: Generate signing key (if not cached)
+      - name: Prepare signing key
         run: |
-          if [ ! -f app/release.keystore ]; then
-            keytool -genkey -v -keystore app/release.keystore \
-              -alias release -keyalg RSA -keysize 2048 -validity 3650 \
-              -storepass android -keypass android \
-              -dname "CN=Nightly, OU=CI, O=Nightly, L=City, ST=State, C=US"
+          set -eu
+          if [ -z "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" ]; then
+            echo "RELEASE_KEYSTORE_BASE64 secret 未配置，拒绝构建（避免产出换签名的包）"
+            exit 1
           fi
+          echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > app/release.keystore
+          keytool -list -v -keystore app/release.keystore -storepass android 2>/dev/null | grep -E 'Alias name|SHA256:' || true
 
       - name: Prepare build files
         run: |
@@ -111,5 +106,5 @@ jobs:
           body: |
             自动每日构建（commit `${{ github.sha }}`）
 
-            > 正式版构建，使用 CI 生成的签名密钥（与原始签名不同）。
+            > 正式版构建，签名密钥已固定（与历史 nightly 包一致）。
           files: app/build/outputs/apk/release/*.apk
