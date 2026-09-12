@@ -365,7 +365,11 @@ class WorkspaceRepository(
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
         return runInterruptible(Dispatchers.IO) {
             manager.ensureWorkspace(workspace.root)
-            manager.executeCommandStreaming(workspace.root, command, cwd, timeoutMillis, stdin, onLine)
+            manager.executeCommandStreaming(
+                workspace.root, command, cwd, timeoutMillis, stdin,
+                shellCompatibilityMode = workspace.shellCompatibilityMode,
+                onLine = onLine,
+            )
         }
     }
 
@@ -416,6 +420,7 @@ class WorkspaceRepository(
             updatedAt = now,
             lastAccessAt = null,
             toolApprovals = meta.toolApprovals,
+            shellCompatibilityMode = meta.shellCompatibilityMode,
         )
         manager.ensureWorkspace(workspace.root)
         ZipFile(zipFile).use { zip ->

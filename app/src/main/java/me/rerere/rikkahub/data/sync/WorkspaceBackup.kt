@@ -43,6 +43,11 @@ object WorkspaceBackup {
         val createdAt: Long,
         val updatedAt: Long,
         val shellStatus: String,
+        /**
+         * 必须带默认值：旧备份 zip 里没有这个键，缺省值保证它们仍能反序列化
+         * （`MissingFieldException` 会直接让导入失败）。
+         */
+        val shellCompatibilityMode: Boolean = false,
     )
 
     /**
@@ -64,6 +69,7 @@ object WorkspaceBackup {
                     createdAt = entity.createdAt,
                     updatedAt = entity.updatedAt,
                     shellStatus = entity.shellStatus,
+                    shellCompatibilityMode = entity.shellCompatibilityMode,
                 )
             ).toByteArray()
             zipOut.putNextEntry(ZipEntry(META_ENTRY))

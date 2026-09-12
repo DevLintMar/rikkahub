@@ -257,6 +257,7 @@ class WorkspaceManager(
         cwd: String = "",
         timeoutMillis: Long = DEFAULT_COMMAND_TIMEOUT_MS,
         stdin: ByteArray? = null,
+        shellCompatibilityMode: Boolean = false,
         onLine: ((String) -> Unit)? = null,
     ): WorkspaceCommandResult {
         require(command.isNotBlank()) { "Command is required" }
@@ -276,6 +277,7 @@ class WorkspaceManager(
                 timeoutMillis = timeoutMillis,
                 stdin = stdin,
                 bindMounts = bindMounts,
+                shellCompatibilityMode = shellCompatibilityMode,
                 onLine = onLine,
             )
         )
