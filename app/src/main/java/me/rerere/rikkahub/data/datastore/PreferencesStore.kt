@@ -192,6 +192,9 @@ class SettingsStore(
                 preferences[OCR_PROMPT] = settings.ocrPrompt
                 preferences[COMPRESS_MODEL] = settings.compressModelId.toString()
                 preferences[COMPRESS_PROMPT] = settings.compressPrompt
+                settings.subAgentModelId?.let {
+                    preferences[SUB_AGENT_MODEL] = it.toString()
+                } ?: preferences.remove(SUB_AGENT_MODEL)
 
                 preferences[PROVIDERS] = JsonInstant.encodeToString(settings.providers)
 
@@ -202,6 +205,7 @@ class SettingsStore(
                 preferences[SEARCH_SERVICES] = JsonInstant.encodeToString(settings.searchServices)
                 preferences[SEARCH_COMMON] = JsonInstant.encodeToString(settings.searchCommonOptions)
                 preferences[SEARCH_SELECTED_IDS] = JsonInstant.encodeToString(settings.searchServiceSelectedIds)
+                preferences[EMBEDDER] = JsonInstant.encodeToString(settings.embedder)
 
                 preferences[MCP_SERVERS] = JsonInstant.encodeToString(settings.mcpServers)
                 preferences[WEBDAV_CONFIG] = JsonInstant.encodeToString(settings.webDavConfig)
@@ -223,6 +227,7 @@ class SettingsStore(
                 preferences[WEB_SERVER_JWT_ENABLED] = settings.webServerJwtEnabled
                 preferences[WEB_SERVER_ACCESS_PASSWORD] = settings.webServerAccessPassword
                 preferences[WEB_SERVER_LOCALHOST_ONLY] = settings.webServerLocalhostOnly
+                preferences[KEEP_ALIVE_ENABLED] = settings.keepAliveEnabled
                 preferences[BACKUP_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.backupReminderConfig)
                 preferences[LAUNCH_COUNT] = settings.launchCount
                 preferences[SPONSOR_ALERT_DISMISSED_AT] = settings.sponsorAlertDismissedAt
