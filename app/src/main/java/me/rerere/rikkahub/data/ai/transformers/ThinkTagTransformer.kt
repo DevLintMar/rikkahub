@@ -8,9 +8,12 @@ import me.rerere.ai.ui.UIMessagePart
 import kotlin.time.Clock
 import kotlin.time.Instant
 
-// 不锚定行首：模型常在正文后再写 <think>...</think>，行内出现时也要抽成 reasoning 块。
-// 第 2 组必须是捕获组 —— 下游用 groups[2] == "</think>" 判断思考是否已收尾。
-private val THINKING_REGEX = Regex("<think>([\\s\\S]*?)(</think>|$)", RegexOption.DOT_MATCHES_ALL)
+// 只认"正文开头"的 <think>…</think>；**行内/后置的 <think> 一律当可见文本保留**。
+// 这是上游 85402745「fix(thinking): ignore inline think tags」的有意行为（配 7 个单测，
+// 见 ThinkTagTransformerTest），不是合并事故 —— 答题里字面提到 `<think>` 时不该被吞掉。
+// 别把它改回 `<think>([\s\S]*?)(</think>|$)` 那种宽松匹配：那会让"字面标签"与"后置思考"
+// 一起被抽走，直接挂掉 ThinkTagTransformerTest。
+private val THINKING_REGEX = Regex("\\A\\s*<think>([\\s\\S]*?)(</think>|$)")
 
 // 部分供应商不会返回reasoning parts, 所以需要这个transformer
 object ThinkTagTransformer : OutputMessageTransformer {
