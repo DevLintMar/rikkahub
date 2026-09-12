@@ -107,6 +107,11 @@ jobs:
           name: pre-apk
           path: app/build/outputs/apk/pre/*.apk
 
+      - name: Point tag at this build's commit
+        run: |
+          git tag -f nightly-pre
+          git push -f origin refs/tags/nightly-pre
+
       - name: Publish nightly pre prerelease
         uses: softprops/action-gh-release@v2
         if: success()
@@ -114,6 +119,7 @@ jobs:
           tag_name: nightly-pre
           name: Nightly Pre Build
           prerelease: true
+          make_latest: 'false'
           body: |
             Automatic daily pre-build (commit `${{ github.sha }}`)
 

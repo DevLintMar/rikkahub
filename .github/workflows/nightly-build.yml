@@ -96,13 +96,19 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease
 
-      - name: Publish nightly prerelease
+      - name: Point tag at this build's commit
+        run: |
+          git tag -f nightly
+          git push -f origin refs/tags/nightly
+
+      - name: Publish nightly release
         uses: softprops/action-gh-release@v2
         if: success()
         with:
           tag_name: nightly
           name: Nightly Build
-          prerelease: true
+          prerelease: false
+          make_latest: 'true'
           body: |
             自动每日构建（commit `${{ github.sha }}`）
 

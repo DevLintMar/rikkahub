@@ -107,6 +107,11 @@ jobs:
           path: app/schemas/
           if-no-files-found: warn
 
+      - name: Point tag at this build's commit
+        run: |
+          git tag -f nightly-debug
+          git push -f origin refs/tags/nightly-debug
+
       - name: Publish nightly debug prerelease
         uses: softprops/action-gh-release@v2
         if: success()
@@ -114,6 +119,7 @@ jobs:
           tag_name: nightly-debug
           name: Nightly Debug Build
           prerelease: true
+          make_latest: 'false'
           body: |
             自动每日构建（Debug，commit `${{ github.sha }}`）
 
