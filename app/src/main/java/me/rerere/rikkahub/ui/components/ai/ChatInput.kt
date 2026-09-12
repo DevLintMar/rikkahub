@@ -79,6 +79,7 @@ import dev.chrisbanes.haze.hazeEffect
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collectLatest
 import kotlin.uuid.Uuid
+import me.rerere.ai.provider.BuiltInTools
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ModelType
@@ -289,6 +290,9 @@ fun ChatInput(
                             // Search
                             val enableSearchMsg = stringResource(R.string.web_search_enabled)
                             val disableSearchMsg = stringResource(R.string.web_search_disabled)
+                            // 模型自带服务端搜索时，外挂搜索会被 shouldUseExternalWebSearch 门控掉；
+                            // 提示必须说实话，否则用户以为「开了但没生效」
+                            val builtInSearchMsg = stringResource(R.string.web_search_builtin_active)
                             val chatModel = settings.getCurrentChatModel()
                             SearchPickerButton(
                                 enableSearch = enableSearch,
@@ -296,10 +300,16 @@ fun ChatInput(
                                 onUpdateSearchMode = { mode ->
                                     onUpdateSearchMode(mode)
                                     val enabled = mode != SearchMode.OFF
+                                    val builtInActive =
+                                        chatModel?.tools?.contains(BuiltInTools.Search) == true
                                     toaster.show(
-                                        message = if (enabled) enableSearchMsg else disableSearchMsg,
+                                        message = when {
+                                            !enabled -> disableSearchMsg
+                                            builtInActive -> builtInSearchMsg
+                                            else -> enableSearchMsg
+                                        },
                                         duration = 1.seconds,
-                                        type = if (enabled) {
+                                        type = if (enabled && !builtInActive) {
                                             ToastType.Success
                                         } else {
                                             ToastType.Normal

@@ -659,12 +659,6 @@
   <string name="search_page_title">Search Messages</string>
   <string name="search_page_untitled">Untitled</string>
   <string name="search_picker_title">Search Settings</string>
-  <string name="search_picker_local_title">Local Search</string>
-  <string name="search_picker_local_description">Connect to various third-party search providers</string>
-  <string name="search_picker_model_title">Model Search</string>
-  <string name="search_picker_model_description">Cloud search built into the model provider</string>
-  <string name="search_picker_select_provider">Select search provider</string>
-  <string name="search_picker_turn_off">Turn off search</string>
   <string name="select_and_copy">Select and Copy</string>
   <string name="send">Send</string>
   <string name="setting_asr_configure_api_key">API Key</string>
@@ -1227,6 +1221,7 @@
   <string name="user_default_name">User</string>
   <string name="video">Video</string>
   <string name="web_search_disabled">Web search disabled</string>
+  <string name="web_search_builtin_active">Built-in search is on for this model — external search is skipped</string>
   <string name="web_search_enabled">Web search enabled</string>
   <string name="setting_theme_page_delete_theme_title">Delete Theme</string>
   <string name="setting_theme_page_delete_theme_message">Are you sure you want to delete this theme?</string>

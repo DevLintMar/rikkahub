@@ -29,6 +29,11 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
 object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
+    // 证据模式下正文的上限：同时请求 text+highlights 时用它兜住响应体（与上游同值）
+    private const val MAX_EVIDENCE_TEXT_CHARACTERS = 8_000
+    private const val MIN_MAX_AGE_HOURS = -1
+    private const val MAX_MAX_AGE_HOURS = 720
+
     override val name: String = "Exa"
 
     @Composable
@@ -104,6 +109,12 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
                         add("text")
                         add("highlights")
                     })
+                })
+                put("max_age_hours", buildJsonObject {
+                    put("type", "integer")
+                    put("description", "max acceptable cache age in hours; 0 = always crawl live (fresh), -1 = cache only (fast), omit = cache when available else crawl")
+                    put("minimum", MIN_MAX_AGE_HOURS)
+                    put("maximum", MAX_MAX_AGE_HOURS)
                 })
             },
             required = listOf("query")
@@ -229,6 +240,7 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
     ) = buildJsonObject {
         val query = params["query"]?.jsonPrimitive?.content ?: error("query is required")
         val searchType = params["type"]?.jsonPrimitive?.content ?: "auto"
+        val maxAgeHours = optionalMaxAgeHours(params)
         put("query", JsonPrimitive(query))
         put("numResults", JsonPrimitive(resultSize))
         put("type", JsonPrimitive(searchType))
@@ -255,11 +267,16 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
         params["end_published_date"]?.jsonPrimitive?.contentOrNull?.let { put("endPublishedDate", it) }
         params["user_location"]?.jsonPrimitive?.contentOrNull?.let { put("userLocation", it) }
         put("contents", buildJsonObject {
+            // 同时请求正文与摘录（与上游同款）：两条证据都拿到手上，
+            // content_type 只决定 mapSearchResult 里哪一条落到 item.text。
+            // content_type=highlights（默认，省 token）时给正文加上限，避免整页正文撑爆响应体。
             if (useHighlights(params)) {
-                put("highlights", true)
+                put("text", buildJsonObject { put("maxCharacters", MAX_EVIDENCE_TEXT_CHARACTERS) })
             } else {
                 put("text", true)
             }
+            put("highlights", true)
+            maxAgeHours?.let { put("maxAgeHours", it) }
         })
     }
 
@@ -291,9 +308,15 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
         extractLinks?.takeIf { it > 0 }?.let { put("extras", buildJsonObject { put("links", it) }) }
     }
 
+    private fun optionalMaxAgeHours(params: JsonObject): Int? =
+        runCatching { params["max_age_hours"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() }
+            .getOrNull()
+            ?.takeIf { it in MIN_MAX_AGE_HOURS..MAX_MAX_AGE_HOURS }
+
     /**
      * 搜索结果聚合。上游新增的 publishedDate/highlights 证据字段会原样透出；
-     * content_type=highlights（默认）时同时把摘录并入 text，保持 fork 既有行为。
+     * content_type=highlights（默认）时同时把摘录并入 text，保持 fork 既有行为
+     * （请求侧两条都要，所以 highlights 为空时还能回落到正文）。
      */
     internal fun mapSearchResult(data: ExaData, useHighlights: Boolean = true): SearchResult = SearchResult(
         answer = extractOutputAnswer(data.output),

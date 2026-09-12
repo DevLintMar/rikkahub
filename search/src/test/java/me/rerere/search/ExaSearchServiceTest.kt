@@ -147,6 +147,66 @@ class ExaSearchServiceTest {
     }
 
     @Test
+    fun `search request asks for both excerpts and bounded text`() {
+        val defaultShape = ExaSearchService.buildSearchRequestBody(
+            params = buildJsonObject { put("query", "stable knowledge") },
+            resultSize = 10,
+        )["contents"]!!.jsonObject
+
+        assertEquals(true, defaultShape["highlights"]!!.jsonPrimitive.boolean)
+        assertEquals(
+            "默认路径（只有摘录）也要带上有上限的正文，避免整页正文撑爆响应体",
+            8_000,
+            defaultShape["text"]!!.jsonObject["maxCharacters"]!!.jsonPrimitive.int,
+        )
+
+        val fullTextShape = ExaSearchService.buildSearchRequestBody(
+            params = buildJsonObject {
+                put("query", "stable knowledge")
+                put("content_type", "text")
+            },
+            resultSize = 10,
+        )["contents"]!!.jsonObject
+
+        assertEquals(true, fullTextShape["text"]!!.jsonPrimitive.boolean)
+        assertEquals(true, fullTextShape["highlights"]!!.jsonPrimitive.boolean)
+    }
+
+    @Test
+    fun `search request serializes max_age_hours into contents`() {
+        val body = ExaSearchService.buildSearchRequestBody(
+            params = buildJsonObject {
+                put("query", "latest release")
+                put("max_age_hours", 0)
+            },
+            resultSize = 10,
+        )
+
+        val contents = body["contents"]!!.jsonObject
+        assertEquals(0, contents["maxAgeHours"]!!.jsonPrimitive.int)
+        assertEquals(true, contents["highlights"]!!.jsonPrimitive.boolean)
+
+        val schema = ExaSearchService.parameters(SearchServiceOptions.ExaOptions()) as InputSchema.Obj
+        assertTrue("max_age_hours" in schema.properties)
+        assertTrue("camelCase keys must not leak into the schema", "maxAgeHours" !in schema.properties)
+    }
+
+    @Test
+    fun `out of range max_age_hours is dropped`() {
+        listOf(-2, 721).forEach { value ->
+            val contents = ExaSearchService.buildSearchRequestBody(
+                params = buildJsonObject {
+                    put("query", "latest release")
+                    put("max_age_hours", value)
+                },
+                resultSize = 10,
+            )["contents"]!!.jsonObject
+
+            assertTrue("$value is out of range and must be dropped", "maxAgeHours" !in contents)
+        }
+    }
+
+    @Test
     fun `scrape request serializes content freshness`() {
         val body = ExaSearchService.buildScrapeRequestBody(
             buildJsonObject {

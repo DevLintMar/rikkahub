@@ -39,7 +39,7 @@ import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
 import me.rerere.ai.provider.BuiltInTools
 import me.rerere.ai.provider.Model
-import me.rerere.ai.registry.ModelRegistry
+import me.rerere.ai.provider.ProviderSetting
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.GlobalSearch
 import me.rerere.hugeicons.stroke.Search01
@@ -49,6 +49,7 @@ import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
+import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.ui.components.ui.AutoAIIcon
 import me.rerere.rikkahub.ui.components.ui.ToggleSurface
 import me.rerere.rikkahub.ui.context.LocalNavController
@@ -59,7 +60,28 @@ import org.koin.compose.koinInject
 enum class SearchMode {
     OFF,
     LOCAL,
-    BUILT_IN,
+}
+
+/**
+ * 模型所在供应商是否具备「服务端搜索」能力。
+ *
+ * 判据只看供应商类型与协议，不看 modelId —— 旧的 `gpt-` / GEMINI_SERIES 启发式会把
+ * 第三方网关（自建 modelId 跑 Responses）挡在外面，用户因此看不到内置搜索开关。
+ *
+ * 与 ChatToolFactory.shouldUseExternalWebSearch 分工不同：这里回答「能不能开内置搜索」，
+ * 那里回答「内置搜索已经开着时还要不要挂外挂搜索」。
+ */
+internal fun ProviderSetting.supportsBuiltInServerSearch(): Boolean = when (this) {
+    is ProviderSetting.Claude -> true
+    is ProviderSetting.Google -> true
+    // 只有走 Responses 协议时才有服务端 web_search；Chat Completions 没有
+    is ProviderSetting.OpenAI -> useResponseApi
+}
+
+internal fun Settings.supportsBuiltInServerSearch(model: Model?): Boolean {
+    if (model == null) return false
+    // checkOverwrite = false：要的是真实供应商的「类型/协议」，不是覆盖项
+    return model.findProvider(providers, checkOverwrite = false)?.supportsBuiltInServerSearch() == true
 }
 
 @Composable
@@ -159,9 +181,8 @@ private fun SearchPicker(
 ) {
     val navBackStack = LocalNavController.current
 
-    // 模型是否支持内置搜索
-    val supportsBuiltInSearch = model != null &&
-        (ModelRegistry.GEMINI_SERIES.match(model.modelId) || model.modelId.contains("gpt-"))
+    // 模型能否开内置搜索：看供应商与协议，与「要不要挂外挂搜索」同源
+    val supportsBuiltInSearch = settings.supportsBuiltInServerSearch(model)
     // 模型是否已开启内置搜索（可能是不支持的模型残留的孤儿状态）
     val hasBuiltInSearchEnabled = model?.tools?.contains(BuiltInTools.Search) == true
 

@@ -1096,6 +1096,7 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="user_default_name">사용자</string>
   <string name="video">동영상</string>
   <string name="web_search_disabled">웹 검색 비활성화됨</string>
+  <string name="web_search_builtin_active">이 모델은 내장 검색이 켜져 있어 외부 검색은 사용되지 않습니다</string>
   <string name="web_search_enabled">웹 검색 활성화됨</string>
   <string name="setting_theme_page_import_theme">가져오기</string>
   <string name="setting_theme_page_export_success">테마 JSON이 클립보드에 복사되었습니다</string>
@@ -1318,12 +1319,6 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="assistant_page_context_message_limit_count">컨텍스트 메시지 한도: %d</string>
   <string name="assistant_page_context_message_limit_unlimited">무제한 컨텍스트 메시지</string>
   <string name="assistant_page_context_message_limit_warning">컨텍스트 제한 시 컨텍스트가 정리될 때마다 프롬프트 캐시가 무효화됩니다. 제한이 클수록 정리 빈도가 낮아지며, 무제한일 경우 정리되지 않아 캐시가 완전히 보존됩니다.</string>
-  <string name="search_picker_local_title">로컬 검색</string>
-  <string name="search_picker_local_description">다양한 타사 검색 제공업체에 연결합니다.</string>
-  <string name="search_picker_model_title">모델 내장 검색</string>
-  <string name="search_picker_model_description">모델 제공자에 내장된 클라우드 검색</string>
-  <string name="search_picker_select_provider">검색 제공자 선택</string>
-  <string name="search_picker_turn_off">검색 끄기</string>
   <string name="setting_update_reminder_enabled">업데이트 알림이 사용 설정되어 있습니다.</string>
   <string name="setting_update_reminder_paused_until">%1$s까지 일시 중지됨</string>
   <string name="setting_update_reminder_pause_title">업데이트 알림 일시중지</string>

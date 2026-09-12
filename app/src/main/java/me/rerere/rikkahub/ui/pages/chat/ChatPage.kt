@@ -53,7 +53,6 @@ import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import me.rerere.ai.provider.BuiltInTools
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.ui.UIMessagePart
@@ -364,9 +363,10 @@ private fun ChatPageContent(
                         vm.stopGeneration()
                     },
                     enableSearch = enableWebSearch,
+                    // 只表示「外挂搜索」开关。内置搜索是模型级配置（Model.tools），
+                    // 由设置页的「内置工具」与搜索弹窗里的内置搜索卡直接维护，不从这里走。
                     onUpdateSearchMode = { mode ->
                         val current = setting.getCurrentAssistant()
-                        val model = setting.getCurrentChatModel()
                         vm.updateSettings(
                             setting.copy(
                                 assistants = setting.assistants.map { assistant ->
@@ -374,21 +374,6 @@ private fun ChatPageContent(
                                         assistant.copy(enableWebSearch = mode == SearchMode.LOCAL)
                                     } else {
                                         assistant
-                                    }
-                                },
-                                providers = if (model == null) {
-                                    setting.providers
-                                } else {
-                                    setting.providers.map { provider ->
-                                        provider.editModel(
-                                            model.copy(
-                                                tools = if (mode == SearchMode.BUILT_IN) {
-                                                    model.tools + BuiltInTools.Search
-                                                } else {
-                                                    model.tools - BuiltInTools.Search
-                                                }
-                                            )
-                                        )
                                     }
                                 },
                             )
