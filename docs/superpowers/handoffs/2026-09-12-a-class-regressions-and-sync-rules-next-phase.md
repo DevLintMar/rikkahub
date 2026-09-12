@@ -27,6 +27,8 @@ E 类的过时结论就地更正（含 7 份历史交接里的 11 处「release/
 ## 1. 已完成（commit 链）
 
 ```
+a9a2bf31 docs: A4/A5 更正为「保留上游」+ 同步清单补判性质方法；新增本轮交接文档  ← 本轮文档提交
+eeef61cc fix(ui): 撤回 A4/A5 的行为"恢复" —— 上游两处都是有意的 fix          ← 代码最终态（debug CI 在此绿）
 7d8beb6f docs: 更正交接文档里与事实不符的结论（E 类过时项）
 8ea43a44 docs(sync): 上游同步检查清单 + 三个可复用脚本（C 类防复发规则）
 397c5afb chore(docs): 取回 .editorconfig、补回 AGENTS.md 被顶替的贡献者章节
@@ -71,8 +73,7 @@ d08fed4f fix(db): Migration_25_26 补建 message_embeddings，外来 v25 备份�
 - §0 铁律 7 条（pin 上游最后一个 CI 绿提交 / 起 sync 分支 / 本机无编译器 / **查 CI 必须看 `--json jobs`** /
   冲突数 ≠ 难度 / 子代理只读 / 密钥纪律）
 - §1 合并前预检（含清单生成脚本用法）
-- §2 **fork 身份标识**：包名、三套 signingConfig、ABI、工作流、**密钥来源（再出现 `keytool -genkey` 或
-  `actions/cache` 即签名漂移回归）**、单测门禁 —— 丢了任何一条 CI 立刻红
+- §2 **fork 身份标识**：包名、三套 signingConfig、ABI、工作流、**密钥来源（`keytool -genkey` 必须为空；`keystore` 只允许"从 secret 解码 / `keytool -list` 打印指纹 / `local.properties` 的 `*.storeFile=`"三种出现）**、单测门禁 —— 丢了任何一条 CI 立刻红。（⚠️ 别把 workflow 里的 `actions/cache@v4` 误判成签名缓存：那是 Gradle 缓存）
 - §3 静默破坏扫描：第 11 类（双构造点）、第 12 类（键集合）、第 9 类（fork 刻意改掉的行为，含 5 个具体锚点）、
   第 8 类（被删/顶替的 config）、第 1/3 类（上游新文件按上游 API 写）
 - §4 「下次必踩」20 行表：每行带命令 + 期望 + **现状标记**（哪几条已有代码级防护、哪几条仍是人工）
@@ -158,7 +159,7 @@ d08fed4f fix(db): Migration_25_26 补建 message_embeddings，外来 v25 备份�
 
 审计原本建议"补一个键集合往返单测锁住"。**源码文本比对**（`prefs_key_audit.py`）是更直接的判据，而且它
 可以同时覆盖"读取 − 写入"这种 DataStore 往返测不出来的缺口（往返测需要真 Context + DataStore，
-在 JVM 单测里得搭一整套 fake）。折中：脚本进仓库并写了退出码，**随时可以接进 CI 成为门禁**（见 §5）。
+在 JVM 单测里得搭一整套 fake）。折中：脚本进仓库并写了退出码，**随时可以接进 CI 成为门禁**（见 §5.3）。
 
 ### 2.5 本机白盒验证（CI 覆盖不到的那类，本轮用上了）
 
@@ -184,7 +185,8 @@ d08fed4f fix(db): Migration_25_26 补建 message_embeddings，外来 v25 备份�
 
 ## 3. git / CI 状态
 
-- 分支 `master`，HEAD = `eeef61cc`（本阶段 8 个提交，全部已 push）。
+- 分支 `master`。**代码 HEAD = `eeef61cc`**（A 类修复 + 撤回，debug CI 在此绿）；其上只有文档提交
+  （`a9a2bf31` 及可能的收尾文档提交）。本阶段共 9 个提交，全部已 push。
 - 回滚锚点：本阶段起点 `de612cd4`；同步前 `7042fa80`。
 - CI：**按用户要求只跑 `nightly-build-debug.yml`**（release/pre 有各自的每日 cron，18:00 / 19:00 UTC，会自己跑）。
 
@@ -219,8 +221,7 @@ d08fed4f fix(db): Migration_25_26 补建 message_embeddings，外来 v25 备份�
 | `docs/superpowers/upstream-sync-checklist.md` + `scripts/*` | C 类规则 |
 | 8 份交接 + 1 份审计 | E 类更正 |
 
-相关 memory：`upstream-sync-procedure`（已指向清单）、`synthetic-message-skip-template`（**新增**，A6 决策）、
-`signing-key-drift`、`memory-system-handoff-chain`、`tool-detail-sheet-no-vertical-lazy`、`huge-icons-pinned-1-3`、`haze-pinned-alpha03`。
+相关 memory：`upstream-sync-procedure`（已指向清单，并补了「先判性质再回退」的方法）、`synthetic-message-skip-template`（**新增**，A6 决策）、`gh-build-trigger-order`（**已更新**：平时验证只跑 debug、`daily-build` 已删）、`signing-key-drift`、`memory-system-handoff-chain`（已指向本文档）、`tool-detail-sheet-no-vertical-lazy`、`huge-icons-pinned-1-3`、`haze-pinned-alpha03`。
 
 ---
 
@@ -284,6 +285,6 @@ OCR 无时间上界 ｜ BMP 能识别不能发 ｜ 备份诊断字段缩水 ｜ 
 - **已完成**：A 类 11 项全部消化（8 项改代码 + 3 项改为保留上游）；C 类 17 项固化为清单 + 3 个脚本 + CLAUDE.md/AGENTS.md 入口；
   E 类过时结论就地更正（11 处 CI 结论 + 6 处事实错误 + 两份模块列表）。
 - **待确认**：审计文档 §6 剩下的 5 条产品决策 ｜ §5.3 的结构性改动 ｜ §5.4 的设备核验（**最该先做**）。
-- **下一阶段候选**：① 上设备过 §5.4 的三条；② 拍板 §6 剩下的 5 条；③ 挑 §5.3 里"零风险高收益"的两条
+- **下一阶段候选**：① 上设备过 §5.4 的四条；② 拍板 §6 剩下的 5 条；③ 挑 §5.3 里"零风险高收益"的两条
   （`matchingFallbacks` 与 keep 拆文件）。
 - **恢复动作**：读本文档 §5，再读 `upstream-sync-checklist.md`。**开工前先让用户挑一批。**
