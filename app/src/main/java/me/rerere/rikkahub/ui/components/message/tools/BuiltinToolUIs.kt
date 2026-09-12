@@ -4,7 +4,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,7 +22,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -92,9 +90,7 @@ import me.rerere.rikkahub.ui.modifier.shimmer
 import me.rerere.rikkahub.utils.JsonInstantPretty
 import me.rerere.rikkahub.utils.jsonPrimitiveOrNull
 import me.rerere.rikkahub.utils.openUrl
-import me.rerere.rikkahub.utils.toLocalString
 import org.koin.compose.koinInject
-import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZonedDateTime
@@ -295,7 +291,7 @@ object SearchWebToolUI : ToolUIRenderer {
             DefaultToolPreview(context = context)
             return
         }
-        SearchWebPreview(arguments = context.arguments, content = content)
+        SearchWebPreview(content = content)
     }
 }
 
@@ -1457,60 +1453,22 @@ private fun formatRangeTime(iso: String): String = runCatching {
 }.getOrDefault(iso)
 
 @Composable
-private fun SearchWebPreview(
-    arguments: JsonElement,
-    content: JsonElement,
-) {
+private fun SearchWebPreview(content: JsonElement) {
     val context = LocalContext.current
     val items = content.jsonObject["items"]?.jsonArray ?: emptyList()
-    val answer = content.getStringContent("answer")
-    val query = arguments.getStringContent("query") ?: ""
-    val parameters = arguments.jsonObjectOrNull?.entries?.filter { it.key != "query" }.orEmpty()
     val images = content.jsonObject["images"]?.jsonArray
         ?.mapNotNull { it.jsonPrimitive.contentOrNull }
         ?.filter { it.isNotBlank() }
         ?: emptyList()
 
     // 外层 ToolDetailSheet 的内容区是 Column + verticalScroll（见 ToolDetailSheet.kt），
-    // 同一方向上再嵌 LazyColumn 会拿到无限高约束并抛
-    // "Vertically scrollable component was measured with an infinity maximum height constraints"。
-    // 这里必须用非懒加载的 Column——外层本来就在滚动；横向的 LazyRow 不受此限，可以用。
+    // 同一方向上再嵌 LazyColumn 会拿到无限高约束并抛 IllegalStateException，点开即崩。
+    // 容器必须保持非懒加载的 Column（横向的 LazyRow 不同轴，不受此限）。
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(stringResource(R.string.chat_message_tool_search_prefix, query))
-
-        if (parameters.isNotEmpty()) {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                parameters.forEach { (name, value) ->
-                    val displayValue = when (value) {
-                        is JsonArray -> value.joinToString(", ") {
-                            it.jsonPrimitiveOrNull?.contentOrNull ?: it.toString()
-                        }
-                        else -> value.jsonPrimitiveOrNull?.contentOrNull ?: value.toString()
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    ) {
-                        Text(
-                            text = "$name: $displayValue",
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                    }
-                }
-            }
-        }
-
-        if (answer != null) {
+        content.getStringContent("answer")?.let { answer ->
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
@@ -1551,15 +1509,6 @@ private fun SearchWebPreview(
                 val url = item.getStringContent("url") ?: return@forEach
                 val title = item.getStringContent("title") ?: return@forEach
                 val text = item.getStringContent("text") ?: return@forEach
-                val publishedDate = item.getStringContent("publishedDate")?.takeIf { it.isNotBlank() }
-                // 非懒加载容器里不用 remember（没有 key 的循环内 remember 语义不清），日期解析开销可忽略
-                val dateLabel = publishedDate?.let { value ->
-                    runCatching {
-                        LocalDate.parse(value, DateTimeFormatter.ISO_DATE_TIME)
-                    }.recoverCatching {
-                        LocalDate.parse(value, DateTimeFormatter.ISO_DATE)
-                    }.getOrNull()?.toLocalString(includeYear = true) ?: value
-                }
 
                 Card(
                     onClick = { context.openUrl(url) },
@@ -1580,15 +1529,6 @@ private fun SearchWebPreview(
                         )
                         Column {
                             Text(text = title, maxLines = 1)
-                            if (dateLabel != null) {
-                                Text(
-                                    text = dateLabel,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
                             Text(
                                 text = text,
                                 maxLines = 2,
