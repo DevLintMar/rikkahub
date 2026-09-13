@@ -20,5 +20,9 @@ dependencies {
     api(libs.quickjs)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.core)
+    // androidTest 源文件存在就必须声明这两个（其余模块都有）：
+    // 少了它们 src/androidTest 从来没编译过，instrumented 测试是「写了但不可能跑」
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.espresso.core)
     testImplementation(libs.junit)
 }
