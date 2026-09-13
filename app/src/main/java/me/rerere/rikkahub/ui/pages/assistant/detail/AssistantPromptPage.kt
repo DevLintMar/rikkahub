@@ -2,6 +2,7 @@ package me.rerere.rikkahub.ui.pages.assistant.detail
 
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowDown01
+import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.ArrowUp01
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.Delete01
@@ -10,6 +11,7 @@ import me.rerere.hugeicons.stroke.DragDropVertical
 import me.rerere.hugeicons.stroke.Refresh03
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,8 +27,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -42,6 +46,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -64,6 +69,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -149,6 +155,45 @@ private fun AssistantPromptContent(
 ) {
     val context = LocalContext.current
     val templateTransformer = koinInject<TemplateTransformer>()
+    var showTimeReminderIntervalDialog by remember(assistant.id) { mutableStateOf(false) }
+    var timeReminderIntervalInput by remember(assistant.id) { mutableStateOf("") }
+
+    if (showTimeReminderIntervalDialog) {
+        val interval = timeReminderIntervalInput.toIntOrNull()?.takeIf { it > 0 }
+        AlertDialog(
+            onDismissRequest = { showTimeReminderIntervalDialog = false },
+            title = { Text(stringResource(R.string.assistant_page_time_reminder_interval)) },
+            text = {
+                TextField(
+                    value = timeReminderIntervalInput,
+                    onValueChange = { timeReminderIntervalInput = it },
+                    label = { Text(stringResource(R.string.assistant_page_time_reminder_interval_label)) },
+                    supportingText = { Text(stringResource(R.string.assistant_page_time_reminder_interval_hint)) },
+                    isError = interval == null,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = interval != null,
+                    onClick = {
+                        interval?.let {
+                            onUpdate(assistant.copy(timeReminderIntervalMinutes = it))
+                        }
+                        showTimeReminderIntervalDialog = false
+                    },
+                ) {
+                    Text(stringResource(R.string.assistant_page_save))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimeReminderIntervalDialog = false }) {
+                    Text(stringResource(R.string.assistant_page_cancel))
+                }
+            },
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -287,6 +332,33 @@ private fun AssistantPromptContent(
                         )
                     }
                 )
+                if (assistant.enableTimeReminder) {
+                    FormItem(
+                        modifier = Modifier
+                            .padding(8.dp)
+                            .clickable {
+                                timeReminderIntervalInput = assistant.timeReminderIntervalMinutes.toString()
+                                showTimeReminderIntervalDialog = true
+                            },
+                        label = {
+                            Text(stringResource(R.string.assistant_page_time_reminder_interval))
+                        },
+                        description = {
+                            Text(stringResource(R.string.assistant_page_time_reminder_interval_desc))
+                        },
+                        tail = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    stringResource(
+                                        R.string.assistant_page_time_reminder_interval_value,
+                                        assistant.timeReminderIntervalMinutes,
+                                    )
+                                )
+                                Icon(HugeIcons.ArrowRight01, contentDescription = null)
+                            }
+                        }
+                    )
+                }
                 FormItem(
                     modifier = Modifier.padding(8.dp),
                     label = {
