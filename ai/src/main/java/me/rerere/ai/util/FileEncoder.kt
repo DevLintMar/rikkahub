@@ -263,7 +263,12 @@ internal fun calculateImageInSampleSize(
     return inSampleSize
 }
 
-private fun File.guessMimeType(): Result<String> = runCatching {
+/**
+ * 按文件头（魔数）判断图片 MIME 类型。只认容器格式，不看扩展名。
+ *
+ * `internal` 而非 private：供 JVM 单测直接对字节头做断言（本函数不碰任何 Android 类）。
+ */
+internal fun File.guessMimeType(): Result<String> = runCatching {
     inputStream().use { input ->
         val bytes = ByteArray(16)
         val read = input.read(bytes)
@@ -306,6 +311,15 @@ private fun File.guessMimeType(): Result<String> = runCatching {
         val header = bytes.copyOfRange(0, 6).toString(Charsets.US_ASCII)
         if (header == "GIF89a" || header == "GIF87a") {
             return@runCatching "image/gif"
+        }
+
+        // 判断 BMP 格式：BITMAPFILEHEADER 的 bfType 为 "BM"。
+        // 少这一段时 BMP 会直接落到下面的 error(...) → encodeBase64 返回 failure → 发不出去，
+        // 而 read_image（sniffImageExtension）与工作区文件列表都认 bmp（"能识别不能发"）。
+        // 这里照实返回 image/bmp，真正的转码交给 compressAndEncode：它不是 GIF，
+        // 会走 BitmapFactory 解码 → 统一压成 JPEG（供应商普遍不支持 image/bmp）。
+        if (bytes[0] == 'B'.code.toByte() && bytes[1] == 'M'.code.toByte()) {
+            return@runCatching "image/bmp"
         }
 
         error(
