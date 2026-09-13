@@ -294,11 +294,12 @@ fun ChatMessageActionsSheet(
                 }
             }
 
-            // WebView Preview (only show if message has text content)
+            // WebView Preview（文本或图片有其一就显示：预览页现在也会把附件图片渲染出来）
             val hasTextContent = message.parts.filterIsInstance<UIMessagePart.Text>()
                 .any { it.text.isNotBlank() }
+            val hasImageContent = message.parts.any { it is UIMessagePart.Image }
 
-            if (hasTextContent) {
+            if (hasTextContent || hasImageContent) {
                 Card(
                     onClick = {
                         onDismissRequest()

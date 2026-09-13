@@ -240,11 +240,15 @@ fun ChatMessage(
                     .filterIsInstance<UIMessagePart.Text>()
                     .joinToString("\n\n") { it.text }
                     .trim()
-                if (textContent.isNotBlank()) {
+                val images = message.parts.filterIsInstance<UIMessagePart.Image>()
+                if (textContent.isNotBlank() || images.isNotEmpty()) {
                     val htmlContent = buildMarkdownPreviewHtml(
                         context = context,
                         markdown = textContent,
-                        colorScheme = colorScheme
+                        colorScheme = colorScheme,
+                        images = images,
+                        // file:// 的根是工作区沙箱根：解析 /workspace/... 需要它（/upload 不需要）
+                        workspaceId = assistant?.workspaceId?.toString(),
                     )
                     val contentId = WebViewContentCache.store(context.cacheDir, htmlContent)
                     navController.navigate(Screen.WebView(contentId = contentId))

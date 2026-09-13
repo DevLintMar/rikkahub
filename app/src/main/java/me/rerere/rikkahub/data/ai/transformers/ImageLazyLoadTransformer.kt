@@ -6,6 +6,7 @@ import androidx.core.net.toUri
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.rikkahub.data.files.WorkspaceFileUrlResolver
 import me.rerere.rikkahub.data.model.IMAGE_LAZY_LOAD_MARKER_PREFIX
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
@@ -72,23 +73,9 @@ object ImageLazyLoadTransformer : InputMessageTransformer, KoinComponent {
         val canonical = runCatching { file.canonicalFile }.getOrDefault(file)
         // 文件已不存在：不映射成看似可读的 URL，模型读到 [Image] 就不会去调 read_image 报"找不到图片"
         if (!canonical.isFile) return "[Image]"
-        // upload 根也 canonical 化：context.filesDir 可能经符号链接（Android /data/data ↔ /data/user/0），
-        // 与 canonicalFile 的字符串形式不一致会导致 == 失效，图片被错误回退为手机绝对路径
-        val uploadRoot = runCatching { File(filesDir, "upload").canonicalFile }
-            .getOrDefault(File(filesDir, "upload"))
-        if (canonical.parentFile == uploadRoot) {
-            return "file:///upload/${canonical.name}"
-        }
-        val workspacesDir = runCatching { File(filesDir, "workspaces").canonicalFile }
-            .getOrDefault(File(filesDir, "workspaces"))
-        val relative = runCatching { canonical.relativeTo(workspacesDir).path }.getOrNull()
-        if (relative != null && !relative.startsWith("..")) {
-            // workspaces/<id>/files/<rel> → file:///workspace/<rel>
-            val segments = relative.split(File.separatorChar)
-            if (segments.size >= 3 && segments[0].isNotEmpty() && segments[1] == "files") {
-                return "file:///workspace/" + segments.drop(2).joinToString("/")
-            }
-        }
+        // 宿主文件 → 沙箱路径的映射只此一份（WorkspaceFileUrlResolver.toSandboxPath），
+        // 网页视图预览那边也走它，避免两处各存一张表而漂移
+        WorkspaceFileUrlResolver.toSandboxPath(canonical, filesDir)?.let { return "file://$it" }
         // 回退：自身 file:// URL 字符串拼接（不依赖 Android toUri，纯 JVM 可测）
         return "file://" + file.absolutePath.replace('\\', '/')
     }

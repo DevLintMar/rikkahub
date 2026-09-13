@@ -5,6 +5,7 @@ import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.Bug01
 import me.rerere.hugeicons.stroke.Earth
 import me.rerere.hugeicons.stroke.Refresh01
+import android.webkit.WebSettings
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -69,6 +70,9 @@ fun WebViewPage(url: String, contentId: String) {
                 displayZoomControls = false
                 useWideViewPort = true
                 loadWithOverviewMode = true
+                // 预览页 origin 是 https，默认的 MIXED_CONTENT_NEVER_ALLOW 会把 http 图片
+                // 全部拦掉。COMPATIBILITY_MODE 放行图片/媒体这类子资源，脚本与 XHR 仍然禁止。
+                mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             }
         )
     }

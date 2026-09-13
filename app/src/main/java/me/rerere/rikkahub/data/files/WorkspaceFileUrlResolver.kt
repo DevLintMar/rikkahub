@@ -73,9 +73,46 @@ object WorkspaceFileUrlResolver {
         )
     }
 
+    /**
+     * [resolveFile] 的逆运算：宿主 File → Rootfs 逻辑路径（不含 `file://` 前缀）。
+     *
+     * 用于「手上只有一个宿主文件，但要给模型 / WebView 一个沙箱路径」的场景
+     * （懒加载标记、网页视图预览）。返回 null 表示该文件不在任何挂载点内，
+     * 调用方自行回退。
+     *
+     * 与 [resolveFile] 共用同一张 [FileFolders.ROOTFS_BIND_MOUNTS] 表 —— **不许各写一份**。
+     */
+    fun toSandboxPath(file: File, filesDir: File): String? {
+        val canonical = runCatching { file.canonicalFile }.getOrNull() ?: return null
+        if (!canonical.isFile) return null
+
+        FileFolders.ROOTFS_BIND_MOUNTS.forEach { (target, folder) ->
+            val root = runCatching { File(filesDir, folder).canonicalFile }.getOrNull()
+                ?: return@forEach
+            relativeInside(root, canonical)?.let { return "$target/$it" }
+        }
+
+        // 工作区文件区：workspaces/<id>/files/<rel> → /workspace/<rel>
+        val workspacesRoot = runCatching {
+            File(filesDir, WorkspaceManager.WORKSPACES_BASE_DIR).canonicalFile
+        }.getOrNull() ?: return null
+        val relative = relativeInside(workspacesRoot, canonical) ?: return null
+        val segments = relative.split('/')
+        if (segments.size >= 3 && segments[1] == WorkspaceManager.FILES_DIR) {
+            return "$PREFIX_WORKSPACE/" + segments.drop(2).joinToString("/")
+        }
+        return null
+    }
+
+    /** [target] 相对 [base] 的路径（`/` 分隔）；不在 [base] 内或恰为 [base] 本身时返回 null。 */
+    private fun relativeInside(base: File, target: File): String? {
+        if (target.path == base.path) return null
+        if (!target.path.startsWith(base.path + File.separator)) return null
+        return target.relativeTo(base).path.replace(File.separatorChar, '/')
+    }
+
     private fun workspaceRootDir(filesDir: File, workspaceId: String): File =
         File(File(filesDir, WorkspaceManager.WORKSPACES_BASE_DIR), workspaceId)
-
     private fun isKernelFs(path: String): Boolean =
         WorkspaceManager.KERNEL_FS_MOUNTS.any { path == it || path.startsWith("$it/") }
 
