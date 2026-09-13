@@ -49,6 +49,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -63,13 +65,17 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.navigation3.runtime.NavKey
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.ui.context.Navigator
-import coil3.compose.AsyncImage
+import coil3.imageLoader
 import coil3.request.ImageRequest
+import coil3.request.SuccessResult
 import coil3.request.allowHardware
-import coil3.request.crossfade
+import coil3.toBitmap
 import com.dokar.sonner.ToastType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.contentOrNull
@@ -399,6 +405,11 @@ private suspend fun exportToImage(
         return
     }
 
+    // Coil 的 AsyncImage 是异步的，而 BitmapComposer 只等固定 100ms 就截图 —— 网络图/大图
+    // 基本都截不到，导出的图里就是空白。这里先把要画的图片同步加载成 ImageBitmap，
+    // 内容里改用 Image(bitmap = ...) 渲染，彻底去掉这个竞速。
+    val images = preloadExportImages(context, messages)
+
     val bitmap = composer.composableToBitmap(
         activity = activity,
         width = 540.dp,
@@ -408,7 +419,8 @@ private suspend fun exportToImage(
                 ExportedChatImage(
                     conversation = conversation,
                     messages = messages,
-                    options = options
+                    options = options,
+                    images = images,
                 )
             }
         }
@@ -448,13 +460,55 @@ private suspend fun exportToImage(
     }
 }
 
+/**
+ * 把导出图里要画的图片全部**同步**加载成位图。
+ *
+ * 返回 `图片 url -> 已解码位图`；加载失败（404、不是图片、超时）的 url 不会出现在结果里，
+ * 调用方按「这张图没有」处理。
+ *
+ * 请求参数与 `ZoomableAsyncImage` 对齐：`allowHardware(false)` 才能直接画进 Compose，
+ * `size(1024, 1024)` 是聊天图一直沿用的解码上限（导出内容宽度只有 540dp）。
+ */
+private suspend fun preloadExportImages(
+    context: Context,
+    messages: List<UIMessage>,
+): Map<String, ImageBitmap> {
+    val urls = messages
+        .flatMap { it.parts }
+        .filterIsInstance<UIMessagePart.Image>()
+        .map { it.url }
+        .filter { it.isNotBlank() }
+        .distinct()
+    if (urls.isEmpty()) return emptyMap()
+
+    val loader = context.imageLoader
+    return coroutineScope {
+        urls.map { url ->
+            async(Dispatchers.IO) {
+                val bitmap = runCatching {
+                    val request = ImageRequest.Builder(context)
+                        .data(url)
+                        .allowHardware(false)
+                        .size(1024, 1024)
+                        .build()
+                    val image = (loader.execute(request) as? SuccessResult)?.image
+                        ?: return@runCatching null
+                    image.toBitmap(image.width, image.height).asImageBitmap()
+                }.getOrNull()
+                bitmap?.let { url to it }
+            }
+        }.awaitAll().filterNotNull().toMap()
+    }
+}
+
 data class ImageExportOptions(val expandReasoning: Boolean = false)
 
 @Composable
 private fun ExportedChatImage(
     conversation: Conversation,
     messages: List<UIMessage>,
-    options: ImageExportOptions = ImageExportOptions()
+    options: ImageExportOptions = ImageExportOptions(),
+    images: Map<String, ImageBitmap> = emptyMap(),
 ) {
     val navBackStack = remember { mutableStateListOf<NavKey>() }
     val navigator = Navigator(navBackStack)
@@ -507,7 +561,8 @@ private fun ExportedChatImage(
                         ExportedChatMessage(
                             message = message,
                             options = options,
-                            prevMessage = messages.getOrNull(messages.indexOf(message) - 1)
+                            prevMessage = messages.getOrNull(messages.indexOf(message) - 1),
+                            images = images,
                         )
                     }
 
@@ -530,10 +585,10 @@ private fun ExportedChatImage(
 private fun ExportedChatMessage(
     message: UIMessage,
     prevMessage: UIMessage? = null,
-    options: ImageExportOptions = ImageExportOptions()
+    options: ImageExportOptions = ImageExportOptions(),
+    images: Map<String, ImageBitmap> = emptyMap(),
 ) {
     if (message.parts.isEmptyUIMessage()) return
-    val context = LocalContext.current
     val settings = LocalSettings.current
     val model = message.modelId?.let { settings.findModelById(it) }
     // Always show model icon for assistant messages in exported images
@@ -623,17 +678,18 @@ private fun ExportedChatMessage(
                             }
 
                             is UIMessagePart.Image -> {
-                                AsyncImage(
-                                    model = ImageRequest.Builder(context)
-                                        .data(part.url)
-                                        .allowHardware(false)
-                                        .crossfade(false)
-                                        .build(),
-                                    contentDescription = "Image",
-                                    modifier = Modifier
-                                        .sizeIn(maxHeight = 300.dp)
-                                        .clip(RoundedCornerShape(12.dp)),
-                                )
+                                // 位图在导出前已同步预加载好（见 preloadExportImages）；
+                                // 取不到说明这张图加载失败，直接跳过，不留空白框
+                                val bitmap = images[part.url]
+                                if (bitmap != null) {
+                                    Image(
+                                        bitmap = bitmap,
+                                        contentDescription = "Image",
+                                        modifier = Modifier
+                                            .sizeIn(maxHeight = 300.dp)
+                                            .clip(RoundedCornerShape(12.dp)),
+                                    )
+                                }
                             }
 
                             else -> {
