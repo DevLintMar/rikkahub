@@ -1,7 +1,9 @@
 package me.rerere.rikkahub.ui.components.richtext
 
 import android.content.ClipData
+import android.content.Context
 import android.content.Intent
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -62,6 +64,8 @@ import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
@@ -341,6 +345,52 @@ private fun ASTNode.containsCitationLink(content: String): Boolean {
  */
 val LocalWorkspaceFileProvider = staticCompositionLocalOf<((String) -> File?)?> { null }
 
+/** 链接打开的兜底日志标签（只进 logcat；这里刻意不打扰用户，见 [openMarkdownLink]）。 */
+private const val TAG_LINK = "MarkdownLink"
+
+/**
+ * 打开 markdown 链接 —— **markdown 子树里唯一的链接打开入口**。
+ *
+ * [workspaceFileResolver] 能解析出宿主文件的 `file://` 链接走应用内 FileProvider + 选择器；
+ * 其余（http/https、解析不出来的路径、未知 scheme）交给系统 `ACTION_VIEW`。
+ *
+ * **所有分支都必须吞掉异常**：href 完全由模型产出，而 `file:///<真机绝对路径>`
+ * （`ImageLazyLoadTransformer` 的沙箱外降级分支就会造出这种 URL）与任何模型瞎编的 scheme
+ * 在系统里都没有处理者，`startActivity` 会抛 `ActivityNotFoundException` —— 未捕获时
+ * 直接崩掉整个会话，而用户只是点了一条链接。
+ *
+ * 打开失败只记 logcat：用户点了个没有处理者的链接属于「什么都没发生」，
+ * 弹错反而更吵；真要反馈得先有六语言的文案。
+ */
+internal fun openMarkdownLink(
+    context: Context,
+    workspaceFileResolver: ((String) -> File?)?,
+    href: String,
+) {
+    if (href.isBlank()) return
+
+    val workspaceFile = runCatching { workspaceFileResolver?.invoke(href) }
+        .getOrNull()
+        ?.takeIf { it.isFile }
+    if (workspaceFile != null) {
+        runCatching {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                data = FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    workspaceFile,
+                )
+            }
+            context.startActivity(Intent.createChooser(intent, null))
+        }.onFailure { Log.w(TAG_LINK, "cannot open workspace file: $href", it) }
+        return
+    }
+
+    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, href.toUri())) }
+        .onFailure { Log.w(TAG_LINK, "no activity for: $href", it) }
+}
+
 @Composable
 fun MarkdownBlock(
     content: String,
@@ -355,7 +405,21 @@ fun MarkdownBlock(
     val workspaceFileResolver = remember(workspaceId) {
         { href: String -> WorkspaceFileUrlResolver.resolveFile(context.filesDir, workspaceId, href) }
     }
-    CompositionLocalProvider(LocalWorkspaceFileProvider provides workspaceFileResolver) {
+    // `LinkAnnotation.Url` 在没有显式 listener 时由 Compose 交给 LocalUriHandler 打开
+    // （`TextLinkScope` 里没有任何别的通往平台的路径），所以替换掉整个 markdown 子树的
+    // UriHandler 就能拦住所有段落链接的点击。这也是**唯一**能拦住它们的方式：
+    // 把 listener 写进 AnnotatedString 会让闭包被 paragraphRenderCache 跨消息复用
+    // （与 citation 段落不缓存是同一个理由）。
+    val safeUriHandler = remember(context, workspaceFileResolver) {
+        object : UriHandler {
+            override fun openUri(uri: String) =
+                openMarkdownLink(context, workspaceFileResolver, uri)
+        }
+    }
+    CompositionLocalProvider(
+        LocalWorkspaceFileProvider provides workspaceFileResolver,
+        LocalUriHandler provides safeUriHandler,
+    ) {
         var (data, setData) = remember { mutableStateOf(parseMarkdownCached(content)) }
 
         // 监听内容变化，重新解析AST树
@@ -705,25 +769,13 @@ private fun MarkdownNode(
             val linkDest =
                 node.findChildOfTypeRecursive(MarkdownElementTypes.LINK_DESTINATION)?.getTextInNode(content) ?: ""
             val context = LocalContext.current
-            // 工作区 file:// 链接：应用内 FileProvider 打开（无应用处理时静默）；其余走系统 Intent
-            val workspaceFile = LocalWorkspaceFileProvider.current?.invoke(linkDest)?.takeIf { it.isFile }
-            val linkModifier = if (workspaceFile != null) {
-                modifier.clickable {
-                    val intent = Intent(Intent.ACTION_VIEW).apply {
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        data = FileProvider.getUriForFile(
-                            context,
-                            "${context.packageName}.fileprovider",
-                            workspaceFile,
-                        )
-                    }
-                    runCatching { context.startActivity(Intent.createChooser(intent, null)) }
-                }
-            } else {
-                modifier.clickable {
-                    val intent = Intent(Intent.ACTION_VIEW, linkDest.toUri())
-                    context.startActivity(intent)
-                }
+            // 必须在组合里读出 resolver：clickable 的 lambda 不是 @Composable，里面不能读 .current
+            val workspaceFileResolver = LocalWorkspaceFileProvider.current
+            // 与 AnnotatedString 那条路径共用同一个打开逻辑（openMarkdownLink）：
+            // 工作区 file:// 链接走应用内 FileProvider；其余交给系统；失败一律吞掉，
+            // 不再让「没有处理者的 scheme」把会话崩掉
+            val linkModifier = modifier.clickable {
+                openMarkdownLink(context, workspaceFileResolver, linkDest)
             }
             Text(
                 text = linkText,
