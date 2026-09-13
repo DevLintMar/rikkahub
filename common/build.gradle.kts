@@ -9,12 +9,6 @@ plugins {
 android {
     namespace = "me.rerere.common"
 
-    // fork 保留：app 的 pre build type 需要库模块同步暴露 pre 变体
-    buildTypes {
-        create("pre") {
-            initWith(getByName("release"))
-        }
-    }
     tasks.withType<KotlinCompile>().configureEach {
         compilerOptions.optIn.add("kotlin.uuid.ExperimentalUuidApi")
         compilerOptions.optIn.add("kotlin.time.ExperimentalTime")

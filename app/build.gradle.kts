@@ -28,7 +28,14 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
-            abiFilters += listOf("arm64-v8a")
+            // 发布包只打 arm64-v8a。CI 上跑 androidTest / 生成 baseline profile 的模拟器是
+            // x86_64，那两个任务用 `-PwithX86_64` 临时把 x86_64 一起打进去；
+            // 默认关闭，nightly/release 产物不受影响。
+            abiFilters += if (project.hasProperty("withX86_64")) {
+                listOf("arm64-v8a", "x86_64")
+            } else {
+                listOf("arm64-v8a")
+            }
         }
     }
 
@@ -131,6 +138,11 @@ android {
                 signingConfig = signingConfigs.getByName("pre")
             }
             applicationIdSuffix = ".pre"
+            // 库模块不再各自声明 pre 变体 —— 上游每加一个库模块都会漏（videogen/oauth 就漏过，
+            // assemblePre 自上游合并起必红，5b4b9715 才修好）。改为在这里声明 fallback：
+            // 缺少 pre 变体的模块自动回落到它的 release 变体，语义与原先各模块
+            // `create("pre") { initWith(getByName("release")) }` 完全一致，但只需维护这一处。
+            matchingFallbacks += listOf("release")
             // 与 release 同一套 AGP 9 DSL（旧的 isMinifyEnabled/proguardFiles 与
             // optimization{} 语义不等价，pre 会测出与 release 不同的产物）
             optimization {

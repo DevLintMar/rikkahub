@@ -8,12 +8,6 @@ plugins {
 android {
     namespace = "me.rerere.speech"
 
-    // fork 保留：app 的 pre build type 需要库模块同步暴露 pre 变体
-    buildTypes {
-        create("pre") {
-            initWith(getByName("release"))
-        }
-    }
     tasks.withType<KotlinCompile>().configureEach {
         compilerOptions.optIn.add("androidx.compose.material3.ExperimentalMaterial3Api")
         compilerOptions.optIn.add("androidx.compose.material3.ExperimentalMaterial3ExpressiveApi")
