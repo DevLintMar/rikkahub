@@ -176,7 +176,11 @@ gh run view <id> --json jobs                                       # 确认 buil
 - `android-instrumented.yml` = 每周六的 `connectedDebugAndroidTest`（x86_64 模拟器，
   `-PwithX86_64` 打开 x86_64 ABI）；同一个工作流可按需重新生成 baselineProfiles。
 - **合并类错误常分两轮暴露**：先 `:app:compileDebugKotlin`，修完才轮到测试源码编译。
-- **平时验证只跑 `nightly-build-debug.yml` 这一个**（用户 2026-09-12 明确要求）：它是唯一的单测门禁。release / pre 各有每日 cron（18:00 / 19:00 UTC）会自己跑，只有改动了**构建 / 混淆 / 变体**相关配置时才手动补跑它们。
+- **只构建 debug（用户 2026-09-13 指令）**：不要手动触发 `nightly-build.yml` / `nightly-build-pre.yml`；
+  两者的每日 cron 仍在跑。**代价：`assemblePre` / `assembleRelease` 这条路在 CI 上不可验证** ——
+  改动 `pre` 变体解析、混淆 DSL、keep 规则时，结论要写明「未验证」，别因为 debug 绿就当成整体绿。
+- **新建工作流的 `actions/checkout` 必须带 `submodules: recursive`**：`material3` 的源码目录里有
+  `material-color-utilities` 子模块，漏了会炸在 `:material3:compileDebugKotlin`。
 - 发布产物的签名可用 `python docs/superpowers/scripts/apk_signer.py <apk>` 反查指纹；
   三把密钥的预期指纹见 memory `signing-key-drift`。**签名一变，所有已装用户必须卸载重装。**
 
