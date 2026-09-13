@@ -77,12 +77,13 @@ fork 独有的**流式**路径（AI 的 `workspace_shell` 走这条）落在默�
 `PROOT_NO_SECCOMP` 的设备上"手敲同样命令能跑、AI 跑不动"，且不报错。
 
 ```bash
-grep -rn --include='*.kt' 'WorkspaceShellContext(' .        # 构造点：应为 2 处 + 1 处 data class 声明
-grep -rn --include='*.kt' 'shellCompatibilityMode = ' .     # 传参处：每个构造点都必须有一条
+grep -rn --include='*.kt' 'WorkspaceShellContext(' .        # 应恒为 1 处构造点 + 1 处 data class 声明
+grep -rn --include='*.kt' 'shellCompatibilityMode = ' .     # 构造点里必须有一条
 ```
-> 现状：已修（`WorkspaceRepository` 的流式路径与导入路径都传了）。**根治方案**（未做，见 §4 第 9 条）：
-> 把两个构造点合并成一个私有 `buildContext(...)`，或**去掉该字段的默认值**逼编译器报错 ——
-> 默认值正是这个 bug 的成因。
+> **已根治（2026-09-13）**：两个构造点合并成一个私有 `buildShellContext`（`WorkspaceManager`），
+> `WorkspaceShellContext` 的字段**全部去掉默认值**，并加了 `WorkspaceShellContextTest`
+> 用 JDK 反射锁死「只有一个构造器（Kotlin 只要有默认值就会多生成一个合成构造器）」与
+> 「字段集合不变」——上游再加字段时测试直接红，不再有「编译过、只是漏传」这条路。
 
 ### 3.2 第 12 类：采纳上游抽出的写入函数 ⇒ fork 自有键漏搬
 
@@ -143,11 +144,11 @@ git grep -oh 'R\.string\.[a-z_0-9]*' -- app/src/main | sort -u > /tmp/used.txt  
 | 5 | `BuiltinToolUIs.SearchWebPreview` | 上游会带回 query 前缀行/参数药丸/日期行/**LazyColumn 容器** | 与 `git show <pre-merge>:<file>` 比对 | ✅ fork 定制版 |
 | 6 | `huge-icons` / `haze` 钉版本 | 会被带回 1.4 / beta02，静默改变图标字形与输入框透明语义 | `grep -n 'huge-icons = \|haze = ' gradle/libs.versions.toml` → `1.3` / `2.0.0-alpha03` | ✅ 钉住 |
 | 7 | `.claude/skills` 符号链接 + `CLAUDE.md` 被删 | 本机 `core.symlinks=false` → 退化成文本文件 | §3.4 的命令 | ✅ 已还原实体目录 |
-| 8 | fork 的 keep 规则追加块贴在 `rikkahub.keep` **文件尾部** | 与上游的尾部编辑形成冲突块 → 人工取 ours 时**会吃掉上游的 keep 修复**（已吃掉一条 jlatexmath 规则） | `git diff <分叉点>..<pre-merge> -- app/src/main/keepRules/rikkahub.keep` | ⚠️ **待拆成独立文件**（AGP 会合并同源集所有 `*.keep`） |
-| 9 | `WorkspaceShellContext` 双构造点 + 字段默认值 | 见 §3.1 | §3.1 的命令 | ⚠️ **待合并构造点** |
+| 8 | fork 的 keep 规则放在哪 | 贴在 `rikkahub.keep` 尾部时与上游的尾部编辑形成冲突块 → 人工取 ours 时**会吃掉上游的 keep 修复**（已吃掉一条 jlatexmath 规则） | fork 规则应只在 `app/src/main/keepRules/fork.keep`；`git diff <分叉点>..<pre-merge> -- app/src/main/keepRules/rikkahub.keep` 只应出现上游自己的改动 | ✅ 已拆分（`fork.keep`；AGP 会合并同源集所有 `*.keep`） |
+| 9 | `WorkspaceShellContext` 的构造点与字段默认值 | 见 §3.1 | §3.1 的命令 | ✅ 已根治（唯一构造点 + 字段无默认值 + 单测锁死字段集合） |
 | 10 | `persistSettings` 类抽取函数 | 见 §3.2 | §3.2 的脚本 | ⚠️ **待补键集合单测** |
-| 11 | 13 处手工 `create("pre")` | 上游每加一个库模块都会漏（已踩：`assemblePre` 自合并起必红） | `grep -rl 'create("pre")' --include='build.gradle.kts' . \| wc -l` → 13；**上游新增模块后这个数必须 +1** | ⚠️ **待改 `matchingFallbacks`** |
-| 12 | `.gitignore:14` 的 `references` 过宽 | 裸模式匹配任意层级的 `references/` → 上游往 `.agents/skills/*/references/` 加文件会被**静默忽略**（`.agents/skills/gemini-interactions-api/references/` 就在被忽略） | `git check-ignore -v .agents/skills/*/references/x.md` | ⚠️ **待改 `/references/`** |
+| 11 | 库模块的 `pre` 变体声明 | 上游每加一个库模块都会漏（已踩：`assemblePre` 自合并起必红） | `grep -rn --include='build.gradle.kts' 'create("pre")' .` 只应命中 `app/build.gradle.kts`（signingConfigs + buildTypes 各一处）与 `app/baselineprofile/`；**上游新增模块后不需要再加** | ✅ 已改 `matchingFallbacks` |
+| 12 | `.gitignore` 的 `references` 是否过宽 | 裸模式匹配任意层级的 `references/` → 上游往 `.agents/skills/*/references/` 加文件会被**静默忽略** | `git check-ignore -v .agents/skills/*/references/x.md` 应无输出；`/references/` 与 `/docs/references/` 两条都要在（只锚定一条会漏掉另一个） | ✅ 已锚定 |
 | 13 | `daily-build.yml` 已删 | 上游仍有该文件 → modify/delete 冲突 | 人工保留删除 | ⚠️ 每次都要人工 |
 | 14 | `ChatMessageTools.kt` / `ChatMessageCot.kt` / `ChatMessage.kt` | 上游持续在同一函数加分支（ServerToolStep / ask_user / isPending），fork 同区域有聚合思考块交互 | 逐 hunk 人工解，**禁止整段 take-theirs** | ⚠️ |
 | 15 | `richtext/Markdown.kt` | fork 相对上游改了 597 行（段落合并/缓存/INLINE_MATH），上游一碰就是巨型冲突 | — | ⚠️ |
@@ -155,7 +156,7 @@ git grep -oh 'R\.string\.[a-z_0-9]*' -- app/src/main | sort -u > /tmp/used.txt  
 | 17 | `search/` 的 `withSingleKey` 有 `else -> this` | 上游再加带 apiKey 的渠道会静默失去多 key 轮询（豆包先例） | 新增渠道后必须补分支；可改成 `error(...)` 由编译器兜底 | ⚠️ |
 | 18 | 终端 bind mount 第三处硬编码 | `WorkspaceTerminalSession.kt` 自己拼挂载表，与 `FileFolders.ROOTFS_BIND_MOUNTS` 不同步 → 终端看不到 `/upload` | 三处表逐条比对 | ⚠️ |
 | 19 | `values*/strings.xml` ×6 | 双向重改；fork 删过的串可能被上游新代码重新引用（`chat_message_tool_search_prefix` 先例） | §3.5 的 `R.string.*` 比对 | ⚠️ |
-| 20 | `compose_compiler_config.conf` / `baselineProfiles` | 前者有两条悬空类 + 漏声明 `StreamChunk`；后者两份 md5 相同且过期 → ART 静默忽略，启动优化正好失效在生成循环上 | `grep -c 'StreamChunk' app/compose_compiler_config.conf app/src/release/generated/baselineProfiles/*.txt` | ⚠️ **待重新生成** |
+| 20 | `compose_compiler_config.conf` / `baselineProfiles` | 前者有两条悬空类（已清）；后者两份 md5 相同且过期 → ART 静默忽略，启动优化正好失效在生成循环上 | `python docs/superpowers/scripts/baseline_profile_audit.py` | ⚠️ **待重新生成**（7 条已知过期规则列在脚本的 `KNOWN_STALE`；跑 `android-instrumented.yml` 的 baseline-profile 任务可在模拟器上重生成，产物走 artifact 不自动提交） |
 
 ---
 
@@ -169,7 +170,11 @@ gh run view <id> --json conclusion,headSha                         # 核对 head
 gh run view <id> --json jobs                                       # 确认 build 真跑了（不是被 skip 的假绿）
 ```
 
-- `nightly-build-debug.yml` = 编译 + `:app:testDebugUnitTest`（唯一单测门禁）。
+- `nightly-build-debug.yml` = 编译 + **全模块** `testDebugUnitTest` + 两个门禁脚本
+  （`prefs_key_audit.py` / `baseline_profile_audit.py --strict`）—— 唯一的单测门禁。
+  （2026-09-13 前只跑 `:app:testDebugUnitTest`，其余模块约 49 个测试文件从未执行。）
+- `android-instrumented.yml` = 每周六的 `connectedDebugAndroidTest`（x86_64 模拟器，
+  `-PwithX86_64` 打开 x86_64 ABI）；同一个工作流可按需重新生成 baselineProfiles。
 - **合并类错误常分两轮暴露**：先 `:app:compileDebugKotlin`，修完才轮到测试源码编译。
 - **平时验证只跑 `nightly-build-debug.yml` 这一个**（用户 2026-09-12 明确要求）：它是唯一的单测门禁。release / pre 各有每日 cron（18:00 / 19:00 UTC）会自己跑，只有改动了**构建 / 混淆 / 变体**相关配置时才手动补跑它们。
 - 发布产物的签名可用 `python docs/superpowers/scripts/apk_signer.py <apk>` 反查指纹；

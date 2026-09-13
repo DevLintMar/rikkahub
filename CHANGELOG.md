@@ -24,9 +24,22 @@
   审批丢失）。
 - **不再内置第三方赞助商供应商。** 移除 APIMart 与 MaruCode 的默认 / 推荐条目。已经添加过的不会被
   删除，但从现在起删掉之后不会再被自动补回。
+- **OCR 识别不会再无限等待。** 单次调用上限 120 秒，超时即把错误交回模型（此前服务端「连得上
+  但不返回」时，一次识别最坏要等 10 分钟 × 4 次重试，每张图各算一遍）。
 
 ### 修复
 
+- **点开没有应用能打开的链接不再崩溃。** 模型写出的 `file:///data/user/0/…` 这类真机绝对路径、
+  以及任何拼错的 scheme，系统里都没有处理者，此前一点就抛 `ActivityNotFoundException` 把会话
+  整个崩掉。现在这类链接点了只会「没反应」（失败只记日志）；工作区内的 `file:///workspace/…`
+  仍按原来的方式在应用内打开。
+- **BMP 图片能发出去了。** `read_image` 与工作区文件列表都认 bmp，但发送时按文件头识别类型的
+  那一步不认，BMP 一律发不出去。现在识别并统一转成 JPEG 再发给模型。
+- **S3 / WebDAV 恢复前会先确认。** 此前点一下「恢复」就直接用备份覆盖数据库与设置，只有本地
+  导入会问一句；现在三处一致。
+- **备份 / 恢复的诊断信息补回了丢失的字段。** 恢复日志重新包含「本次要恢复哪些内容（db/文件）」、
+  用户头像类型、以及图片头像数的**分母**（`0/3` 与「本来就没有图片头像」此前无法区分）；备份日志
+  里 `uploadFiles` 不再把 AI 生成的 `images/` 混在一起计数。
 - **「网页视图」能显示本地图片了。** 消息附件、以及文本里 `file:///workspace/…`、`file:///upload/…`
   这类图片链接此前在网页视图里全是空白 —— 预览页的 origin 是 `https://rikkahub.local`，从这个 origin
   引用 `file://` 子资源会被 WebView 直接拦掉。现在本地图片改写成应用内虚拟域名的 URL，由拦截器按
@@ -52,6 +65,15 @@
 
 ### 内部
 
+- `pre` 变体改用 `matchingFallbacks`，11 个库模块不再各自声明重复的 `pre` buildType
+  （上游每加一个库模块都会漏，`assemblePre` 已经因此红过一次）。
+- fork 的 R8 keep 规则从上游文件里拆出，放进 `app/src/main/keepRules/fork.keep` ——
+  以后再解冲突不会再连上游的 keep 修复一起吃掉。
+- `.gitignore` 的 `references` 改成锚定路径，不再吞掉 `.agents/skills/*/references/`。
+- `WorkspaceShellContext` 收敛到唯一构造点、字段去掉默认值，并加单测锁死字段集合
+  （上游加字段时，此前会出现「编译过、只是漏传」）。
+- CI 门禁脚本接进 nightly；单测从只跑 `:app` 改成全模块（其余模块约 49 个测试文件此前从未跑过）；
+  新增每周一次的 instrumentation 测试工作流，以及按需重新生成 baselineProfile 的入口。
 - `pre` 变体的混淆配置改用与 release 相同的 AGP 9 `optimization {}` DSL。
 - 自定义 action / scheme 按变体隔离（release / debug / pre 不再抢同一 intent）。
 - 补齐 4 个终端无障碍串与预览按钮文案的六语翻译。
