@@ -29,18 +29,3 @@
 -keep,allowoptimization class org.scilab.forge.jlatexmath.greek.GreekRegistration {
     public <init>();
 }
-
-# ---- fork 追加规则（原 app/proguard-rules.pro 迁移） ----
-
-# RaTeX FontCache — 反射访问私有字段，需保留原始类/字段名
--keep class io.ratex.FontCache {
-    private *;
-}
--keepclassmembers class io.ratex.FontCache {
-    private *;
-}
-
-# The embedded Ktor server signs and verifies JWTs through Auth0/Jackson at runtime.
-# Keep their implementation intact because R8 optimization can break JWT payload parsing.
--keep class com.fasterxml.jackson.** { *; }
--keep class com.auth0.jwt.** { *; }

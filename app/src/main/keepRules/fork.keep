@@ -1,0 +1,23 @@
+# fork 自有 keep 规则（上游 `rikkahub.keep` 里没有的那些）。
+#
+# **不要**把 fork 规则追加回 `rikkahub.keep` 的尾部：那样每次上游编辑该文件尾部都会
+# 形成冲突块，人工解冲突取 ours 时会连上游的 keep 修复一起吃掉（已经吃过一条
+# jlatexmath 规则）。AGP 会把 `src/main/keepRules` 下的所有 `*.keep` 合并后交给 R8，
+# 拆文件对产物没有影响。
+#
+# 上游若给 `rikkahub.keep` 加了新规则，正常合并即可；本文件与它互不干扰。
+
+# ---- 原 app/proguard-rules.pro 迁移过来的规则 ----
+
+# RaTeX FontCache — 反射访问私有字段，需保留原始类/字段名
+-keep class io.ratex.FontCache {
+    private *;
+}
+-keepclassmembers class io.ratex.FontCache {
+    private *;
+}
+
+# The embedded Ktor server signs and verifies JWTs through Auth0/Jackson at runtime.
+# Keep their implementation intact because R8 optimization can break JWT payload parsing.
+-keep class com.fasterxml.jackson.** { *; }
+-keep class com.auth0.jwt.** { *; }

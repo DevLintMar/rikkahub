@@ -11,7 +11,11 @@ local.properties
 .cursor
 .history
 .kotlin
-references
+# 本地参考资料不入库。**两条都必须锚定**：裸 `references` 会匹配任意层级，
+# 上游往 `.agents/skills/*/references/` 加文件时会被静默忽略（`git check-ignore` 实测过，
+# 根目录的 references/ 与 docs/references/ 是靠同一条裸规则命中的）。
+/references/
+/docs/references/
 # 签名密钥与 Firebase 配置绝不入库（CI 用 repo secrets 注入）
 *.keystore
 *.jks
