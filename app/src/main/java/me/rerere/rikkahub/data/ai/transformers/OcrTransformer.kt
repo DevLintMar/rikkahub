@@ -5,6 +5,7 @@ import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import me.rerere.ai.core.MessageRole
@@ -25,11 +26,23 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
 import java.io.File
 import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.seconds
 
 private const val TAG = "OcrTransformer"
 
 /** OCR 模型调用失败自动重试：1 次初始 + 3 次重试 = 4 次尝试（网络波动等瞬时错误） */
 private const val OCR_MAX_ATTEMPTS = 4
+
+/**
+ * 单次 OCR 调用的硬上界。全局 provider 客户端只有 `readTimeout = 10 分钟` 而**没有**
+ * `callTimeout`，所以「连得上但不返回」的服务端能把一次调用拖满 10 分钟；再乘上 4 次重试
+ * 就是 40 分钟，而且每张图各算一遍 —— 用户看到的就是「发消息后一直转圈」。
+ * read_image 的 http 下载当初是同一类问题（见 `ReadImageTools.kt` 顶部注释）。
+ */
+private val OCR_ATTEMPT_TIMEOUT = 120.seconds
+
+/** [OCR_ATTEMPT_TIMEOUT] 触发的超时。单独一个类型，好让 [retryOnFailure] 的 retryIf 认出它并停止重试。 */
+private class OcrTimeoutException(message: String) : Exception(message)
 
 object OcrTransformer : InputMessageTransformer, KoinComponent {
     private val cache by lazy {
@@ -100,27 +113,34 @@ object OcrTransformer : InputMessageTransformer, KoinComponent {
         val provider = get<ProviderManager>().getProviderByType(providerSetting)
 
         return try {
-            // 网络波动等瞬时错误自动重试（1 次初始 + 3 次重试），全部失败才把错误返回给模型
+            // 网络波动等瞬时错误自动重试（1 次初始 + 3 次重试），全部失败才把错误返回给模型。
+            // **超时不重试**：服务端连得上却不返回时，重试只是再等一轮（与 Retry.kt、
+            // ReadImageTools 的同一条判断），不如尽快把错误交回模型。
             val content = retryOnFailure(
                 attempts = OCR_MAX_ATTEMPTS,
                 onRetry = { attempt, e ->
                     Logging.log(TAG, "performOcr: attempt $attempt failed, retrying: ${e.message}")
                 },
+                retryIf = { it !is OcrTimeoutException },
             ) {
-                val result = provider.generateText(
-                    providerSetting = providerSetting,
-                    messages = listOf(
-                        UIMessage.system(settings.ocrPrompt),
-                        UIMessage(
-                            role = MessageRole.USER,
-                            parts = listOf(UIMessagePart.Image(part.url))
-                        )
-                    ),
-                    params = TextGenerationParams(
-                        model = model,
-                        customHeaders = model.customHeaders,
-                        customBody = model.customBodies,
-                    ),
+                val result = withTimeoutOrNull(OCR_ATTEMPT_TIMEOUT) {
+                    provider.generateText(
+                        providerSetting = providerSetting,
+                        messages = listOf(
+                            UIMessage.system(settings.ocrPrompt),
+                            UIMessage(
+                                role = MessageRole.USER,
+                                parts = listOf(UIMessagePart.Image(part.url))
+                            )
+                        ),
+                        params = TextGenerationParams(
+                            model = model,
+                            customHeaders = model.customHeaders,
+                            customBody = model.customBodies,
+                        ),
+                    )
+                } ?: throw OcrTimeoutException(
+                    "OCR attempt timed out after ${OCR_ATTEMPT_TIMEOUT.inWholeSeconds}s"
                 )
                 // 空响应视为失败（交由 retryOnFailure 重试），与上游 checkNotNull 语义一致
                 result.message.toText().ifBlank { error("OCR failed: empty response") }
