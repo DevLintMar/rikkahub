@@ -1,9 +1,10 @@
 # 交接文档：C 类剩余 7 项 + D 类 5 项落地
 
 **日期**：2026-09-13（当日第二份；前一份为同日的 `2026-09-13-ui-image-fixes-and-cd-remaining-next-phase.md`）
-**状态**：**代码 HEAD = `a02b3123`**（debug CI 在此绿，见 §3）；文档 HEAD = `b57f57ea`。工作树干净，全部已 push。
+**状态**：**代码/配置 HEAD = `72f4826b`**（debug CI 在 `89a87259` 真绿、instrumented 在 `72f4826b` 真绿；其后只有文档提交）。工作树干净，全部已 push。
 **目的**：按用户指令「动手做 C 项剩余内容，D 项除了 workspace 不备份都做」——
-C 类 7 件全部动过（其中 1 件只做到可重生成、未真正重新生成，见 §5.2），D 类 5 件全部改完。
+C 类 7 件全部动过（C7 的重生成任务**已跑通、产物已实测**，但按用户决定**未入库**，见 §5.2），
+D 类 5 件全部改完。
 
 > **A/B/C/D/E 是什么**：更早一轮「告知我所有问题」的 62 项清单分组 ——
 > **A** 合并已静默破坏的 11 项｜**B** 「半截」/行为变化 23 项｜**C** 结构性风险：下次同步必踩 17 项｜
@@ -14,7 +15,7 @@ C 类 7 件全部动过（其中 1 件只做到可重生成、未真正重新生
 
 ## 0. 一句话概况
 
-**12 个提交**（11 代码/配置 + 1 文档），33 文件、+848 / −219，新增 4 个文件。
+**11 个代码/配置提交 + 4 个文档提交**，新增 4 个文件（改动面用 `git diff --shortstat d903a378..HEAD` 现查 —— 本轮之后又补了 CI 修复，不要再抄旧数字）。
 C 类里 4 条「静默破坏」的结构性根因被一次性掐掉（`matchingFallbacks`、keep 拆分、
 `.gitignore` 锚定、`WorkspaceShellContext` 唯一构造点），门禁从「写了没人跑」变成
 **真跑**（两个审计脚本 + 全模块单测 + 每周 instrumentation），D 类 5 条历史挂起全部改完。
@@ -37,6 +38,17 @@ c5777457 chore(build): fork 的 keep 规则拆成独立文件；.gitignore 的 r
 c98b8fc8 refactor(build): pre 变体改用 matchingFallbacks，删掉 11 个库模块的重复 buildType ← C1
 ```
 
+其后（接通 instrumented CI 的过程中陆续补的）：
+
+```
+72f4826b fix(test): speech 的 instrumentation 断言用模块 namespace；instrumented 加 --continue
+89a87259 fix(build): 三个模块补上 androidTest 依赖，它们的 instrumentation 测试从未编译过
+6cc4bec6 fix(ci): instrumented 工作流补上 submodules: recursive
+b57f57ea docs: 更新日志补 C/D 类改动；同步清单勾掉已根治的 4 条
+68d1225a docs(handoff): C 类剩余 7 项 + D 类 5 项交接
+09dabba3 docs: 同步清单记下「只构建 debug」新规矩与其代价
+```
+
 **回滚锚点 = `d903a378`**（上一阶段的 HEAD）。
 
 ### 1.1 逐条落点
@@ -49,7 +61,7 @@ c98b8fc8 refactor(build): pre 变体改用 matchingFallbacks，删掉 11 个库�
 | **C4** `WorkspaceShellContext` 双构造点 | ✅ 合并成私有 `buildShellContext` + **字段全部去掉默认值** + 反射单测锁死 | `WorkspaceManager.kt`、`WorkspaceShellRunner.kt`、**新增 `WorkspaceShellContextTest.kt`** |
 | **C5** 门禁脚本进 CI | ✅ `prefs_key_audit.py` 与 `baseline_profile_audit.py --strict` 进 nightly-debug | `.github/workflows/nightly-build-debug.yml`、两个脚本 |
 | **C6** `androidTest` 进 CI | ✅ 新增每周六 + 可手动的 `Android Instrumented` 工作流跑 `connectedDebugAndroidTest`；接通过程中顺带修了三处「静默的坏状态」（缺 submodule、三个模块缺 androidTest 依赖、`speech` 断言旧包名），见 §3.2 | **新增 `.github/workflows/android-instrumented.yml`**、`highlight`/`material3`/`search` 的 `build.gradle.kts`、`speech/src/androidTest/.../ExampleInstrumentedTest.kt` |
-| **C7** 重新生成 baselineProfiles | ⚠️ **部分**：可重生成的入口做好了（模拟器任务 + 审计允许表），**profile 本身没有重新生成** | 同上 + `baseline_profile_audit.py` |
+| **C7** 重新生成 baselineProfiles | ⚠️ **跑了但没入库**：重生成任务已跑通、产物已实测（死规则 **7→0**、`StreamChunk` 从 0 条到有），但用户决定**维持现状不换文件**；入口 + 审计允许表见 §5.2 | 同上 + `baseline_profile_audit.py` |
 | **D2** `file://` 链接点击崩 | ✅ 收敛成唯一的 `openMarkdownLink`，全分支吞异常；`LocalUriHandler` 也换成安全实现 | `Markdown.kt` |
 | **D3** OCR 无时间上界 | ✅ 单次调用 120s 上界、超时不重试；顺带修 `Call.await` 取消时没取消底层请求 | `OcrTransformer.kt`、`common/.../http/Request.kt` |
 | **D4** BMP 能识别不能发 | ✅ `guessMimeType` 补 BMP 魔数；转码走既有的解码→JPEG 路径 | `ai/.../util/FileEncoder.kt` + **新增 `FileEncoderMimeTypeTest.kt`** |
@@ -208,7 +220,7 @@ CI 一次过 —— 说明它们本身是好的，只是没人跑。这与 C6「
 > 这条正好回答了「为什么当初要把 androidTest 接进 CI」：接上之前，
 > 仓库里同时躺着「从未执行」和「编译不过」两种坏状态，而且**都是静默的**。
 
-### 2.8 C7：做到了「能重生成」，没做到「已重生成」
+### 2.8 C7：重生成跑通了，但产物没入库
 
 审计脚本实测：两份 profile **逐字节相同**（sha256 都是 `e51f505d…`），
 且各有 **7 条规则指向已不存在的类**：
@@ -233,8 +245,13 @@ CI 一次过 —— 说明它们本身是好的，只是没人跑。这与 C6「
    启动优化失效」的说明），但 `--strict` **只对新增过期项**返回 1 —— 这样 nightly 的门禁
    不会被一条已知欠账废掉，同时新增的过期项依然拦得住。
 
-**没有做**：真正跑一次重新生成、把新 profile 提交进来。这需要你触发一次那个任务
-（或把设备插上跑 `./gradlew :app:generateReleaseBaselineProfile`），见 §5.2。
+**还做了**：任务写好后**真跑了一次**（run `34763441066`，11m23s），产物实测死规则 7→0、
+`StreamChunk` 从 0 条变成有 —— 所以「这条链路能不能用」已经验证过了。
+
+**结论是不要入库**（用户 2026-09-13 决定）：新文件「更准但更瘦」—— 第三方库
+（okhttp 1347→232、koin 384→129）的规则少了一大截，根因怀疑是 CI 模拟器上
+**全新安装、App 没配置**，宏基准旅程等不到 `chat_input` 就缩水了。细节、对比表与
+「下次要先修旅程」的顺序见 §5.2。
 
 ---
 
@@ -252,6 +269,7 @@ CI 一次过 —— 说明它们本身是好的，只是没人跑。这与 C6「
 | `34760850198` | instrumented | ❌ failure（`6cc4bec6`） | 第 2 轮：编译往前走了 389 个 task，停在 `:highlight:compileDebugAndroidTestKotlin` —— `highlight`/`material3`/`search` 三个模块**有 androidTest 源文件却没有任何 androidTest 依赖** |
 | `34761366878` | instrumented | ❌ failure（`89a87259`） | 第 3 轮：**测试真的在模拟器上跑起来了**（620 个 task、9m42s），`:speech:ExampleInstrumentedTest` 断言旧包名失败：断言 `me.rerere.tts.test`，实际 `me.rerere.speech.test` |
 | `34762230548` | instrumented | ✅ **success**（`72f4826b`） | 第 4 轮：`BUILD SUCCESSFUL in 8m 39s`、661 个 task、17 个 step 全 success。**12 个模块的 `connectedDebugAndroidTest` 全部执行**：`:app` **17 个测试**（DB 迁移 / 消息统计 / 备份 / 数据库备份 —— 此前从未执行过），其余 9 个模块各 1 个样板测试 |
+| `34763441066` | baseline-profile | ✅ **success**（`09dabba3`） | **按需手动触发的重生成任务，已跑通**：`:app:generateReleaseBaselineProfile -PwithX86_64`，11m23s、345 个 task；CI 内的审计对新文件报 **0 条过期**。**产物未入库**（用户 2026-09-13 决定），见 §5.2 |
 | `34760385270` | pre | ⛔ **cancelled（人工取消）** | 我触发它用来验证 C1，被用户的新规矩叫停（见 §3.1）。取消发生在 `Gradle Build` 阶段，`Point tag` 与 `Publish` 两步都是 **skipped** —— 没有移动 `nightly-pre` tag、没有发布 prerelease，无残留 |
 
 ### 3.1 新规矩：不再构建 pre / release（2026-09-13 用户指令）
@@ -336,7 +354,55 @@ Gradle 失败后不再调度新任务，所以后面还没跑的模块是「未�
 
 > 上一份交接（五项界面修复）的 §5.1 六条**仍未核验**，一并过一遍。
 
-### 5.2 C7 剩下的那一步（唯一没做完的 C 项）
+### 5.2 C7：重生成**跑过了**，产物**没有入库**（用户 2026-09-13 决定）
+
+> 本节原先写的是「怎么重新生成」。现已实际执行，改记实测结果与决定 —— 原文保留在 git 历史里。
+
+**跑过的**：`Android Instrumented` → `task = baseline-profile`（run `34763441066`，`09dabba3`，成功）。
+`:app:generateReleaseBaselineProfile -PwithX86_64` 在 x86_64 模拟器上跑了 **11m23s**（345 个 task）。
+产物随时可取回：
+
+```
+gh run download 34763441066 --repo DevLintMar/rikkahub -n baseline-profiles --dir <本地目录>
+```
+
+**产物实测**（对比仓库里当时的版本）：
+
+| 指标 | 旧（仓库里） | 新（重新生成） |
+|---|---|---|
+| 指向已不存在类的规则 | **7 条** | **0 条** ✅ |
+| 覆盖到的**自家**类 | 255 | **272** ↑ |
+| 覆盖到的依赖类 | 6510 | **4392** ↓ |
+| `StreamChunk`（旧文件里一条都没有） | 0 | **3** ✅ |
+| `okhttp3/` 规则 | 1347 | 232 |
+| `koin` 规则 | 384 | 129 |
+| `ui/pages/chat/` | 613 | 226 |
+| `data/db/` | 278 | 80 |
+| 文件大小 / 行数 | 5.18 MB / 48545 | 1.97 MB / 19771 |
+
+**为什么没有入库**：新文件「更准但更瘦」—— 死规则清零、自家类覆盖反而更广、
+`StreamChunk` 这个已知空洞补上了，但**第三方库（okhttp/koin）的规则少了一大截**，
+冷启动里那部分优化会变弱。两边的取舍说不清谁更值，用户决定维持现状。
+
+**根因怀疑（下次要先解决这个）**：CI 模拟器上是**全新安装、App 没有配置**，
+`BaselineProfileGenerator` 里
+`device.wait(Until.hasObject(By.res("chat_input")), 5_000)` 那一步很可能没等到，
+整条宏基准旅程就缩水成「启动一次」。旁证：`richtext/Markdown` 在新旧文件里**都是 0 条** ——
+那次旅程本来也没走到 markdown 渲染。
+
+**下次要做，顺序是「先修旅程、再重跑」**：
+
+1. 让全新安装也能走到聊天页 —— 要么预置一份最小的 settings/助手，要么把旅程改成
+   不依赖配置就能到达的路径（设置页可达）；
+2. 重跑 `baseline-profile` 任务，确认依赖类覆盖**没有**明显缩水，再入库；
+3. 入库后 `python docs/superpowers/scripts/baseline_profile_audit.py` 的 7 条应当消失 ——
+   **消失后请把这 7 条从脚本的 `KNOWN_STALE` 里删掉**。
+
+**顺带纠正一条旧判断**：两份 profile「逐字节相同」**不是**缺陷。
+`baseline-prof.txt` 与 `startup-prof.txt` 由 AGP 的同一次收集同时产出 —— 旧文件如此，
+重新生成后**仍然如此**。审计脚本里那句「可疑」的措辞已就地改正。
+
+#### 原「怎么重新生成」（保留备用）
 
 **重新生成 baselineProfiles**，二选一：
 
@@ -416,13 +482,14 @@ B. CI 上（无需设备）：
   12 个模块 26 个测试）**。同步清单里 4 条结构性风险就地改成已根治。
   debug CI 真绿（21 step / 0 skipped）；instrumented 真绿（17 step 全 success）。
 - **未完成 / 需要人工**：
-  1. **C7 的重新生成**（§5.2）—— 需要设备或手动触发一次 `baseline-profile` 任务（该任务已获准保留）；
+  1. **C7 的产物入库**（§5.2）—— 任务已跑通、产物已实测（死规则 7→0），但按用户决定**未入库**；
+     下次要**先修宏基准旅程**（让全新安装也能走到聊天页）再重跑，否则依赖类覆盖会缩水；
   2. **C1 / B22 的 `assemblePre` 验证** —— 按新规矩不再跑 pre，只能靠每日 cron 自己触发，
      或者在真要出 pre 包时当成「未验证」对待（§3.1）；
   3. **本轮 5 项 + 上一轮 5 项的设备核验**（§5.1）；
   4. `ChatMessage.kt` 的引用链接（§5.3，刻意留的）。
 - **建议的下一步顺序**：
-  1. 触发一次 `baseline-profile` 任务（无需设备即可结掉 C7 的最后一步）；
+  1. 修 `BaselineProfileGenerator` 的旅程后重跑 `baseline-profile`，再决定要不要入库（§5.2）；
   2. 上设备过 §5.1 的核验表（两轮一起过）。
 - **恢复动作**：读本文档 §3.1 / §5，再读 `docs/superpowers/upstream-sync-checklist.md`
   与审计文档 §2（D 类原始描述在 §2-5、C4 在 §2-7）。

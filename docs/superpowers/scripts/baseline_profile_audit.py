@@ -144,7 +144,9 @@ def main() -> int:
     for name, digest in digests.items():
         print(f"  {name:20s} sha256={digest[:16]}…")
     identical = len(set(digests.values())) == 1
-    print(f"  两份逐字节相同：{'是（可疑：职责不同却完全一致）' if identical else '否'}")
+    print(
+        f"  两份逐字节相同：{'是（正常：AGP 由同一次收集同时产出两者，2026-09-13 重新生成后仍然如此）' if identical else '否'}"
+    )
 
     declared, packages = scan_sources()
     print(f"\n== 与源码树对账（声明类 {len(declared)} 个 / 包 {len(packages)} 个）==")
