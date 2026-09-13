@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -84,8 +85,61 @@ fun S3Tab(
     var restoringItemId by remember { mutableStateOf<String?>(null) }
     var isBackingUp by remember { mutableStateOf(false) }
 
+    // 待确认的恢复目标。恢复会替换 DB 与 settings，必须先确认再动手 ——
+    // 本地导入早就有确认框，S3 此前点一下「恢复」就直接覆盖（审计 §2-5）。
+    var restoreConfirmItem by remember { mutableStateOf<S3BackupItem?>(null) }
+
     fun updateS3Config(newConfig: S3Config) {
         vm.updateSettings(settings.copy(s3Config = newConfig))
+    }
+
+    fun performRestore(item: S3BackupItem) {
+        scope.launch {
+            restoringItemId = item.displayName
+            runCatching {
+                vm.restoreFromS3(item = item)
+                toaster.show(
+                    context.getString(R.string.backup_page_restore_success),
+                    type = ToastType.Success
+                )
+                showBackupFiles = false
+                onShowRestartDialog()
+            }.onFailure { err ->
+                err.printStackTrace()
+                toaster.show(
+                    context.getString(
+                        R.string.backup_page_restore_failed,
+                        err.message ?: ""
+                    ),
+                    type = ToastType.Error
+                )
+            }
+            restoringItemId = null
+        }
+    }
+
+    val restoreTarget = restoreConfirmItem
+    if (restoreTarget != null) {
+        AlertDialog(
+            onDismissRequest = { restoreConfirmItem = null },
+            title = { Text(stringResource(R.string.backup_page_restore)) },
+            text = { Text(stringResource(R.string.backup_page_import_overwrite_confirm)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        restoreConfirmItem = null
+                        performRestore(restoreTarget)
+                    }
+                ) {
+                    Text(stringResource(R.string.confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { restoreConfirmItem = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
     }
 
     val lastBackupText = if (settings.backupReminderConfig.lastBackupTime == 0L) {
@@ -374,28 +428,7 @@ fun S3Tab(
                                     }
                                 },
                                 onRestore = { restoreItem ->
-                                    scope.launch {
-                                        restoringItemId = restoreItem.displayName
-                                        runCatching {
-                                            vm.restoreFromS3(item = restoreItem)
-                                            toaster.show(
-                                                context.getString(R.string.backup_page_restore_success),
-                                                type = ToastType.Success
-                                            )
-                                            showBackupFiles = false
-                                            onShowRestartDialog()
-                                        }.onFailure { err ->
-                                            err.printStackTrace()
-                                            toaster.show(
-                                                context.getString(
-                                                    R.string.backup_page_restore_failed,
-                                                    err.message ?: ""
-                                                ),
-                                                type = ToastType.Error
-                                            )
-                                        }
-                                        restoringItemId = null
-                                    }
+                                    restoreConfirmItem = restoreItem
                                 },
                             )
                         }

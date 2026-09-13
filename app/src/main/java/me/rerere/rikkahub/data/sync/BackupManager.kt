@@ -50,7 +50,10 @@ class BackupManager(
             val settings = settingsStore.settingsFlowRaw.first()
             // 备份诊断：确认备份包是否含附件/头像文件
             val imageAvatarCount = settings.assistants.count { it.avatar is Avatar.Image }
+            // upload/ 与 images/ 分开计数：合在一起时字段名 `uploadFiles` 会名不副实
+            // （images/ 是 AI 生成图，不属于附件），排查「备份里到底有没有图」时会被误导。
             var uploadFileCount = 0
+            var imageFileCount = 0
             ZipOutputStream(FileOutputStream(archive)).use { zip ->
                 zip.putNextEntry(ZipEntry("settings.json"))
                 zip.write(json.encodeToString(settings).toByteArray(Charsets.UTF_8))
@@ -71,7 +74,8 @@ class BackupManager(
                             currentCoroutineContext().ensureActive()
                             val relative = file.relativeTo(directory).invariantSeparatorsPath
                             PendingRestore.resolveInside(directory, relative)
-                            if (folder == FileFolders.UPLOAD || folder == IMAGES_FOLDER) uploadFileCount++
+                            if (folder == FileFolders.UPLOAD) uploadFileCount++
+                            if (folder == IMAGES_FOLDER) imageFileCount++
                             addFile(zip, file, "$folder/$relative")
                         }
                     }
@@ -80,7 +84,9 @@ class BackupManager(
             Logging.log(
                 TAG,
                 "createBackup: db=$includeDatabase files=$includeFiles uploadFiles=$uploadFileCount " +
-                    "imageAssistantAvatars=$imageAvatarCount zipBytes=${archive.length()}"
+                    "images=$imageFileCount " +
+                    "imageAssistantAvatars=$imageAvatarCount/${settings.assistants.size} " +
+                    "zipBytes=${archive.length()}"
             )
             archive
         } catch (e: Throwable) {
@@ -106,6 +112,8 @@ class BackupManager(
                     var stagedImages = 0
                     var rebasedSettingsRefs = 0
                     var imageAvatarCount = 0
+                    var assistantCount = 0
+                    var userAvatar = "unknown"
                     ZipFile(archive).use { zip ->
                         for (entry in zip.entries()) {
                             currentCoroutineContext().ensureActive()
@@ -167,6 +175,8 @@ class BackupManager(
                         val settings = json.decodeFromString<Settings>(rebasedJson)
                         require(!settings.init) { "Backup contains uninitialized settings" }
                         imageAvatarCount = settings.assistants.count { it.avatar is Avatar.Image }
+                        assistantCount = settings.assistants.size
+                        userAvatar = settings.displaySetting.userAvatar::class.simpleName ?: "unknown"
                         // Persist the migrated value once, including generated IDs, for restart/retry consistency.
                         PendingRestore.writeDurably(settingsFile, json.encodeToString(settings))
                     }
@@ -184,11 +194,15 @@ class BackupManager(
                     }
                     writeRestoreDiagnostics(
                         archive = archive,
+                        includeDatabase = includeDatabase,
+                        includeFiles = includeFiles,
                         entries = restoredEntries,
                         uploadFiles = stagedUploadFiles,
                         images = stagedImages,
                         rebaseCount = rebasedSettingsRefs,
                         imageAvatarCount = imageAvatarCount,
+                        assistantCount = assistantCount,
+                        userAvatar = userAvatar,
                     )
                 } finally {
                     staging.deleteRecursively()
@@ -199,20 +213,35 @@ class BackupManager(
     /**
      * 恢复诊断：写入 noBackupFilesDir/restore_diag.txt，启动时由 RikkaHubApp 回放进日志页。
      * （恢复流程会在重启前落盘，进程内 Logging 会丢失，故必须写文件）
+     *
+     * 字段集合与 fork 手写实现时代对齐 —— 上游收成 `BackupManager` 时丢过 `items=`、
+     * `userAvatar=` 和 `imageAssistantAvatars` 的分母，排查「头像/附件没恢复」时最需要的
+     * 恰好就是这三项：`items` 说明备份里到底要恢复什么，`userAvatar` 说明头像类型解出来了没，
+     * 分母说明「0/N」到底是全丢还是本来就没有图片头像。
      */
     private fun writeRestoreDiagnostics(
         archive: File,
+        includeDatabase: Boolean,
+        includeFiles: Boolean,
         entries: Int,
         uploadFiles: Int,
         images: Int,
         rebaseCount: Int,
         imageAvatarCount: Int,
+        assistantCount: Int,
+        userAvatar: String,
     ) {
         runCatching {
             File(context.noBackupFilesDir, "restore_diag.txt").writeText(
                 buildString {
-                    appendLine("restore: ${archive.name} entries=$entries")
-                    appendLine("settings: rebaseCount=$rebaseCount imageAssistantAvatars=$imageAvatarCount")
+                    appendLine(
+                        "restore: ${archive.name} " +
+                            "items=db:$includeDatabase,files:$includeFiles entries=$entries"
+                    )
+                    appendLine(
+                        "settings: rebaseCount=$rebaseCount userAvatar=$userAvatar " +
+                            "imageAssistantAvatars=$imageAvatarCount/$assistantCount"
+                    )
                     appendLine("restore: stagedUploadFiles=$uploadFiles stagedImages=$images")
                 }
             )
