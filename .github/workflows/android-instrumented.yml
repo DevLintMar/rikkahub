@@ -33,6 +33,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # material3 模块的源码里有一份 git submodule（material-color-utilities），
+          # 不递归检出会以 `Unresolved reference 'dynamiccolor'` 的形式炸在 :material3 编译上
+          submodules: recursive
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -107,6 +111,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive  # material3 的 material-color-utilities，同 instrumented-tests
 
       - name: Set up JDK
         uses: actions/setup-java@v4
