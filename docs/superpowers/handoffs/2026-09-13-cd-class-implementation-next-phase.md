@@ -38,15 +38,15 @@ c5777457 chore(build): fork 的 keep 规则拆成独立文件；.gitignore 的 r
 c98b8fc8 refactor(build): pre 变体改用 matchingFallbacks，删掉 11 个库模块的重复 buildType ← C1
 ```
 
-其后（接通 instrumented CI 的过程中陆续补的）：
+在 `b57f57ea` 之后又补了（接通 instrumented CI 与 baselineProfile 实测过程中陆续加的，新到旧）：
 
 ```
+83c621e7 docs: 记下 baselineProfile 重生成的实测结果与「不入库」决定
+09dabba3 docs: 同步清单记下「只构建 debug」新规矩与其代价
+68d1225a docs(handoff): C 类剩余 7 项 + D 类 5 项交接
 72f4826b fix(test): speech 的 instrumentation 断言用模块 namespace；instrumented 加 --continue
 89a87259 fix(build): 三个模块补上 androidTest 依赖，它们的 instrumentation 测试从未编译过
 6cc4bec6 fix(ci): instrumented 工作流补上 submodules: recursive
-b57f57ea docs: 更新日志补 C/D 类改动；同步清单勾掉已根治的 4 条
-68d1225a docs(handoff): C 类剩余 7 项 + D 类 5 项交接
-09dabba3 docs: 同步清单记下「只构建 debug」新规矩与其代价
 ```
 
 **回滚锚点 = `d903a378`**（上一阶段的 HEAD）。
