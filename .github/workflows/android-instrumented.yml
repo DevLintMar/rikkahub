@@ -1,0 +1,193 @@
+name: Android Instrumented
+
+# 两件此前无处可做的事：
+#  1. androidTest —— 全仓 14 个 instrumentation 测试从来没跑过（形同死代码）；
+#  2. 重新生成 baselineProfiles —— 需要一台 API 33+ 的设备/模拟器，
+#     本机没有 Android 编译器，只能借 Actions 的模拟器。
+#
+# 两者都需要 x86_64：Hosted runner 的模拟器是 x86_64，而 app 的发布包只打 arm64-v8a，
+# 靠 `-PwithX86_64` 临时把 x86_64 一起打进去（见 app/build.gradle.kts 的 ndk.abiFilters）。
+on:
+  schedule:
+    # 每周六 17:40（错开 nightly 的 18:00/18:30/19:00）
+    - cron: '40 17 * * 6'
+  workflow_dispatch:
+    inputs:
+      task:
+        description: '要执行的任务'
+        type: choice
+        options:
+          - instrumented-tests
+          - baseline-profile
+        default: instrumented-tests
+
+concurrency:
+  group: android-instrumented
+  cancel-in-progress: true
+
+jobs:
+  instrumented-tests:
+    if: github.event_name == 'schedule' || inputs.task == 'instrumented-tests'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web-ui/pnpm-lock.yaml
+
+      - name: Install web-ui dependencies
+        working-directory: web-ui
+        run: pnpm install --frozen-lockfile
+
+      - name: Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Prepare build files
+        run: |
+          cat > local.properties << 'PROPERTIES'
+          android.useAndroidX=true
+          android.enableJetifier=false
+          PROPERTIES
+          echo '{"project_info":{"project_number":"0","project_id":"instrumented"},"client":[{"client_info":{"mobilesdk_app_id":"1:0:android:0000000000000000","android_client_info":{"package_name":"xyz.lynsei.rikkahub.debug"}},"oauth_client":[],"api_key":[{"current_key":""}]}]}' > app/google-services.json
+
+      - name: Run instrumented tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: |
+            chmod +x gradlew
+            ./gradlew connectedDebugAndroidTest -PwithX86_64
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: instrumented-test-reports
+          path: '**/build/reports/androidTests/**'
+          if-no-files-found: warn
+
+  baseline-profile:
+    if: github.event_name == 'workflow_dispatch' && inputs.task == 'baseline-profile'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web-ui/pnpm-lock.yaml
+
+      - name: Install web-ui dependencies
+        working-directory: web-ui
+        run: pnpm install --frozen-lockfile
+
+      - name: Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Prepare signing key
+        run: |
+          set -eu
+          if [ -z "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" ]; then
+            echo "RELEASE_KEYSTORE_BASE64 secret 未配置，拒绝运行（release 包装不上模拟器）"
+            exit 1
+          fi
+          echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > app/release.keystore
+
+      - name: Prepare build files
+        run: |
+          cat > local.properties << 'PROPERTIES'
+          android.useAndroidX=true
+          android.enableJetifier=false
+          storeFile=release.keystore
+          storePassword=android
+          keyAlias=release
+          keyPassword=android
+          PROPERTIES
+          echo '{"project_info":{"project_number":"0","project_id":"baseline"},"client":[{"client_info":{"mobilesdk_app_id":"1:0:android:0000000000000000","android_client_info":{"package_name":"xyz.lynsei.rikkahub"}},"oauth_client":[],"api_key":[{"current_key":""}]}]}' > app/google-services.json
+
+      - name: Generate baseline profile
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: |
+            chmod +x gradlew
+            ./gradlew :app:generateReleaseBaselineProfile -PwithX86_64
+
+      - name: Audit regenerated profiles
+        if: always()
+        run: |
+          python3 docs/superpowers/scripts/baseline_profile_audit.py || true
+
+      - name: Upload regenerated profiles
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-profiles
+          path: app/src/release/generated/baselineProfiles/
+          if-no-files-found: warn

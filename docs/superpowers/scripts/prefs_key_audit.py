@@ -45,27 +45,41 @@ def analyze(label, text):
 
 
 cur = analyze("HEAD", open(PATH, encoding="utf-8").read())
-old = analyze(
-    BASELINE,
-    subprocess.run(
+
+baseline_ok = True
+old = (set(), set(), set())
+if not BASELINE:
+    baseline_ok = False
+    print("### 未指定基线 ref，跳过「迁移前后」比对（只做 HEAD 的只读/写入检查）")
+else:
+    proc = subprocess.run(
         ["git", "show", BASELINE + ":" + PATH],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
-    ).stdout,
-)
+    )
+    if proc.returncode != 0 or not proc.stdout:
+        baseline_ok = False
+        print(
+            f"### 取不到基线 {BASELINE}（浅克隆？ref 已不存在？）—— 跳过「迁移前后」比对，\n"
+            f"### 只做 HEAD 的只读/写入检查。想比全就用 fetch-depth: 0 检出。\n"
+            f"### git 输出：{(proc.stderr or '').strip()[:200]}"
+        )
+    else:
+        old = analyze(BASELINE, proc.stdout)
 
 failed = False
-for name, (_d, r, w) in (("HEAD", cur), (BASELINE, old)):
+for name, (_d, r, w) in (("HEAD", cur),):
     lost = sorted(r - w - set(ALLOWED_READ_ONLY))
     print(f"[{name}] 读取但从不写入（{len(lost)}）: {lost}")
-    if name == "HEAD" and lost:
+    if lost:
         failed = True
     print(f"[{name}] 声明了但既没读也没写: {sorted(_d - r - w)}")
 
-print(f"\n=== 合并前有写入、现在没有写入的键（= 迁移中丢掉的写入）===")
-lost_writes = sorted(old[2] - cur[2])
-print(lost_writes if lost_writes else "（无）")
-print("\n=== 现在新增写入的键 ===")
-print(sorted(cur[2] - old[2]) or "（无）")
+if baseline_ok:
+    print(f"\n=== 合并前有写入、现在没有写入的键（= 迁移中丢掉的写入）===")
+    lost_writes = sorted(old[2] - cur[2])
+    print(lost_writes if lost_writes else "（无）")
+    print("\n=== 现在新增写入的键 ===")
+    print(sorted(cur[2] - old[2]) or "（无）")
 
 if failed:
     print("\nFAIL：存在只读不写的键 —— 要么补写入，要么加进 ALLOWED_READ_ONLY 并写明理由")

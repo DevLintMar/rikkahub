@@ -16,11 +16,16 @@ Baseline Profile 生成器产出的 ART 规则，**不会随代码重构自动�
 它只报告，不做修复：重新生成需要一台连着设备/模拟器的机器
 （`./gradlew :app:generateReleaseBaselineProfile`；`app/baselineprofile/build.gradle.kts`
 里写的是 `useConnectedDevices = true`），本机没有 Android 编译器。
+**CI 上的做法**：`Android Instrumented` 工作流的 `baseline-profile` 任务
+（`.github/workflows/android-instrumented.yml`，x86_64 模拟器 + `-PwithX86_64`）。
+
+已知的过期项列在 [KNOWN_STALE] 里：`--strict` 只对**不在**该表中的过期项返回 1，
+这样 nightly debug 的门禁不会因为一条已知欠账而整体失效，同时又拦得住新增的。
 
 用法：
 
-    python docs/superpowers/scripts/baseline_profile_audit.py            # 只报告
-    python docs/superpowers/scripts/baseline_profile_audit.py --strict   # 有过期项时退出码 1
+    python3 docs/superpowers/scripts/baseline_profile_audit.py            # 只报告
+    python3 docs/superpowers/scripts/baseline_profile_audit.py --strict   # 有**新增**过期项时退出码 1
 """
 
 from __future__ import annotations
@@ -55,6 +60,26 @@ DECL_RE = re.compile(
 #   *_Impl                —— Room / KSP / Hilt 生成的实现类
 SYNTHETIC_NAMES = ("ComposableSingletons", "R")
 SYNTHETIC_SUFFIXES = ("_Impl",)
+
+# 已知过期项：这些规则指向的类在上游合并后搬了包或已被删除，ART 会静默忽略它们 ——
+# 真正的修法是**重新生成**，而那需要一台 API 33+ 的设备/模拟器（见下方 USAGE）。
+# 在重新生成之前列在这里，好让 `--strict` 仍然对**新增**的过期项生效（门禁不能因为
+# 一条已知欠账就整体失效）。修完任何一条都要从这张表里删掉。
+KNOWN_STALE = {
+    "me/rerere/ai/provider/providers/ClaudeProvider": "provider 已拆进 providers/claude/ 子包",
+    "me/rerere/ai/provider/providers/GoogleProvider": "provider 已拆进 providers/google/ 子包",
+    "me/rerere/ai/provider/providers/OpenAIProvider": "provider 已拆进 providers/openai/ 子包",
+    "me/rerere/rikkahub/data/ai/GenerationHandler": "已被上游 GenerationLoop + ChatToolFactory 取代",
+    "me/rerere/rikkahub/data/ai/tools/LocalToolOption": "已搬进 tools/local/ 子包",
+    "me/rerere/rikkahub/data/ai/tools/LocalTools": "已搬进 tools/local/ 子包",
+    "me/rerere/rikkahub/data/api/SponsorAPI": "fork 已移除赞助商功能",
+}
+
+REGENERATE_HINT = (
+    "重新生成：Actions → Android Instrumented → Run workflow → task = baseline-profile\n"
+    "（本机没有 Android 编译器；该任务在 x86_64 模拟器上跑 :app:generateReleaseBaselineProfile，\n"
+    " 产物作为 baseline-profiles artifact 上传，人工确认后再提交。）"
+)
 
 
 def scan_sources() -> tuple[set[str], set[str]]:
@@ -141,14 +166,28 @@ def main() -> int:
         print("\n[ok] 没有发现指向已删类的规则。")
         return 0
 
-    print(f"\n[!] {len(stale_total)} 个自有类在源码中已不存在（最多列出 30 个）：")
-    for name in sorted(stale_total)[:30]:
+    known = sorted(stale_total & set(KNOWN_STALE))
+    new = sorted(stale_total - set(KNOWN_STALE))
+
+    if known:
+        print(f"\n[!] {len(known)} 条**已知**过期规则（ART 静默忽略，启动优化在这些路径上失效）：")
+        for name in known[:30]:
+            print(f"      {name}  —— {KNOWN_STALE[name]}")
+        print(f"\n  {REGENERATE_HINT}")
+
+    if not new:
+        print("\n[ok] 没有**新增**的过期项。")
+        return 0
+
+    print(f"\n[!] {len(new)} 条**新增**过期项（不在 KNOWN_STALE 里，最多列出 30 条）：")
+    for name in new[:30]:
         print(f"      {name}")
-    if len(stale_total) > 30:
-        print(f"      … 另有 {len(stale_total) - 30} 个")
+    if len(new) > 30:
+        print(f"      … 另有 {len(new) - 30} 条")
     print(
-        "\n这些规则会被 ART 静默忽略（不会报错，只是优化失效）。重新生成需要连着设备/模拟器：\n"
-        "    ./gradlew :app:generateReleaseBaselineProfile"
+        "\n这些规则会被 ART 静默忽略（不会报错，只是优化失效）。修法有两种：\n"
+        f"  A. {REGENERATE_HINT}\n"
+        "  B. 如果是本次刚引入的、能确认无害，就加进 KNOWN_STALE 并写明理由。"
     )
     return 1 if strict else 0
 

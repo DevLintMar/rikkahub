@@ -98,7 +98,16 @@ jobs:
 
       - name: Unit Tests
         run: |
-          ./gradlew :app:testDebugUnitTest
+          # 全模块，不只是 :app —— ai/ 25 个、speech/ 11 个、workspace/ 3 个等
+          # 共约 49 个测试文件此前从未在任何地方跑过
+          ./gradlew testDebugUnitTest
+
+      - name: Repo gate scripts
+        run: |
+          # 门禁脚本本身也要有人跑，否则等于没接。两者都退出码非 0 即失败。
+          # fetch-depth: 0 让 prefs_key_audit 能取到基线 ref 做三方比对。
+          python3 docs/superpowers/scripts/prefs_key_audit.py
+          python3 docs/superpowers/scripts/baseline_profile_audit.py --strict
 
       - name: Upload Room schema JSON
         uses: actions/upload-artifact@v4
@@ -108,6 +117,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Point tag at this build's commit
+        if: success()
         run: |
           git tag -f nightly-debug
           git push -f origin refs/tags/nightly-debug
