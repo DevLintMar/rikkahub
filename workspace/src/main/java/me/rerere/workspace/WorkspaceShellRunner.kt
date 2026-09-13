@@ -9,6 +9,13 @@ interface WorkspaceShellRunner {
     fun execute(context: WorkspaceShellContext): WorkspaceCommandResult
 }
 
+/**
+ * shell 执行的入参。**各字段刻意没有默认值**：上游每次给它加字段，fork 独有的流式路径
+ * 都曾经「编译得过、只是静默漏传」（[shellCompatibilityMode] 就是这么丢的，见
+ * `docs/superpowers/audits/2026-09-12-upstream-merge-2689e753-audit.md` §2-7）。
+ * 没有默认值 + 构造点只有 [WorkspaceManager.buildShellContext] 一处，任何新增构造点
+ * 或漏传都会编译不过。
+ */
 data class WorkspaceShellContext(
     val root: String,
     val command: String,
@@ -18,14 +25,14 @@ data class WorkspaceShellContext(
     val tempDir: File,
     val workingDir: File,
     val timeoutMillis: Long,
-    val stdin: ByteArray? = null,
-    val bindMounts: List<WorkspaceBindMount> = emptyList(),
-    val shellCompatibilityMode: Boolean = false,
+    val stdin: ByteArray?,
+    val bindMounts: List<WorkspaceBindMount>,
+    val shellCompatibilityMode: Boolean,
     /**
      * 逐行输出回调(用于实时展示), 在收集线程里调用(非协程上下文), 需自行桥接到协程。
-     * 默认为 null, 保持向后兼容。
+     * 同步执行路径显式传 null。
      */
-    val onLine: ((String) -> Unit)? = null,
+    val onLine: ((String) -> Unit)?,
 )
 
 class HostShellRunner : WorkspaceShellRunner {

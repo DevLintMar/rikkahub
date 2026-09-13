@@ -230,18 +230,15 @@ class WorkspaceManager(
         require(workingDir.isDirectory) { "Working path is not a directory: $cwd" }
 
         return shellRunner.execute(
-            WorkspaceShellContext(
+            buildShellContext(
                 root = root,
                 command = command,
                 cwd = cwd,
-                filesDir = filesDir(root),
-                linuxDir = linuxDir(root),
-                tempDir = tempDir(root),
                 workingDir = workingDir,
                 timeoutMillis = timeoutMillis,
                 stdin = stdin,
-                bindMounts = bindMounts,
                 shellCompatibilityMode = shellCompatibilityMode,
+                onLine = null,
             )
         )
     }
@@ -266,22 +263,49 @@ class WorkspaceManager(
         require(workingDir.isDirectory) { "Working path is not a directory: $cwd" }
 
         return shellRunner.execute(
-            WorkspaceShellContext(
+            buildShellContext(
                 root = root,
                 command = command,
                 cwd = cwd,
-                filesDir = filesDir(root),
-                linuxDir = linuxDir(root),
-                tempDir = tempDir(root),
                 workingDir = workingDir,
                 timeoutMillis = timeoutMillis,
                 stdin = stdin,
-                bindMounts = bindMounts,
                 shellCompatibilityMode = shellCompatibilityMode,
                 onLine = onLine,
             )
         )
     }
+
+    /**
+     * **[WorkspaceShellContext] 的唯一构造点**（同步与流式两条路径共用）。
+     *
+     * 此前两条路径各拼一份，上游给该 data class 加字段时，fork 独有的流式路径**不报错、
+     * 只静默漏传** —— `shellCompatibilityMode` 就是这么丢的（审计 §2-7）。集中到一处后，
+     * 配合 data class 字段没有默认值，漏传必然编译不过。
+     */
+    private fun buildShellContext(
+        root: String,
+        command: String,
+        cwd: String,
+        workingDir: File,
+        timeoutMillis: Long,
+        stdin: ByteArray?,
+        shellCompatibilityMode: Boolean,
+        onLine: ((String) -> Unit)?,
+    ): WorkspaceShellContext = WorkspaceShellContext(
+        root = root,
+        command = command,
+        cwd = cwd,
+        filesDir = filesDir(root),
+        linuxDir = linuxDir(root),
+        tempDir = tempDir(root),
+        workingDir = workingDir,
+        timeoutMillis = timeoutMillis,
+        stdin = stdin,
+        bindMounts = bindMounts,
+        shellCompatibilityMode = shellCompatibilityMode,
+        onLine = onLine,
+    )
 
     private fun requireValidRoot(root: String) {
         require(root.matches(ROOT_NAME_REGEX)) {
