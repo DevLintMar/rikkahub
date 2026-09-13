@@ -798,6 +798,9 @@ private fun MarkdownNode(
                         .clip(RoundedCornerShape(8.dp))
                         .widthIn(min = 120.dp)
                         .heightIn(min = 120.dp),
+                    // 记住首次加载的真实宽高比：消息列表回收后滚回来时不再退回占位图的
+                    // 1024×1024 正方形，消除滚动时的高度跳动
+                    sizeFromCachedAspectRatio = true,
                 )
             }
         }

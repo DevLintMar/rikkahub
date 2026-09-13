@@ -2,6 +2,7 @@ package me.rerere.rikkahub.ui.components.richtext
 
 import android.os.SystemClock
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -34,12 +35,26 @@ fun ZoomableAsyncImage(
     alignment: Alignment = Alignment.Center,
     contentScale: ContentScale = ContentScale.Fit,
     alpha: Float = DefaultAlpha,
+    /**
+     * 用 [ImageAspectRatioCache] 里记下的真实宽高比锁定高度。
+     *
+     * 只对**尺寸交给内容决定**的调用点开启（markdown 行内图这类）。传了固定高宽的调用点
+     * （缩略图 `.height(64.dp)`、`.height(72.dp)`）不要开：`aspectRatio` 会给子项固定尺寸，
+     * 与调用方的固定高宽冲突。
+     *
+     * 开启后：首次加载仍是「占位图正方形 → 真实比例」一跳，之后任何一次重新组合
+     * （列表回收后滚回来）都直接用缓存的真实比例，不再跳。
+     */
+    sizeFromCachedAspectRatio: Boolean = false,
 ) {
     var showImageViewer by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val darkMode = LocalDarkMode.current
     val placeholder = if (darkMode) R.drawable.placeholder_dark else R.drawable.placeholder
     val export = LocalExportContext.current
+    var cachedAspectRatio by remember(model) {
+        mutableStateOf<Float?>(ImageAspectRatioCache.get(model))
+    }
     // remember：item 存活期间父级重组不再重建 ImageRequest → Coil 状态机不重启（内存缓存命中直接复用绘制结果）
     val coilModel = remember(model, export, darkMode) {
         ImageRequest.Builder(context)
@@ -53,6 +68,13 @@ fun ZoomableAsyncImage(
             .size(1024, 1024)
             .build()
     }
+    // aspectRatio 放在链尾（最贴近 AsyncImage）：它会给子项 Constraints.fixed，
+    // 从而让占位图的内在尺寸不再参与布局 —— 否则 1024×1024 的占位图会先撑成正方形。
+    val sizedModifier = if (sizeFromCachedAspectRatio) {
+        cachedAspectRatio?.let { modifier.aspectRatio(it) } ?: modifier
+    } else {
+        modifier
+    }
     var loading by remember { mutableStateOf(false) }
     // debug 诊断：记录加载起点，onSuccess 时输出缓存来源与耗时（定位滚动卡顿是否图片解码）
     var loadStartMs by remember(model) { mutableLongStateOf(0L) }
@@ -60,7 +82,7 @@ fun ZoomableAsyncImage(
     AsyncImage(
         model = coilModel,
         contentDescription = contentDescription,
-        modifier = modifier
+        modifier = sizedModifier
             .shimmer(isLoading = loading, animate = false)
             .clickable {
                 showImageViewer = true
@@ -74,6 +96,11 @@ fun ZoomableAsyncImage(
         },
         onSuccess = { state ->
             loading = false
+            if (sizeFromCachedAspectRatio && cachedAspectRatio == null) {
+                val image = state.result.image
+                ImageAspectRatioCache.put(model, image.width, image.height)
+                cachedAspectRatio = ImageAspectRatioCache.get(model)
+            }
             if (BuildConfig.DEBUG) {
                 val now = SystemClock.elapsedRealtime()
                 val dur = now - loadStartMs
