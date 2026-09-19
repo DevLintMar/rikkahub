@@ -71,6 +71,7 @@ fun ZoomableAsyncImage(
     // aspectRatio 放在链尾（最贴近 AsyncImage）：它会给子项 Constraints.fixed，
     // 从而让占位图的内在尺寸不再参与布局 —— 否则 1024×1024 的占位图会先撑成正方形。
     val sizedModifier = if (sizeFromCachedAspectRatio) {
+        // 缓存的**必须**是「宽 / 高」，与 Modifier.aspectRatio 同向（见 ImageAspectRatioCache 注释）
         cachedAspectRatio?.let { modifier.aspectRatio(it) } ?: modifier
     } else {
         modifier

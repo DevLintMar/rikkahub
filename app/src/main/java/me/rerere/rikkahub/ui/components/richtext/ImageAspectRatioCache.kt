@@ -13,6 +13,11 @@ package me.rerere.rikkahub.ui.components.richtext
  * 这是无法避免的（比例本来就还没测出来）。
  *
  * 同一个 URL 的图片内在比例恒定，所以只用 model 做 key。
+ *
+ * **方向是「宽 / 高」**，与 `Modifier.aspectRatio(ratio)` 的参数同向 —— 唯一的消费方
+ * [ZoomableAsyncImage] 就是把它直接喂进 `aspectRatio`。2026-09-13 首次落地时这里存的是
+ * 高/宽，`aspectRatio` 收到的比例整个反了：竖图（900×1200）被锁成横向的框，
+ * 图片按 Fit 缩进去 → 上下/左右大片留白（用户 2026-09-19 上报的「宽高占比异常」）。
  */
 internal object ImageAspectRatioCache {
 
@@ -21,7 +26,7 @@ internal object ImageAspectRatioCache {
     // accessOrder = true：命中即刷新为最近使用；迭代顺序首位就是最久未用的
     private val entries = LinkedHashMap<String, Float>(16, 0.75f, true)
 
-    /** @return 高 / 宽；从未成功加载过时返回 null */
+    /** @return 宽 / 高（与 `Modifier.aspectRatio` 同向）；从未成功加载过时返回 null */
     @Synchronized
     fun get(model: String?): Float? {
         if (model.isNullOrEmpty()) return null
@@ -37,7 +42,7 @@ internal object ImageAspectRatioCache {
     @Synchronized
     fun put(model: String?, width: Int, height: Int) {
         if (model.isNullOrEmpty() || width <= 0 || height <= 0) return
-        val ratio = height.toFloat() / width.toFloat()
+        val ratio = width.toFloat() / height.toFloat()
         // 过滤 NaN / Inf / 0，避免把异常比例写进去撑坏布局
         if (!ratio.isFinite() || ratio <= 0f) return
         entries[model] = ratio

@@ -35,11 +35,12 @@ class ImageAspectRatioCacheTest {
     }
 
     @Test
-    fun `ratio is height over width`() {
+    fun `ratio is width over height, same direction as Modifier_aspectRatio`() {
         ImageAspectRatioCache.put("a", width = 200, height = 100)
 
-        // 宽 200 高 100 → 高/宽 = 0.5
-        assertEquals(0.5f, ImageAspectRatioCache.get("a")!!, 1e-6f)
+        // 宽 200 高 100 → 宽/高 = 2（横图 = 2:1）。
+        // 方向反了的话竖图会被锁成横向的框，图片缩进去就是大片留白 —— 2026-09-19 的真实事故。
+        assertEquals(2f, ImageAspectRatioCache.get("a")!!, 1e-6f)
     }
 
     @Test
@@ -58,7 +59,7 @@ class ImageAspectRatioCacheTest {
         ImageAspectRatioCache.put("a", 100, 100)
         ImageAspectRatioCache.put("a", 100, 400)
 
-        assertEquals(4f, ImageAspectRatioCache.get("a")!!, 1e-6f)
+        assertEquals(0.25f, ImageAspectRatioCache.get("a")!!, 1e-6f)
     }
 
     @Test
@@ -72,7 +73,7 @@ class ImageAspectRatioCacheTest {
         assertNull(ImageAspectRatioCache.get("model-0"))
         assertNull(ImageAspectRatioCache.get("model-${overflow - 1}"))
         // 最后写入的那条还在
-        assertEquals(2f, ImageAspectRatioCache.get("model-${256 + overflow - 1}")!!, 1e-6f)
+        assertEquals(0.5f, ImageAspectRatioCache.get("model-${256 + overflow - 1}")!!, 1e-6f)
     }
 
     @Test
@@ -85,7 +86,7 @@ class ImageAspectRatioCacheTest {
             ImageAspectRatioCache.get("keep-me")
         }
 
-        assertEquals(2f, ImageAspectRatioCache.get("keep-me")!!, 1e-6f)
+        assertEquals(0.5f, ImageAspectRatioCache.get("keep-me")!!, 1e-6f)
     }
 
     @Test
