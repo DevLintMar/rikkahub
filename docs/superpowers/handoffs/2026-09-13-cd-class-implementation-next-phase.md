@@ -2,6 +2,7 @@
 
 **日期**：2026-09-13（当日第二份；前一份为同日的 `2026-09-13-ui-image-fixes-and-cd-remaining-next-phase.md`）
 **状态**：**代码/配置 HEAD = `72f4826b`**（debug CI 在 `89a87259` 真绿、instrumented 在 `72f4826b` 真绿；其后只有文档提交）。工作树干净，全部已 push。
+**最后核对：2026-09-19** —— 仓库与本文档写就时**无任何变化**（HEAD 仍是 `34bc5ca2`，与 origin 同步）。
 **目的**：按用户指令「动手做 C 项剩余内容，D 项除了 workspace 不备份都做」——
 C 类 7 件全部动过（C7 的重生成任务**已跑通、产物已实测**，但按用户决定**未入库**，见 §5.2），
 D 类 5 件全部改完。
@@ -225,6 +226,9 @@ CI 一次过 —— 说明它们本身是好的，只是没人跑。这与 C6「
 审计脚本实测：两份 profile **逐字节相同**（sha256 都是 `e51f505d…`），
 且各有 **7 条规则指向已不存在的类**：
 
+> 「逐字节相同」当时被当成疑点，**后来已证伪**（重新生成后仍然相同，是 AGP 的正常行为），
+> 见 §5.2 末尾。这里保留原文是为了记录当时的判断过程。
+
 | 过期规则 | 原因 |
 |---|---|
 | `ai/provider/providers/{Claude,Google,OpenAI}Provider` | provider 已拆进 `providers/<vendor>/` 子包 |
@@ -349,7 +353,7 @@ Gradle 失败后不再调度新任务，所以后面还没跑的模块是「未�
 | **D4 BMP** | 往会话里塞一张 `.bmp`（或让 AI 生成/下载一张），发送 | 图片能发出去（模型收到的 Description/内容不为空），不再报 `Failed to guess MIME type` |
 | **D6 恢复确认框** | S3 / WebDAV 的备份列表里点「恢复」 | **先弹确认框**，取消则不恢复；确认后行为与之前一致（重启提示） |
 | **D5 诊断** | 做一次备份 + 一次恢复，看请求日志页 | 备份日志有 `uploadFiles=N images=M imageAssistantAvatars=K/T`；`restore_diag.txt` 回放里有 `items=db:…,files:…`、`userAvatar=…`、`imageAssistantAvatars=N/T` |
-| C1 的 pre 产物 | 用 pre CI 出的 APK 覆盖安装 | 能装能起（`xyz.lynsei.rikkahub.pre`）；主要靠 CI 结论 |
+| C1 pre 变体 | **没有可上设备的产物** —— 按新规矩不再构建 pre（§3.1） | 只能靠论证 + 每日 cron 自己跑；真要出 pre 包时把 `assemblePre` 当「未验证」 |
 | C4 无界面 | — | 不需要上设备，单测 + CI 覆盖 |
 
 > 上一份交接（五项界面修复）的 §5.1 六条**仍未核验**，一并过一遍。
@@ -402,25 +406,8 @@ gh run download 34763441066 --repo DevLintMar/rikkahub -n baseline-profiles --di
 `baseline-prof.txt` 与 `startup-prof.txt` 由 AGP 的同一次收集同时产出 —— 旧文件如此，
 重新生成后**仍然如此**。审计脚本里那句「可疑」的措辞已就地改正。
 
-#### 原「怎么重新生成」（保留备用）
-
-**重新生成 baselineProfiles**，二选一：
-
-```
-A. 设备上（用户有真机）：
-   连上手机，`./gradlew :app:generateReleaseBaselineProfile`，把
-   app/src/release/generated/baselineProfiles/*.txt 的改动提交。
-
-B. CI 上（无需设备）：
-   Actions → Android Instrumented → Run workflow → task = baseline-profile
-   跑完下载 baseline-profiles artifact，覆盖本地两个文件后提交；
-   提交后 `python docs/superpowers/scripts/baseline_profile_audit.py` 的
-   KNOWN_STALE 那 7 条应当消失（消失后请**从 KNOWN_STALE 里删掉它们**）。
-```
-
-顺带值得确认的一件事：两份 profile **逐字节相同**（`baseline-prof.txt` 与
-`startup-prof.txt`）。职责不同却完全一致，本身就说明生成流程或提交方式有问题 ——
-重新生成时留意它们是否还是两份一样的文件。
+**设备上重新生成（等价路径）**：连上真机跑 `./gradlew :app:generateReleaseBaselineProfile`，
+产物同样落在 `app/src/release/generated/baselineProfiles/`。
 
 ### 5.3 其余悬着的
 
