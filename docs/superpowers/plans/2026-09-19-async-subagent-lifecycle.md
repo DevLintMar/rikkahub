@@ -239,6 +239,13 @@ class SubAgentTaskRegistry {
     /**
      * 写终态。**已终态的任务不再被覆盖**：用户取消与正常完成可能同时到达，
      * 先到者胜，避免把「已完成」改写成「已取消」。
+     *
+     * 用 `ConcurrentHashMap.compute` 而不是「读 → 判断 → 写」：后者两次调用都读到
+     * `IN_PROGRESS` 时会双双写入、最后写入者胜，正好是这个守卫要挡的情形。`compute`
+     * 把整段判断与写入放进同一个原子操作里。
+     *
+     * 返回值语义：任务不存在 → `null`；已被别人写成终态 → 返回**已有的**那条（写入被拒绝）；
+     * 本次写入成功 → 返回新终态。
      */
     fun finish(
         taskId: String,
@@ -246,12 +253,12 @@ class SubAgentTaskRegistry {
         reason: SubAgentFailReason? = null,
         result: String? = null,
         error: String? = null,
-    ): SubAgentTaskInfo? {
-        val previous = tasks[taskId] ?: return null
-        if (previous.status != TaskStatus.IN_PROGRESS) return previous
-        return previous
-            .copy(status = status, reason = reason, result = result, error = error)
-            .also { tasks[taskId] = it }
+    ): SubAgentTaskInfo? = tasks.compute(taskId) { _, previous ->
+        when {
+            previous == null -> null
+            previous.status != TaskStatus.IN_PROGRESS -> previous
+            else -> previous.copy(status = status, reason = reason, result = result, error = error)
+        }
     }
 
     fun isLive(taskId: String): Boolean = tasks[taskId]?.status == TaskStatus.IN_PROGRESS
@@ -2253,6 +2260,8 @@ CI 绿之后装 debug 包，按 spec §10.3 的 8 条清单验。**其中第 1 �
 ## 自检记录
 
 **Spec 覆盖**：§4.2 六个缺陷 → ①=Task 8（`ensureLoaded` + 对账）、②=Task 6/7（keepAlive）、③=Task 3+8（中断判据 + 对账）、④=Task 2+8（派生通知替代 pendingNotifications）、⑤=Task 4+8（FIFO 替代单槽位）、⑥=Task 3+9（工具结果改写 + 卡片终态）；§5 组件 → Task 1/2/3/4/6；§6 → Task 3；§7 → Task 2+8 Step 5；§8 → Task 1+3+8；§9 影响面 → 全部任务；§10.1 单测 → Task 1–6；§10.3 设备核验 → Task 9 Step 6；§10.2 CI → 每任务末步。
+
+**任务 1 审查后修正的计划缺陷**（控制器裁定，已记账）：`finish` 的「读-判-写」改为 `ConcurrentHashMap.compute` —— 原写法在两次调用都读到 `IN_PROGRESS` 时会双双写入，注释里承诺的「先到者胜」并不成立（审查判为 Important、plan-mandated）。
 
 **Pre-flight 扫描修掉的计划缺陷**（由控制器在开工前修正，已记账）：T2 的 `?.let {} ?: run {}` 改为 if/else；T2 转义测试里 `</result>` 的期望计数 2 → 1；`applyTaskDelivery` 的 `markerText` 由成品字符串改为 `(String) -> String`（否则中断对账只能拿 taskId 当子代理名）；改写时显式剔除 `result`/`error`；截断断言改为 `MAX + 后缀长度`；T4 `addLast` 返回 Unit 不能当表达式；T7 去掉 `cancel().let { true }`。
 
