@@ -1,19 +1,24 @@
 # 交接文档：导出为图片的工作区图片 + 工作区备份/导入的权限位
 
-**最后核对：2026-09-19** —— 仓库 `HEAD = 7e86ce18`（与 origin 同步）。**两次修复的 CI 都已真绿**
-（`e02edafd` run `35430010140`、`7e86ce18` run `35431237348`，判定方式见 §3.1）。
-下一步就是设备核验（§5.1）。
+**最后核对：2026-09-19** —— 仓库 `HEAD = 76287884`（与 origin 同步）。**三次修复的 CI 全绿**
+（`e02edafd` run `35430010140`、`7e86ce18` run `35431237348`、`76287884` run `35432962717`，
+判定方式见 §3.1）。用户已在设备上验过前两条（§5.1 里已勾），**本轮没有待验证的阻塞项**。
 
 ---
 
 ## 0. 一句话概况
 
-用户报了 2 件事，各自**一个**独立根因，都是「某条链路上少做了一步」：
+用户报了 2 件事，各自**一个**独立根因，都是「某条链路上少做了一步」；第 3 条是用户看了本文档
+§5.2 之后要求一并修的（同一个跳过判据的另一半）：
 
 1. **导出为图片时，工作区内的图片不显示** —— 导出是独立组合子树，没把会话的 `workspaceId`
    传下去，`file:///workspace/…` 解析不出真实文件（§2.1）。
 2. **工作区导出再导入后报错且无法使用** —— zip **不带** Unix 权限位，导入出来的 rootfs
    每个文件都没有可执行位，proot 起壳第一步就失败（§2.2）。
+
+3. **备份把 `.l2s.*` 与嵌套 `tmp` 也滤掉了** —— 导出按**文件名在任意深度**跳过条目，
+   于是 proot 的仿真链接后备文件（沙箱文件系统的一部分）与用户自建的 `files/tmp/...`
+   静默不进备份（§2.4）。
 
 第 2 条的现场报错是用户给的：`proot error: '/usr/bin/env' is not executable`。
 
@@ -25,6 +30,7 @@
 |---|---|---|
 | 1 | `e02edafd` | 导出为图片补 `workspaceId`（工作区图片不再空白） |
 | 2 | `7e86ce18` | 工作区备份保留权限位（新增 `FilePermissions.kt`、`WorkspaceBackupTest`） |
+| 3 | `76287884` | 备份只跳顶层 `tmp/`，保留 `.l2s.*` 与嵌套 `tmp`（§2.4） |
 
 起点是上一份交接 `2026-09-19-ui-images-links-and-webview-fixes.md` 的 `23ca96c0`。
 
@@ -33,6 +39,7 @@
 | # | 用户原话 | 根因 | 落点 |
 |---|---|---|---|
 | 1 | 「导出功能仍然不显示工作区内图片」 | 导出组合（`ChatExportSheet → exportToImage → ExportedChatImage → ExportedChatMessage`）给 `MarkdownBlock` 传的是默认 `workspaceId = null`；`WorkspaceFileUrlResolver.resolveFile` 在**需要工作区却没给 id** 时返回 null（`WorkspaceFileUrlResolver.kt:60-61`），于是 Coil 拿到解析不出的沙箱 URL | `Export.kt` |
+| 补 | 「（§5.2 里那个隐患）这个隐患现在也修复吧」 | 导出的跳过判据按**名字在任意深度**匹配，把 `.l2s.*` 后备文件与 `files/tmp/...` 也滤出了备份 | `WorkspaceBackup.addDirectoryToZip` |
 | 2 | 「导出工作区再导入之后会报错并无法使用」 | `ZipEntry` 没有 Unix 权限位（tar 才有）：装 rootfs 的 tar 路径有 `applyMode(header.mode)`，zip 路径 `WorkspaceBackup.extractTo` 从头到尾没设过任何权限 → 导入的 rootfs 全是 0644 | `WorkspaceBackup.kt`、新 `workspace/.../FilePermissions.kt`、`RootfsInstaller.kt` |
 
 ---
@@ -101,11 +108,42 @@ fatal error: see `libproot_exec.so --help`.
 POSIX 权限位 / 符号链接只有 Linux 有意义，用 `assumeTrue` 在不支持时跳过，**避免在 Windows 上假绿**；
 CI 是 ubuntu-latest，所以它们是**真跑**的。
 
+### 2.4 备份的跳过判据：只认顶层 `tmp/`（别按名字在任意深度过滤）
+
+原来是这一行：
+
+```kotlin
+if (file.name == TEMP_DIR_NAME || file.name.startsWith(".l2s.")) continue
+```
+
+它在**任意深度**按名字过滤，于是三类内容一起被丢出备份：
+
+| 被丢掉的 | 实际是什么 |
+|---|---|
+| `.l2s.data.bin.0002.0002` | proot `--link2symlink` 的**仿真链接后备文件**：指向它的符号链接在导入后全变悬空（文件读不到、只剩断链）。装过 pip/npm 之类在沙箱内建过链接的 rootfs 会中招 |
+| `files/tmp/...` | **用户自己**在沙箱里建的 `tmp` 目录 —— 用户数据静默不进备份 |
+| `linux/tmp/...` | rootfs 自己的 `/tmp`（`RootfsPatcher.ensureTempDirs` 会在起壳前补建，所以这条危害最小，但同样不该按名字命中） |
+
+依据是 proot 源码：`src/extension/link2symlink/link2symlink.c` 里 `#define PREFIX ".l2s."`，
+后备文件就是**同目录下 `.l2s.<原名><NNNN>.<NNNN>` 的普通文件**。
+
+改法：`if (prefix.isEmpty() && file.name == TEMP_DIR_NAME) continue` —— 只跳过**顶层**那一个
+（`prefix` 为空即顶层），它才是工作区自己的临时目录（proot 的 `PROOT_TMP_DIR`/`TMPDIR` 指向它）。
+这同时让导出与 `extractTo` 的判据一致：**导入侧本来就只认顶层 `tmp/`**（`entry.name == "tmp" ||
+startsWith("tmp/")`），两者此前是错位的。
+
+> **边界**：显示层的 `.l2s.` 过滤照旧保留 —— `WorkspaceFileSystem` 的 list/glob/grep 与
+> `WorkspaceDocumentsProvider` 都在过掉它，那是「别让用户看见 proot 的内部文件」，与备份内容无关。
+> 改的时候别把两边一起动。
+
+新增两条单测：`导出只跳过顶层临时目录`（`.l2s.` 与 `files/tmp/keep.txt` 必须在、顶层 `tmp/scratch.txt`
+必须不在）、`l2s 链接在导入后仍能解析到后备文件`（只搬链接会让文件变断链）。
+
 ---
 
 ## 3. git / CI 状态
 
-- 代码 HEAD = `7e86ce18`，与 origin 同步。
+- 代码 HEAD = `76287884`，与 origin 同步。
 - `e02edafd`：run `35430010140`，`conclusion=success`，`headSha` 对得上，`build` 作业
   **21 步 0 skipped**。
 - **`7e86ce18` 也已真绿**：run `35431237348`，`conclusion=success`，`headSha` 对得上，
@@ -114,6 +152,9 @@ CI 是 ubuntu-latest，所以它们是**真跑**的。
   注意：**run 只上传 `room-schemas` artifact，看不到单测逐条结果**；那三条用例靠
   `assumeTrue` 在非 POSIX 文件系统上跳过，而 CI 是 ubuntu-latest（ext4，POSIX 视图受支持），
   所以可执行位那条断言是**真跑**的，不是被跳过后的假绿。
+- **`76287884` 也真绿**：run `35432962717`，`conclusion=success`，`headSha` 对得上，
+  `build` 作业 **21 步 0 skipped**；`:app:testDebugUnitTest` 与 `:workspace:testDebugUnitTest`
+  都 `BUILD SUCCESSFUL` —— 备份那 5 条单测（3 条权限位/符号链接 + 2 条跳过判据）都在这一版里跑。
 
 ### 3.1 结论只认 `--json`（`gh run watch` 的退出码不可信）
 
@@ -149,8 +190,9 @@ gh run view 35431237348 --json conclusion
 
 | 项 | 怎么验 | 状态 |
 |---|---|---|
-| 导出为图片里的工作区图片 | 找一条 AI 用 markdown 引用了工作区图片的会话 → 导出为图片 | ⏳ 待验证（`e02edafd`） |
-| 工作区导出 → 导入 → 终端可用 | 导入后进新工作区的终端跑 `env`、`bash -lc "ls /usr/bin"` | ⏳ 待验证（`7e86ce18`） |
+| 导出为图片里的工作区图片 | 找一条 AI 用 markdown 引用了工作区图片的会话 → 导出为图片 | ✅ **用户 2026-09-19 已验证通过** |
+| 工作区导出 → 导入 → 终端可用 | 导入后进新工作区的终端跑 `env`、`bash -lc "ls /usr/bin"` | ✅ **用户 2026-09-19 已验证通过**（导入后正常可用） |
+| 备份不再丢 `.l2s.*` 与嵌套 `tmp` | 在沙箱里 `ln -s` 建过一个链接的工作区：导出→导入，看链接还能不能用 / `files/tmp` 里的文件还在不在 | ⏳ 待验证（`76287884`，改动面小、非阻塞） |
 | 老 zip 仍可导入 | 用修复前导出的那份 zip 再导一次（走 `legacyOwnerMode` 兜底） | ⏳ 可选 |
 
 上一份交接（`2026-09-19-ui-images-links-and-webview-fixes.md` §5.1）那 5 条设备核验仍未做完，
@@ -158,12 +200,6 @@ gh run view 35431237348 --json conclusion
 
 ### 5.2 悬着的（本轮已知、未做）
 
-- **导出跳过 `.l2s.*` 是同函数里的第二个隐患**（本轮没动）：那个过滤是上游为「文件列表 key
-  重复」加的**显示层**过滤（`WorkspaceFileSystem.kt:21`），但 `WorkspaceBackup.addDirectoryToZip`
-  用同一条判断把备份内容也跳过了。而 proot 的 `--link2symlink` 就是用 `.l2s.<原名>` **前缀文件**
-  仿真链接的（termux/proot `extension/link2symlink/link2symlink.c`：`#define PREFIX ".l2s."`），
-  这些条目属于沙箱文件系统本身 —— 跳过等于导入后丢掉沙箱内创建过的链接。
-  要不要改成「显示过滤照旧、备份保留」需要用户拍板（本轮先分开，不混进验证）。
 - 导出的 markdown 图片仍走 Coil 异步加载 + `BitmapComposer` 的固定 100ms 等待（`Image` part
   有 `preloadExportImages` 预加载，markdown 图片没有）。本轮没动它：用户只报工作区图片丢，
   说明其它 markdown 图片实际能出来（走的是同一条代码路径，只差解析结果），所以竞速不是本次因。
@@ -185,12 +221,11 @@ gh run view 35431237348 --json conclusion
 
 ## 7. 停靠点
 
-**CI 两次都已绿（见 §3）→ 直接进设备核验**：装 `7e86ce18` 的 debug 包过 §5.1 的表。
-两条里**工作区导入那条最有价值**：它是「整包功能不可用」，一眼就能判对错
-（导入后终端能起来就是好的）。
+**三条都已绿、前两条用户已验（见 §3/§5.1）** —— 本轮没有阻塞项。剩下可选的一条：
+拿一个有沙箱内链接（`.l2s.*`）的工作区走一遍导出→导入，确认 `76287884` 那条改动在设备上成立。
 
 若导入后仍报错，先看报错文案再动手：proot 的「找不到」与「不可执行」是两句不同的话（§2.2），
 而 `WorkspaceRepository.importWorkspace` 的异常会经 `WorkspacePage` 的 toast 带 `e.message` 显出来
 （`非法 zip 路径` / `非法符号链接路径` 是 `extractTo` 的 `require`）。
 
-回滚锚点：`23ca96c0`（两份修复互不依赖，可分别回滚）。
+回滚锚点：`23ca96c0`（三份修复互不依赖，可分别回滚）。
