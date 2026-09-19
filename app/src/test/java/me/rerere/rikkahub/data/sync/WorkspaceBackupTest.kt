@@ -11,6 +11,7 @@ import org.junit.Before
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
+import java.nio.file.Paths
 import java.nio.file.attribute.PosixFileAttributeView
 import java.util.zip.ZipFile
 
@@ -123,5 +124,70 @@ class WorkspaceBackupTest {
 
         assertTrue("符号链接被解成了普通文件/目录", Files.isSymbolicLink(restoredLink))
         assertEquals("usr/bin", Files.readSymbolicLink(restoredLink).toString())
+    }
+
+    /**
+     * 导出只该跳过**工作区自己的顶层临时目录**。
+     *
+     * 早期实现按文件名在任意深度过滤 `tmp` 与 `.l2s.`，误伤两类真实内容：
+     * `.l2s.*` 是 proot `--link2symlink` 的后备文件（沙箱文件系统的一部分），
+     * `files/tmp/...` 是用户在沙箱里自建的目录。
+     */
+    @Test
+    fun `导出只跳过顶层临时目录`() {
+        val manager = newManager()
+        val entity = newEntity("w-keep")
+        val filesDir = manager.filesDir(entity.root)
+        File(filesDir, ".l2s.data.bin.0002.0002").apply {
+            parentFile?.mkdirs()
+            writeText("backing\n")
+        }
+        File(filesDir, "tmp/keep.txt").apply {
+            parentFile?.mkdirs()
+            writeText("user data\n")
+        }
+        File(manager.tempDir(entity.root), "scratch.txt").apply {
+            parentFile?.mkdirs()
+            writeText("transient\n")
+        }
+
+        val restored = roundTrip(manager, entity)
+
+        assertTrue(
+            "proot 的 .l2s. 后备文件属于文件系统本身，必须原样搬走",
+            File(restored, "files/.l2s.data.bin.0002.0002").isFile,
+        )
+        assertTrue(
+            "files/ 下用户自建的 tmp 目录是用户数据，不能按名字滤掉",
+            File(restored, "files/tmp/keep.txt").isFile,
+        )
+        assertFalse(
+            "工作区自己的顶层临时目录不该进备份",
+            File(restored, "tmp/scratch.txt").exists(),
+        )
+    }
+
+    /** 后备文件与链接是一对：只搬链接会让导入后的文件变成断链。 */
+    @Test
+    fun `l2s 链接在导入后仍能解析到后备文件`() {
+        val manager = newManager()
+        val entity = newEntity("w-l2s")
+        val filesDir = manager.filesDir(entity.root)
+        val backingName = ".l2s.data.bin.0002.0002"
+        File(filesDir, backingName).apply {
+            parentFile?.mkdirs()
+            writeText("backing\n")
+        }
+        val created = runCatching {
+            Files.createSymbolicLink(File(filesDir, "data.bin").toPath(), Paths.get(backingName))
+        }.isSuccess
+        assumeTrue("本机文件系统不支持符号链接，跳过", created)
+
+        val restored = roundTrip(manager, entity)
+
+        assertTrue(
+            "导入后 data.bin 是断链 —— 备份把它的后备文件丢了",
+            File(restored, "files/data.bin").isFile,
+        )
     }
 }

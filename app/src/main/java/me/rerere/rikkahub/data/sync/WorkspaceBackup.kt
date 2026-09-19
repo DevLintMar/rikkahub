@@ -28,7 +28,15 @@ import java.util.zip.ZipOutputStream
  * symlinks/...     # 符号链接记录：内容 = link target 文本（rootfs 全是 busybox applet 软链）
  * modes.json       # 权限位清单：条目路径 -> 属主 rwx 三位
  * ```
- * 排除 `tmp/`（临时文件）与 `.l2s.*` 隐藏文件（WorkspaceFileSystem 惯例）。
+ * 只排除**顶层** `tmp/` —— 工作区自己的临时目录（proot 的 TMPDIR 就指向它）。
+ *
+ * **`.l2s.*` 必须原样搬走**：那是 proot `--link2symlink` 的仿真链接后备文件
+ * （termux/proot `src/extension/link2symlink/link2symlink.c`：`#define PREFIX ".l2s."`），
+ * 属于沙箱文件系统本身。丢了它，指向它的符号链接在导入后全变悬空 —— 文件读不到，只剩一个断链。
+ * 显示层把 `.l2s.*` 藏起来是另一回事（`WorkspaceFileSystem` 的 list/glob/grep 与
+ * `WorkspaceDocumentsProvider` 都过掉它，免得用户看见 proot 的内部文件），**备份不能跟着藏**。
+ * 同理按名字在任意深度过滤 `tmp` 也会误伤 `files/tmp/...`（用户自己建的目录）与
+ * `linux/tmp/...`（rootfs 的 /tmp），所以只认顶层那一个。
  *
  * 符号链接不能按内容复制：rootfs 软链 target 多为绝对路径（`/bin/busybox`），
  * 直接读会把 target 解析到设备根导致 FileNotFound，且会丢失链接语义。
@@ -64,7 +72,7 @@ object WorkspaceBackup {
 
     /**
      * 导出工作区到 [target] zip。
-     * 递归打包 workspaceDir 下所有内容（files/ + linux/），排除 tmp/ 与 .l2s.*；
+     * 递归打包 workspaceDir 下所有内容（files/ + linux/），只排除顶层 `tmp/`（理由见对象头）；
      * 软链接以 `symlinks/<path>` 条目记录 target；文件内容全流式写（rootfs 大文件逐条 ZipEntry），
      * 不整包读内存 —— 只有权限位清单（条目路径 + 一个小整数）在内存里攒，最后写成 `modes.json`。
      */
@@ -184,7 +192,9 @@ object WorkspaceBackup {
     ) {
         val children = dir.listFiles()?.sortedBy { it.name } ?: return
         for (file in children) {
-            if (file.name == TEMP_DIR_NAME || file.name.startsWith(".l2s.")) continue
+            // 只跳过顶层的工作区临时目录（prefix 为空 = 顶层）。别退回「按名字在任意深度过滤」：
+            // 那会把 `.l2s.*` 后备文件与 `files/tmp/...` 一起丢掉，见对象头说明。
+            if (prefix.isEmpty() && file.name == TEMP_DIR_NAME) continue
             val entryName = "$prefix${file.name}"
             if (Files.isSymbolicLink(file.toPath())) {
                 // 软链接：记录 target 文本，不读内容（绝对 target 会解析到设备根）
