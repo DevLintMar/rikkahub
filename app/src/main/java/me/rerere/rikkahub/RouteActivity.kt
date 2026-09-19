@@ -31,8 +31,13 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.res.stringResource
@@ -67,7 +72,12 @@ import me.rerere.rikkahub.data.db.DatabaseMigrationTracker
 import me.rerere.rikkahub.data.db.MigrationState
 import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
+import me.rerere.rikkahub.data.files.FileFolders
 import me.rerere.rikkahub.ui.activity.SafeModeActivity
+import me.rerere.rikkahub.ui.components.richtext.LocalFileOpener
+import me.rerere.rikkahub.ui.components.richtext.LocalLocalFileOpener
+import me.rerere.rikkahub.ui.components.richtext.openMarkdownLink
+import me.rerere.rikkahub.ui.components.ui.ImagePreviewDialog
 import me.rerere.rikkahub.ui.components.ui.TTSController
 import me.rerere.rikkahub.ui.context.LocalASRState
 import me.rerere.rikkahub.ui.context.LocalNavController
@@ -104,6 +114,7 @@ import me.rerere.rikkahub.ui.pages.extensions.workspace.WorkspacePage
 import me.rerere.rikkahub.ui.pages.extensions.workspace.WorkspaceDetailPage
 import me.rerere.rikkahub.ui.pages.extensions.workspace.WorkspaceFileEditorPage
 import me.rerere.rikkahub.ui.pages.extensions.workspace.WorkspaceTerminalPage
+import me.rerere.workspace.WorkspaceManager
 import me.rerere.workspace.WorkspaceStorageArea
 import me.rerere.rikkahub.ui.pages.favorite.FavoritePage
 import me.rerere.rikkahub.ui.pages.history.HistoryPage
@@ -291,6 +302,44 @@ class RouteActivity : ComponentActivity() {
             }
         }
 
+        val context = LocalContext.current
+        var previewImagePath by remember { mutableStateOf<String?>(null) }
+        // 点本地文件链接 → 应用内预览（与工作区管理界面点开文件同一套行为）：图片弹应用内看图、
+        // 文本/svg 进工作区文件编辑器；其余（如 /upload 里的非图片）不接管，退回安全兜底
+        val appNavigator = remember(backStack) { Navigator(backStack) }
+        val localFileOpener = remember(appNavigator) {
+            LocalFileOpener { workspaceId, sandboxPath, file ->
+                when {
+                    file.extension.lowercase() in PREVIEW_IMAGE_EXTENSIONS -> {
+                        previewImagePath = file.absolutePath
+                        true
+                    }
+
+                    workspaceId != null -> {
+                        val target = workspaceEditorTarget(sandboxPath)
+                        if (target == null) false
+                        else {
+                            appNavigator.navigate(
+                                Screen.WorkspaceFileEditor(workspaceId, target.first, target.second)
+                            )
+                            true
+                        }
+                    }
+
+                    else -> false
+                }
+            }
+        }
+        // 根级 UriHandler：让**所有**组合子树（ModalBottomSheet 等弹出层也在同一棵树下）都走安全
+        // 入口。只在 markdown 子树里替换 LocalUriHandler 盖不住弹出层 —— 2026-09-19 那次
+        // FileUriExposedException 崩溃正是点了弹出层里的 file:// 链接
+        val rootUriHandler = remember(localFileOpener) {
+            object : UriHandler {
+                override fun openUri(uri: String) =
+                    openMarkdownLink(context, null, localFileOpener, uri)
+            }
+        }
+
         SharedTransitionLayout {
             CompositionLocalProvider(
                 LocalNavController provides Navigator(backStack),
@@ -300,6 +349,8 @@ class RouteActivity : ComponentActivity() {
                 LocalToaster provides toastState,
                 LocalTTSState provides tts,
                 LocalASRState provides asr,
+                LocalLocalFileOpener provides localFileOpener,
+                LocalUriHandler provides rootUriHandler,
             ) {
                 Toaster(
                     state = toastState,
@@ -309,6 +360,12 @@ class RouteActivity : ComponentActivity() {
                     showCloseButton = true,
                 )
                 TTSController()
+                previewImagePath?.let { path ->
+                    ImagePreviewDialog(
+                        images = listOf(path),
+                        onDismissRequest = { previewImagePath = null },
+                    )
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -780,4 +837,29 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object Stats : Screen
+}
+
+/** 点到这些扩展名的本地文件时弹应用内看图（svg 归文件编辑器，与工作区管理界面点开文件一致）。 */
+private val PREVIEW_IMAGE_EXTENSIONS = setOf(
+    "jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif", "avif", "ico",
+)
+
+/**
+ * 沙箱路径 → 工作区文件编辑器的 `(area, path)`；不属于工作区时返回 null。
+ *
+ * 与 [me.rerere.rikkahub.ui.pages.extensions.workspace.WorkspaceDetailPage] 点开文件时的映射保持一致：
+ * `/workspace/...` → FILES，其余 rootfs 路径 → LINUX。`/upload`、`/skills`、`/tool_outputs` 是
+ * bind mount，落在 `<filesDir>` 下的独立目录、不在任何工作区里，编辑器读不到 —— 返回 null 让调用方兜底。
+ */
+private fun workspaceEditorTarget(sandboxPath: String): Pair<String, String>? {
+    if (sandboxPath.isBlank()) return null
+    val prefix = WorkspaceManager.ROOTFS_WORKSPACE_DIR // "/workspace"
+    if (sandboxPath == prefix || sandboxPath.startsWith("$prefix/")) {
+        return WorkspaceStorageArea.FILES.name to sandboxPath.removePrefix(prefix).trimStart('/')
+    }
+    val isBindMount = FileFolders.ROOTFS_BIND_MOUNTS.any { (target, _) ->
+        sandboxPath == target || sandboxPath.startsWith("$target/")
+    }
+    if (isBindMount) return null
+    return WorkspaceStorageArea.LINUX.name to sandboxPath.trimStart('/')
 }

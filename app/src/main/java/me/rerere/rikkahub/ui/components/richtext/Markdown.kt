@@ -349,41 +349,49 @@ val LocalWorkspaceFileProvider = staticCompositionLocalOf<((String) -> File?)?> 
 private const val TAG_LINK = "MarkdownLink"
 
 /**
- * 打开 markdown 链接 —— **markdown 子树里唯一的链接打开入口**。
+ * 打开 markdown 链接 —— **本地文件链接的唯一打开入口**（markdown 子树与根部兜底都走它）。
  *
- * [workspaceFileResolver] 能解析出宿主文件的 `file://` 链接走应用内 FileProvider + 选择器；
- * 其余（http/https、解析不出来的路径、未知 scheme）交给系统 `ACTION_VIEW`。
+ * 解析得出宿主 File 的链接先交给 [opener] 做应用内预览（工作区文件编辑器 / 图片查看）；
+ * opener 不接管或没人提供时退回应用内 FileProvider + 选择器；其余（http/https、未知 scheme）
+ * 交给系统 `ACTION_VIEW`。
  *
- * **所有分支都必须吞掉异常**：href 完全由模型产出，而 `file:///<真机绝对路径>`
- * （`ImageLazyLoadTransformer` 的沙箱外降级分支就会造出这种 URL）与任何模型瞎编的 scheme
- * 在系统里都没有处理者，`startActivity` 会抛 `ActivityNotFoundException` —— 未捕获时
- * 直接崩掉整个会话，而用户只是点了一条链接。
+ * **所有分支都必须吞掉异常**，两类崩溃都是这么来的：
+ * - `file://` 抛给系统 → `FileUriExposedException`（2026-09-19 用户上报：点弹出层里的
+ *   `file:///workspace/…/规则书.md` 直接崩）；
+ * - 没有处理者的 scheme / 沙箱外的真机路径 → `ActivityNotFoundException`。
  *
  * 打开失败只记 logcat：用户点了个没有处理者的链接属于「什么都没发生」，
  * 弹错反而更吵；真要反馈得先有六语言的文案。
  */
 internal fun openMarkdownLink(
     context: Context,
-    workspaceFileResolver: ((String) -> File?)?,
+    workspaceId: String?,
+    opener: LocalFileOpener?,
     href: String,
 ) {
     if (href.isBlank()) return
 
-    val workspaceFile = runCatching { workspaceFileResolver?.invoke(href) }
-        .getOrNull()
-        ?.takeIf { it.isFile }
-    if (workspaceFile != null) {
+    val resolved = runCatching { resolveLocalFile(context.filesDir, workspaceId, href) }.getOrNull()
+    if (resolved != null) {
+        val (ownerId, file) = resolved
+        val sandboxPath = runCatching { WorkspaceFileUrlResolver.toSandboxPath(file, context.filesDir) }
+            .getOrNull()
+            .orEmpty()
+        val handled = opener != null &&
+            runCatching { opener.open(ownerId, sandboxPath, file) }.getOrDefault(false)
+        if (handled) return
+
         runCatching {
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 data = FileProvider.getUriForFile(
                     context,
                     "${context.packageName}.fileprovider",
-                    workspaceFile,
+                    file,
                 )
             }
             context.startActivity(Intent.createChooser(intent, null))
-        }.onFailure { Log.w(TAG_LINK, "cannot open workspace file: $href", it) }
+        }.onFailure { Log.w(TAG_LINK, "cannot open local file: $href", it) }
         return
     }
 
@@ -410,10 +418,12 @@ fun MarkdownBlock(
     // UriHandler 就能拦住所有段落链接的点击。这也是**唯一**能拦住它们的方式：
     // 把 listener 写进 AnnotatedString 会让闭包被 paragraphRenderCache 跨消息复用
     // （与 citation 段落不缓存是同一个理由）。
-    val safeUriHandler = remember(context, workspaceFileResolver) {
+    // 应用内打开本地文件（工作区文件编辑器 / 图片预览）；根部没提供时为 null，退回 FileProvider
+    val localFileOpener = LocalLocalFileOpener.current
+    val safeUriHandler = remember(context, workspaceId, localFileOpener) {
         object : UriHandler {
             override fun openUri(uri: String) =
-                openMarkdownLink(context, workspaceFileResolver, uri)
+                openMarkdownLink(context, workspaceId, localFileOpener, uri)
         }
     }
     CompositionLocalProvider(
@@ -769,13 +779,13 @@ private fun MarkdownNode(
             val linkDest =
                 node.findChildOfTypeRecursive(MarkdownElementTypes.LINK_DESTINATION)?.getTextInNode(content) ?: ""
             val context = LocalContext.current
-            // 必须在组合里读出 resolver：clickable 的 lambda 不是 @Composable，里面不能读 .current
-            val workspaceFileResolver = LocalWorkspaceFileProvider.current
+            // 必须在组合里读出 opener：clickable 的 lambda 不是 @Composable，里面不能读 .current
+            val localFileOpener = LocalLocalFileOpener.current
             // 与 AnnotatedString 那条路径共用同一个打开逻辑（openMarkdownLink）：
-            // 工作区 file:// 链接走应用内 FileProvider；其余交给系统；失败一律吞掉，
-            // 不再让「没有处理者的 scheme」把会话崩掉
+            // 本地文件走应用内预览；其余交给系统；失败一律吞掉，不让链接把会话崩掉。
+            // 这里拿不到会话的 workspaceId —— openMarkdownLink 会按文件反查它在哪个工作区
             val linkModifier = modifier.clickable {
-                openMarkdownLink(context, workspaceFileResolver, linkDest)
+                openMarkdownLink(context, null, localFileOpener, linkDest)
             }
             Text(
                 text = linkText,
