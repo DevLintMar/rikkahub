@@ -6,7 +6,7 @@ import android.webkit.WebResourceResponse
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.koin.core.component.KoinComponent
-import org.koin.core.component.getKoin
+import org.koin.core.component.get
 import java.io.ByteArrayInputStream
 import java.util.concurrent.TimeUnit
 
@@ -29,7 +29,7 @@ private const val CALL_TIMEOUT_SECONDS = 20L
 internal object WebViewRemoteImages : KoinComponent {
 
     private val client: OkHttpClient by lazy {
-        getKoin().get<OkHttpClient>()
+        get<OkHttpClient>()
             .newBuilder()
             // 复用同一个连接池与代理设置，只把「10 分钟 readTimeout」压到 20 秒 ——
             // 否则一张取不到的图会把 WebView 这个请求线程挂十分钟
