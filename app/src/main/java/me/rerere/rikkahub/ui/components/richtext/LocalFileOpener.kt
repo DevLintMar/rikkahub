@@ -34,7 +34,7 @@ val LocalLocalFileOpener = staticCompositionLocalOf<LocalFileOpener?> { null }
  * 1. 调用方给的工作区（markdown 子树知道会话绑的是哪个）；
  * 2. 与工作区无关的 bind mount（`/upload`、`/skills`、`/tool_outputs`）—— `/upload` 因此
  *    没有工作区也能打开；
- * 3. **按文件反查**：`/workspace/<rel>` 遍历 `workspaces/*/files/<rel>` 找它在哪个工作区。
+ * 3. **按文件反查**：`/workspace/<rel>` 遍历 `workspaces/<id>/files/<rel>` 找它在哪个工作区。
  *    这条是给弹出层准备的 —— 那些组合子树里拿不到会话的 workspaceId，只能拿文件去问。
  */
 fun resolveLocalFile(filesDir: File, workspaceId: String?, href: String): Pair<String?, File>? {
