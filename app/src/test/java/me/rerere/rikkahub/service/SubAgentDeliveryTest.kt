@@ -1,11 +1,18 @@
 package me.rerere.rikkahub.service
 
+import kotlin.uuid.Uuid
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.rikkahub.data.model.Conversation
+import me.rerere.rikkahub.data.model.toMessageNode
+import me.rerere.rikkahub.utils.JsonInstant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -201,5 +208,186 @@ class SubAgentDeliveryTest {
         val messages = listOf(userText("你好"), assistantText("在的"))
 
         assertEquals(messages, injectTaskNotifications(messages, pendingTaskCount = 0))
+    }
+
+    // ---- Task 3 ----
+
+    private fun subAgentToolPart(taskId: String, status: String = "started", description: String = "搜索 AI 新闻") =
+        UIMessagePart.Tool(
+            toolCallId = "call_1",
+            toolName = "sub_agent",
+            input = "{}",
+            output = listOf(
+                UIMessagePart.Text(
+                    buildJsonObject {
+                        put("type", "sub_agent")
+                        put("status", status)
+                        put("task_id", taskId)
+                        put("description", description)
+                        put("mode", "background")
+                    }.toString(),
+                ),
+            ),
+        )
+
+    private fun toolCallMessage(part: UIMessagePart.Tool) =
+        UIMessage(role = MessageRole.ASSISTANT, parts = listOf(UIMessagePart.Text("已启动后台任务"), part))
+
+    private fun conversationOf(vararg messages: UIMessage) = Conversation(
+        assistantId = Uuid.random(),
+        title = "t",
+        messageNodes = messages.map { it.toMessageNode() },
+    )
+
+    @Test
+    fun `投递改写工具结果为终态且不含结果正文`() {
+        val conversation = conversationOf(userText("起个子代理"), toolCallMessage(subAgentToolPart("sub_1")))
+
+        val updated = conversation.applyTaskDelivery(
+            delivery = TaskDelivery(
+                taskId = "sub_1",
+                status = "completed",
+                reason = null,
+                description = null,
+                result = "三条新闻……",
+                error = null,
+            ),
+            markerText = { _ -> "Agent \"搜索 AI 新闻\" finished" },
+        )!!
+
+        // 只追加一条标记节点，历史节点数 +1
+        assertEquals(3, updated.messageNodes.size)
+        assertEquals(conversation.messageNodes[0], updated.messageNodes[0])
+        assertEquals(conversation.messageNodes[1].id, updated.messageNodes[1].id)
+        assertEquals(conversation.messageNodes[1].messages[0].parts[0], updated.messageNodes[1].messages[0].parts[0])
+
+        val rewritten = updated.messageNodes[1].messages[0].parts.filterIsInstance<UIMessagePart.Tool>().single()
+        val json = JsonInstant.parseToJsonElement(
+            rewritten.output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text },
+        ).jsonObject
+
+        assertEquals("completed", json["status"]?.jsonPrimitive?.contentOrNull)
+        assertEquals("sub_1", json["task_id"]?.jsonPrimitive?.contentOrNull)
+        assertEquals("background", json["mode"]?.jsonPrimitive?.contentOrNull)   // 原字段要保留
+        assertNull(json["result"])                                              // 决策 5：结果不进工具结果
+        assertNull(json["error"])
+    }
+
+    @Test
+    fun `投递结果正文只出现在标记 metadata 里`() {
+        val conversation = conversationOf(userText("起个子代理"), toolCallMessage(subAgentToolPart("sub_1")))
+
+        val updated = conversation.applyTaskDelivery(
+            TaskDelivery("sub_1", "completed", null, null, "三条新闻……", null),
+            // 用 lambda 拼文案顺带钉住「description 从工具结果里解析出来」这条路径
+            markerText = { desc -> "Agent \"$desc\" finished" },
+        )!!
+
+        val markerPart = updated.messageNodes.last().messages.single().parts.single() as UIMessagePart.Text
+        assertEquals("Agent \"搜索 AI 新闻\" finished", markerPart.text)
+        assertTrue(markerPart.text.contains("三条新闻").not())
+        assertEquals("三条新闻……", updated.messageNodes.last().messages.single().subAgentTaskMarkerOrNull()?.result)
+    }
+
+    @Test
+    fun `找不到对应工具结果时返回 null`() {
+        val conversation = conversationOf(userText("起个子代理"), toolCallMessage(subAgentToolPart("sub_1")))
+
+        assertNull(
+            conversation.applyTaskDelivery(
+                TaskDelivery("sub_other", "completed", null, null, "x", null),
+                markerText = { _ -> "m" },
+            ),
+        )
+    }
+
+    @Test
+    fun `重复投递同一条是幂等的`() {
+        val conversation = conversationOf(userText("起个子代理"), toolCallMessage(subAgentToolPart("sub_1")))
+        val delivery = TaskDelivery("sub_1", "failed", "app_exit", null, null, "进程被回收")
+
+        val interruptedText = { _: String -> "Agent \"搜索 AI 新闻\" 已中断（应用退出）" }
+        val once = conversation.applyTaskDelivery(delivery, markerText = interruptedText)!!
+        // 第二次投递时该任务的标记已在会话里，契约上返回 null（无需变更）——等价于会话原样不动
+        val twice = once.applyTaskDelivery(delivery, markerText = interruptedText) ?: once
+
+        assertEquals(3, once.messageNodes.size)
+        assertEquals(3, twice.messageNodes.size)     // 不再追加第二条标记
+        assertEquals(1, twice.messageNodes.count { it.messages.single().subAgentTaskMarkerOrNull() != null })
+    }
+
+    @Test
+    fun `超长结果按 100KB 截断`() {
+        val conversation = conversationOf(toolCallMessage(subAgentToolPart("sub_1")))
+        val huge = "x".repeat(SUB_AGENT_RESULT_MAX_CHARS + 1_000)
+
+        val updated = conversation.applyTaskDelivery(
+            TaskDelivery("sub_1", "completed", null, null, huge, null),
+            markerText = { _ -> "marker" },
+        )!!
+
+        val stored = updated.messageNodes.last().messages.single().subAgentTaskMarkerOrNull()?.result.orEmpty()
+        // clipTaskResult = take(MAX) + "[truncated]"，所以长度是 MAX + 后缀长度
+        assertEquals(SUB_AGENT_RESULT_MAX_CHARS + "[truncated]".length, stored.length)
+        assertTrue(stored.endsWith("[truncated]"))
+    }
+
+    @Test
+    fun `只有空白的结果正文不产 result 行`() {
+        val xml = taskNotificationXml(
+            marker = SubAgentTaskMarker("sub_4", "completed", null, "任务", "   ", null),
+            pendingTaskCount = 0,
+        )
+
+        assertFalse(xml.contains("<result>"))
+    }
+
+    @Test
+    fun `标记与 assistant 文本之间的用户消息对扫描透明`() {
+        val messages = listOf(marker(), userText("顺便再起一个"), assistantText("好"))
+
+        assertTrue(messages.pendingTaskMarkers().isEmpty())
+    }
+
+    @Test
+    fun `标记 metadata 缺 description 时回退成 taskId`() {
+        val message = UIMessage(
+            role = MessageRole.SYSTEM,
+            parts = listOf(
+                UIMessagePart.Text(
+                    text = "Agent finished",
+                    metadata = buildJsonObject {
+                        put(SUB_AGENT_TASK_METADATA_KEY, buildJsonObject {
+                            put("taskId", "sub_9")
+                            put("status", "completed")
+                        })
+                    },
+                ),
+            ),
+        )
+
+        assertEquals("sub_9", message.subAgentTaskMarkerOrNull()?.description)
+    }
+
+    @Test
+    fun `中断判据只认 registry 里不存在的 started 任务`() {
+        val messages = listOf(
+            toolCallMessage(subAgentToolPart("sub_live", status = "started")),
+            toolCallMessage(subAgentToolPart("sub_dead", status = "started")),
+            toolCallMessage(subAgentToolPart("sub_done", status = "completed")),
+        )
+
+        val interrupted = messages.interruptedSubAgentTaskIds { it == "sub_live" }
+
+        assertEquals(listOf("sub_dead"), interrupted)
+    }
+
+    @Test
+    fun `终态的旧任务不再被判定为中断`() {
+        val messages = listOf(
+            toolCallMessage(subAgentToolPart("sub_dead", status = "failed")),
+        )
+
+        assertTrue(messages.interruptedSubAgentTaskIds { false }.isEmpty())
     }
 }
