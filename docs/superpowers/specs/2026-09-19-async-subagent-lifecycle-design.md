@@ -220,7 +220,7 @@ UIMessage(
 >   <status>completed|failed</status>
 >   <reason>…|（无）</reason>
 >   <pending-tasks>N</pending-tasks>       <!-- 运行时从 registry 取，是活信息 -->
->   <summary>Agent "搜索" finished</summary>
+>   <summary>Agent "搜索" completed</summary>
 >   <result>…</result>                     <!-- 取自标记 metadata 的 result/error（§6.3） -->
 > </task-notification>
 > ```

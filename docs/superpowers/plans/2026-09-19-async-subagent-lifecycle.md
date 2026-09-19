@@ -508,7 +508,7 @@ class SubAgentDeliveryTest {
         assertTrue(xml.contains("&lt;injected&gt;"))
         // 结果里的 `</result>` 已被转义，所以整段 XML 里只有闭合标签那一处字面量
         assertEquals(1, Regex("</result>").findAll(xml).count())
-        assertTrue(xml.contains("<summary>Agent \"a&lt;b&gt;c\" finished</summary>"))
+        assertTrue(xml.contains("<summary>Agent \"a&lt;b&gt;c\" completed</summary>"))
     }
 
     @Test
@@ -2260,6 +2260,8 @@ CI 绿之后装 debug 包，按 spec §10.3 的 8 条清单验。**其中第 1 �
 ## 自检记录
 
 **Spec 覆盖**：§4.2 六个缺陷 → ①=Task 8（`ensureLoaded` + 对账）、②=Task 6/7（keepAlive）、③=Task 3+8（中断判据 + 对账）、④=Task 2+8（派生通知替代 pendingNotifications）、⑤=Task 4+8（FIFO 替代单槽位）、⑥=Task 3+9（工具结果改写 + 卡片终态）；§5 组件 → Task 1/2/3/4/6；§6 → Task 3；§7 → Task 2+8 Step 5；§8 → Task 1+3+8；§9 影响面 → 全部任务；§10.1 单测 → Task 1–6；§10.3 设备核验 → Task 9 Step 6；§10.2 CI → 每任务末步。
+
+**任务 2 实现者发现的计划缺陷**（控制器裁定，已记账）：转义用例的 `<summary>` 断言写的是 `finished`，而实现按 `marker.status` 字面量输出 `completed` —— 断言必失败（实现者实测量化：修正前 13 PASS/1 FAIL，`expected finished actual completed`）。裁定接受实现者的改法：`<status>` 元素已承载 `completed|failed`，`<summary>` 是散文；改造前的代码本来就用状态词拼 summary，用字面量既与既有行为一致、也不动实现。
 
 **任务 1 审查后修正的计划缺陷**（控制器裁定，已记账）：`finish` 的「读-判-写」改为 `ConcurrentHashMap.compute` —— 原写法在两次调用都读到 `IN_PROGRESS` 时会双双写入，注释里承诺的「先到者胜」并不成立（审查判为 Important、plan-mandated）。
 
