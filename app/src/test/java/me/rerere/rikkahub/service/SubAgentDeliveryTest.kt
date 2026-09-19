@@ -16,6 +16,7 @@ import me.rerere.rikkahub.utils.JsonInstant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -258,6 +259,8 @@ class SubAgentDeliveryTest {
         // 只追加一条标记节点，历史节点数 +1
         assertEquals(3, updated.messageNodes.size)
         assertEquals(conversation.messageNodes[0], updated.messageNodes[0])
+        // 未变更的节点要原样返回（写时复制短路），不是照抄一份等值副本
+        assertSame(conversation.messageNodes[0], updated.messageNodes[0])
         assertEquals(conversation.messageNodes[1].id, updated.messageNodes[1].id)
         assertEquals(conversation.messageNodes[1].messages[0].parts[0], updated.messageNodes[1].messages[0].parts[0])
 
@@ -315,6 +318,16 @@ class SubAgentDeliveryTest {
         assertNull("重复投递必须返回 null 表示无需变更", twice)
         assertEquals(3, once.messageNodes.size)
         assertEquals(1, once.messageNodes.count { it.messages.single().subAgentTaskMarkerOrNull() != null })
+
+        // 终态与 reason 都必须落进被改写的工具结果里
+        val rewritten = once.messageNodes[1].messages[0].parts
+            .filterIsInstance<UIMessagePart.Tool>().single()
+        val json = JsonInstant.parseToJsonElement(
+            rewritten.output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text },
+        ).jsonObject
+
+        assertEquals("failed", json["status"]?.jsonPrimitive?.contentOrNull)
+        assertEquals("app_exit", json["reason"]?.jsonPrimitive?.contentOrNull)
     }
 
     @Test
@@ -390,5 +403,19 @@ class SubAgentDeliveryTest {
         )
 
         assertTrue(messages.interruptedSubAgentTaskIds { false }.isEmpty())
+    }
+
+    @Test
+    fun `对账判据在投递后不再命中同一条`() {
+        val conversation = conversationOf(toolCallMessage(subAgentToolPart("sub_dead", status = "started")))
+
+        assertEquals(listOf("sub_dead"), conversation.currentMessages.interruptedSubAgentTaskIds { false })
+
+        val updated = conversation.applyTaskDelivery(
+            TaskDelivery("sub_dead", "failed", "app_exit", null, null, "进程被回收"),
+            markerText = { _ -> "已中断" },
+        )!!
+
+        assertTrue(updated.currentMessages.interruptedSubAgentTaskIds { false }.isEmpty())
     }
 }
