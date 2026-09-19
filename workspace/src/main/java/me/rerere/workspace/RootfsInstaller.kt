@@ -148,7 +148,7 @@ class RootfsInstaller(
                         target.outputStream().use { output ->
                             input.copyExactly(output, header.size)
                         }
-                        target.applyMode(header.mode)
+                        target.applyOwnerMode(ownerModeOf(header.mode))
                     }
 
                     // LONG_NAME/LONG_LINK/PAX 已在上方 continue, 这里只有 OTHER 可达;
@@ -324,12 +324,6 @@ class RootfsInstaller(
             "Rootfs entry escapes target directory: $path"
         }
         return target
-    }
-
-    private fun File.applyMode(mode: Int) {
-        setReadable(mode and 0b100_000_000 != 0, false)
-        setWritable(mode and 0b010_000_000 != 0, true)
-        setExecutable(mode and 0b001_000_000 != 0, false)
     }
 
     private fun normalizeTarPath(path: String): String {
