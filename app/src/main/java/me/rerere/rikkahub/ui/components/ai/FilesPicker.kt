@@ -60,11 +60,9 @@ import me.rerere.hugeicons.stroke.ComputerTerminal01
 import me.rerere.hugeicons.stroke.Files02
 import me.rerere.hugeicons.stroke.Folder01
 import me.rerere.hugeicons.stroke.Image02
-import me.rerere.hugeicons.stroke.MusicNote03
 import me.rerere.hugeicons.stroke.Package
 import me.rerere.hugeicons.stroke.Package01
 import me.rerere.hugeicons.stroke.Settings02
-import me.rerere.hugeicons.stroke.Video01
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.ai.mcp.McpManager
@@ -75,6 +73,7 @@ import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
+import me.rerere.rikkahub.ui.components.icons.ForkIcons
 import me.rerere.rikkahub.ui.components.ui.ExtensionSelector
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionCamera
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionManager
@@ -468,7 +467,7 @@ fun TakePicButton(onLaunchCamera: () -> Unit = {}) {
 @Composable
 fun VideoPickButton(onClick: () -> Unit = {}) {
     BigIconTextButton(icon = {
-        Icon(HugeIcons.Video01, null)
+        Icon(ForkIcons.Video01, null)
     }, text = {
         Text(stringResource(R.string.video))
     }) {
@@ -479,7 +478,7 @@ fun VideoPickButton(onClick: () -> Unit = {}) {
 @Composable
 fun AudioPickButton(onClick: () -> Unit = {}) {
     BigIconTextButton(icon = {
-        Icon(HugeIcons.MusicNote03, null)
+        Icon(ForkIcons.MusicNote03, null)
     }, text = {
         Text(stringResource(R.string.audio))
     }) {

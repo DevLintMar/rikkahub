@@ -3,7 +3,6 @@ package me.rerere.rikkahub.ui.pages.translator
 import android.content.ClipData
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Clipboard
-import me.rerere.hugeicons.stroke.LanguageCircle
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.Arrangement
@@ -56,6 +55,7 @@ import kotlinx.coroutines.launch
 import me.rerere.ai.provider.ModelType
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.ai.ModelSelector
+import me.rerere.rikkahub.ui.components.icons.ForkIcons
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.utils.getText
@@ -316,7 +316,7 @@ private fun BottomBar(
                         modifier = Modifier.padding(horizontal = 8.dp)
                     ) {
                         Icon(
-                            HugeIcons.LanguageCircle,
+                            ForkIcons.LanguageCircle,
                             contentDescription = null,
                             modifier = Modifier.size(20.dp)
                         )

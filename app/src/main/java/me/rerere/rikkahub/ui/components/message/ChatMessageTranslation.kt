@@ -48,8 +48,8 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.ArrowUp01
 import me.rerere.hugeicons.stroke.Cancel01
-import me.rerere.hugeicons.stroke.LanguageCircle
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.ui.components.icons.ForkIcons
 import me.rerere.rikkahub.ui.components.richtext.MarkdownBlock
 import java.util.Locale
 
@@ -128,7 +128,7 @@ fun LanguageSelectionDialog(
                                 .fillMaxWidth()
                         ) {
                             Icon(
-                                imageVector = HugeIcons.LanguageCircle,
+                                imageVector = ForkIcons.LanguageCircle,
                                 contentDescription = null,
                                 modifier = Modifier.size(24.dp)
                             )
@@ -196,7 +196,7 @@ fun CollapsibleTranslationText(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Icon(
-                    imageVector = HugeIcons.LanguageCircle,
+                    imageVector = ForkIcons.LanguageCircle,
                     contentDescription = null,
                     modifier = Modifier.size(16.dp),
                     tint = MaterialTheme.colorScheme.primary

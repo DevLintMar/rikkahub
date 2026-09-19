@@ -66,7 +66,6 @@ import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Eraser
 import me.rerere.hugeicons.stroke.FolderClock
 import me.rerere.hugeicons.stroke.GlobalSearch
-import me.rerere.hugeicons.stroke.Image03
 import me.rerere.hugeicons.stroke.MagicWand01
 import me.rerere.hugeicons.stroke.Message02
 import me.rerere.hugeicons.stroke.MessageDelay01
@@ -82,6 +81,7 @@ import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.data.repository.MemoryRepository
+import me.rerere.rikkahub.ui.components.icons.ForkIcons
 import me.rerere.rikkahub.ui.components.richtext.MarkdownBlock
 import me.rerere.rikkahub.ui.components.richtext.ZoomableAsyncImage
 import me.rerere.rikkahub.ui.components.ui.Favicon
@@ -612,7 +612,7 @@ object UseSkillToolUI : ToolUIRenderer {
 object ReadImageToolUI : ToolUIRenderer {
     override val toolName: String = "read_image"
 
-    override fun icon(context: ToolUIContext): ImageVector = HugeIcons.Image03
+    override fun icon(context: ToolUIContext): ImageVector = ForkIcons.Image03
 
     @Composable
     override fun title(context: ToolUIContext): String =

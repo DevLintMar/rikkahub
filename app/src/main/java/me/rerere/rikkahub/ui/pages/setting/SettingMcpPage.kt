@@ -84,7 +84,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.ai.core.InputSchema
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
-import me.rerere.hugeicons.stroke.AlertCircle
 import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.ArrowUp01
 import me.rerere.hugeicons.stroke.Cancel01
@@ -101,6 +100,7 @@ import me.rerere.rikkahub.data.ai.mcp.McpManager
 import me.rerere.rikkahub.data.ai.mcp.McpServerConfig
 import me.rerere.rikkahub.data.ai.mcp.McpStatus
 import me.rerere.rikkahub.data.ai.mcp.McpTool
+import me.rerere.rikkahub.ui.components.icons.ForkIcons
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.FormItem
 import me.rerere.rikkahub.ui.components.ui.Switch
@@ -377,8 +377,8 @@ private fun McpServerItem(
                     is McpStatus.Reconnecting -> CircularProgressIndicator(
                         modifier = Modifier.size(24.dp)
                     )
-                    is McpStatus.Error -> Icon(HugeIcons.AlertCircle, null)
-                    McpStatus.NeedsAuthorization -> Icon(HugeIcons.AlertCircle, null)
+                    is McpStatus.Error -> Icon(ForkIcons.AlertCircle, null)
+                    McpStatus.NeedsAuthorization -> Icon(ForkIcons.AlertCircle, null)
                     McpStatus.Authorizing -> CircularProgressIndicator(
                         modifier = Modifier.size(24.dp)
                     )

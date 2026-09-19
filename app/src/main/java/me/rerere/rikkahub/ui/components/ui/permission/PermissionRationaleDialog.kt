@@ -29,8 +29,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import me.rerere.hugeicons.HugeIcons
-import me.rerere.hugeicons.stroke.AlertCircle
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.ui.components.icons.ForkIcons
 
 /**
  * 权限请求说明对话框
@@ -64,7 +64,7 @@ internal fun PermissionRationaleDialog(
             ) {
                 // 标题图标
                 Icon(
-                    imageVector = HugeIcons.AlertCircle,
+                    imageVector = ForkIcons.AlertCircle,
                     contentDescription = null,
                     modifier = Modifier.size(48.dp),
                     tint = MaterialTheme.colorScheme.primary

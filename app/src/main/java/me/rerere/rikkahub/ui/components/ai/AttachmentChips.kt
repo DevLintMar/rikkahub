@@ -37,9 +37,8 @@ import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Files02
-import me.rerere.hugeicons.stroke.MusicNote03
-import me.rerere.hugeicons.stroke.Video01
 import me.rerere.rikkahub.data.files.FilesManager
+import me.rerere.rikkahub.ui.components.icons.ForkIcons
 import me.rerere.rikkahub.ui.hooks.ChatInputState
 import org.koin.compose.koinInject
 
@@ -106,7 +105,7 @@ internal fun MediaFileInputRow(
                             displayNameByRelativePath = displayNameByRelativePath,
                             displayNameByFileName = displayNameByFileName
                         ),
-                        leading = { AttachmentLeadingIcon(icon = HugeIcons.Video01) },
+                        leading = { AttachmentLeadingIcon(icon = ForkIcons.Video01) },
                         onRemove = { removePart(part, part.url) }
                     )
                 }
@@ -119,7 +118,7 @@ internal fun MediaFileInputRow(
                             displayNameByRelativePath = displayNameByRelativePath,
                             displayNameByFileName = displayNameByFileName
                         ),
-                        leading = { AttachmentLeadingIcon(icon = HugeIcons.MusicNote03) },
+                        leading = { AttachmentLeadingIcon(icon = ForkIcons.MusicNote03) },
                         onRemove = { removePart(part, part.url) }
                     )
                 }

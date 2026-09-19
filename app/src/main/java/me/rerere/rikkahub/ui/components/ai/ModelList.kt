@@ -72,7 +72,6 @@ import me.rerere.hugeicons.stroke.Brain02
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.DragDropHorizontal
 import me.rerere.hugeicons.stroke.Favourite
-import me.rerere.hugeicons.stroke.Image03
 import me.rerere.hugeicons.stroke.Search01
 import me.rerere.hugeicons.stroke.Text
 import me.rerere.hugeicons.stroke.Tools
@@ -81,6 +80,7 @@ import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findProvider
+import me.rerere.rikkahub.ui.components.icons.ForkIcons
 import me.rerere.rikkahub.ui.components.ui.AutoAIIcon
 import me.rerere.rikkahub.ui.components.ui.Tag
 import me.rerere.rikkahub.ui.components.ui.TagType
@@ -794,7 +794,7 @@ fun ModelModalityTag(model: Model) {
             Icon(
                 imageVector = when (modality) {
                     Modality.TEXT -> HugeIcons.Text
-                    Modality.IMAGE -> HugeIcons.Image03
+                    Modality.IMAGE -> ForkIcons.Image03
                 },
                 contentDescription = null,
                 modifier = Modifier
@@ -811,7 +811,7 @@ fun ModelModalityTag(model: Model) {
             Icon(
                 imageVector = when (modality) {
                     Modality.TEXT -> HugeIcons.Text
-                    Modality.IMAGE -> HugeIcons.Image03
+                    Modality.IMAGE -> ForkIcons.Image03
                 },
                 contentDescription = null,
                 modifier = Modifier

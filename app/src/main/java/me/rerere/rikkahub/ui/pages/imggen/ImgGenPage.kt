@@ -97,13 +97,13 @@ import me.rerere.hugeicons.stroke.Colors
 import me.rerere.hugeicons.stroke.Copy01
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.FloppyDisk
-import me.rerere.hugeicons.stroke.Image03
 import me.rerere.hugeicons.stroke.Tools
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.files.FileUtils
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.ui.components.ai.ModelSelector
+import me.rerere.rikkahub.ui.components.icons.ForkIcons
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.FormItem
 import me.rerere.rikkahub.ui.components.ui.ImagePreviewDialog
@@ -224,7 +224,7 @@ private fun BottomBar(
                 Text(stringResource(R.string.imggen_page_gallery))
             },
             icon = {
-                Icon(HugeIcons.Image03, null)
+                Icon(ForkIcons.Image03, null)
             },
             onClick = {
                 scope.launch {
@@ -626,7 +626,7 @@ private fun ImageGalleryScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Icon(
-                            imageVector = HugeIcons.Image03,
+                            imageVector = ForkIcons.Image03,
                             contentDescription = null,
                             modifier = Modifier.size(64.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
