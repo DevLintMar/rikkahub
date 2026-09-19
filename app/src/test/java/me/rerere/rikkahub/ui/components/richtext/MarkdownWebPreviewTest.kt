@@ -90,6 +90,44 @@ class MarkdownWebPreviewTest {
     }
 
     @Test
+    fun `尖括号包裹且文件名带空格的图片链接也被改写`() {
+        uploadFile("4.6 前哨特别节目主视觉（官方）.jpg")
+
+        val result = buildPreviewMarkdown(
+            filesDir = filesDir(),
+            markdown = "![a](<file:///upload/4.6 前哨特别节目主视觉（官方）.jpg>)",
+        )
+
+        assertTrue(result.contains(buildLocalFileUrl(null, "/upload/4.6 前哨特别节目主视觉（官方）.jpg")))
+        assertTrue("原文的 file:// 不该残留", !result.contains("file:///upload/"))
+    }
+
+    @Test
+    fun `路径里带圆括号的裸地址不被截断`() {
+        uploadFile("diagram(1).png")
+
+        val result = buildPreviewMarkdown(
+            filesDir = filesDir(),
+            markdown = "![d](file:///upload/diagram(1).png)",
+        )
+
+        assertTrue(result.contains(buildLocalFileUrl(null, "/upload/diagram(1).png")))
+    }
+
+    @Test
+    fun `工作区里带空格的文件名（尖括号写法）按 workspaceId 改写`() {
+        workspaceFile("ws1", "hsr-images/4.6 主视觉.jpg")
+
+        val result = buildPreviewMarkdown(
+            filesDir = filesDir(),
+            markdown = "![k](<file:///workspace/hsr-images/4.6 主视觉.jpg>)",
+            workspaceId = "ws1",
+        )
+
+        assertTrue(result.contains(buildLocalFileUrl("ws1", "/workspace/hsr-images/4.6 主视觉.jpg")))
+    }
+
+    @Test
     fun `解析不到文件的图片链接原样保留`() {
         val markdown = "![missing](file:///upload/never.png)"
 

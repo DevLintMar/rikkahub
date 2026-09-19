@@ -44,9 +44,20 @@ fun buildMarkdownPreviewHtml(
         .replace("{{OUTLINE_VARIANT_COLOR}}", colorScheme.outlineVariant.toCssHex())
 }
 
-/** `![alt](file:///workspace/x.png)`、`![alt](/upload/x.png)`、`![alt](<file://…>)` */
-private val IMAGE_LINK_REGEX =
-    Regex("""!\[([^\]]*)]\(\s*<?((?:file://)?/[^)\s>]+)>?\s*\)""")
+/**
+ * `![alt](file:///workspace/x.png)`、`![alt](/upload/x.png)`、`![alt](<file://…>)`。
+ *
+ * 目标地址两种写法都要认：
+ * 1. **尖括号包裹**（CommonMark 允许里面带空格）—— 文件名带空格时模型就是这种写法，例如
+ *    `![x](<file:///workspace/hsr-images/4.6 前哨特别节目主视觉（官方）.jpg>)`；
+ * 2. 裸地址（允许一层圆括号，`diagram (1).png`）。
+ *
+ * 早先只认「不含空格与圆括号的裸地址」，上面两种都匹配不到 —— 于是原样的 `file://` 留在 HTML 里，
+ * 被 WebView 当成跨 origin 的本地资源拦掉，图片是**空白**（连裂图都不显示）。
+ */
+private val IMAGE_LINK_REGEX = Regex(
+    """!\[([^\]]*)]\(\s*(?:<([^>]+)>|((?:[^)\s]*\([^)\s]*\))*[^)\s]*))\s*\)"""
+)
 
 /** markdown-it 开了 `html: true`，模型也可能直接写 `<img src="file://…">` */
 private val HTML_IMG_SRC_REGEX =
@@ -74,7 +85,9 @@ internal fun buildPreviewMarkdown(
     workspaceId: String? = null,
 ): String {
     var text = IMAGE_LINK_REGEX.replace(markdown) { match ->
-        val served = localPreviewUrl(filesDir, workspaceId, match.groupValues[2])
+        // 尖括号写法取第 2 组，裸地址取第 3 组
+        val href = match.groupValues[2].ifEmpty { match.groupValues[3] }
+        val served = localPreviewUrl(filesDir, workspaceId, href)
         if (served == null) match.value else "![${match.groupValues[1]}]($served)"
     }
     text = HTML_IMG_SRC_REGEX.replace(text) { match ->
