@@ -341,6 +341,8 @@ UIMessage(
 | 事后改写工具结果会破坏 prompt cache 前缀 | 只在一个 task 终态时改一次该 part，生成期间不改；不改则卡片与历史永远错，代价可接受 |
 | 依赖 `UIMessagePart.Text.metadata` 持久化 | 单测钉住往返（10.1）；这是选它替代「隐藏节点」的前提，**且结果正文只存在于这里**（决策 5）——若哪天 metadata 被改成 `@Transient`，结果会永久丢失，本设计必须重估 |
 | metadata 里可放最多 100KB 结果 → `nodes` blob 变大 | 这是「用户看不到结果」的代价；100KB 硬截断兜底（§6.3） |
+| **标记消息的 metadata 会被注入变换器抹掉——若它被回写进会话**（已核，当前不可达） | `PromptInjectionTransformer.applyInjections` 在配置了 BEFORE/AFTER_SYSTEM_PROMPT 时会把**第一条 SYSTEM 消息**的 parts 整体替换掉（`PromptInjectionTransformer.kt:128-160`），而标记正是 SYSTEM 消息。**当前不可达**：变换链的输出放在 `GenerationLoop.generateInternal` 的独立变量 `internalMessages`（`:393`）里，只作为命名参数喂给 provider（`:473`/`:510`）；回写状态用的是未变换的那份（`:481` 的 `attemptMessages`、`:515` 的 `messages`）。→ **别把 `generateInternal` 的 `var messages: List<UIMessage> = messages` 改成使用 `internalMessages`**：那会让这段注入改写回写进会话，metadata 一丢，幂等守卫与「标记之后是否已有 assistant 文本」的判据就同时静默失效（缺陷③④以无冲突、无测试失败的方式复活） |
+| 通知注入块与生成回写的边界 | 派生的 `<task-notification>` 只存在于请求里；`handleMessageComplete` 的 `.collect` 按 `TASK_NOTIFICATION_TAG` 把它们剔除，不写回会话状态（§7）。这条边界一旦被删，注入块会被当成新消息写进历史 |
 | 标记节点混进对话历史（AI 会看到 `Agent "x" finished`） | 有意为之——它就是可见回执；内容短、无语义歧义 |
 | 卡片停在前台服务通知上时间长 | 复用生成通知的代价；卡死由用户取消（不做 watchdog） |
 | `ensureLoaded` 与用户打开会话竞态 | `loaded` 是一次性单向标志，载入后不再重载；两条路径都走同一个 `updateConversation` |
