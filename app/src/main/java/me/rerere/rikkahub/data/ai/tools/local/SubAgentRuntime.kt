@@ -36,7 +36,6 @@ data class AsyncSubAgentHandle(
     val job: Job,
 )
 
-enum class TaskStatus { IN_PROGRESS, COMPLETED, FAILED }
 
 data class TaskInfo(
     val taskId: String,
