@@ -131,6 +131,23 @@ git ls-tree HEAD -d .claude/skills | head     # .claude/skills 必须是实体�
 git grep -oh 'R\.string\.[a-z_0-9]*' -- app/src/main | sort -u > /tmp/used.txt   # 再与 values/strings.xml 的 name 集合求差
 ```
 
+### 3.6 第 13 类：**依赖的构建产物本身是坏的** —— 名字存在、编译通过、屏幕上却缺一半
+
+**实例（2026-09-19 查到）**：`com.github.rikkahub:hugeicons-compose:1.3` 这个 JitPack 产物的生成器
+把**用 SVG 弧线画出来的那段 path 整段丢掉了**。1.3 的 4688 个图标源码里含 `arcTo(` 的 **0 个**
+（1.4 是 499 个），1.4 用弧的图标里有 **347 个**在 1.3 里少一段 path。
+
+- 症状：图标只画出「剩下的一半」，**不报错、CI 全绿**。网络项（`Globe02`）少外圆 → 只剩一条横线
+  + 一个竖梭形；`StopCircle` 少外圈 → 只剩一个方块；`AlertCircle` 少外圈 → 只剩一个感叹号。
+- **别去查布局、别只换图标名**：名字在清单里、编译过、同组其它图标正常 —— 那是字形本身缺了；
+  换名字也救不了（`Internet` → `Globe02` 就是这么白换一次的：两者丢的都是各自的圆）。
+- 判据（机械）：1.4 里有 `arcTo(` 而 1.3 里 **path 段数更少**。段数变少也可能是 1.4 的重设计
+  （`FolderClock` 在 1.3 用 4 段 curveTo 画圆），这类在脚本的 `APPROVED` 里白名单。
+- 门禁：`python3 docs/superpowers/scripts/hugeicons_glyph_audit.py`（离线，清单已入库；
+  在 nightly 的 `Repo gate scripts` 里）。
+- 修法：用**参考版本的几何 + pinned 的描边风格**补在 `app/.../ui/components/icons/ForkIcons.kt`，
+  调用点改用 `ForkIcons.*`。这 10 个图标里 1.4 就是「1.3 + 被丢掉的那段」，所以补的是原设计。
+
 ---
 
 ## 4. 「下次同步必踩」清单（按上游文件/机制组织）
@@ -142,7 +159,7 @@ git grep -oh 'R\.string\.[a-z_0-9]*' -- app/src/main | sort -u > /tmp/used.txt  
 | 3 | `app/schemas/<v>.json` 同名不同构 | 双方各自从 24 加了不同东西（fork `message_embeddings` / 上游 `workspaces.shell_compatibility_mode`） | 三向 `identityHash` 比对，取 ours | ✅ 取 ours |
 | 4 | 迁移链对外来库的兼容 | fork 支持恢复**别人的**备份；上游 v25 没有 `message_embeddings` → 升到 v27 会 `Migration didn't properly handle` | `grep -n 'CREATE TABLE IF NOT EXISTS' app/src/main/java/me/rerere/rikkahub/data/db/migrations/Migration_25_26.kt` | ✅ 已补（并给三条 ALTER 加了 `hasColumn` 探测） |
 | 5 | `BuiltinToolUIs.SearchWebPreview` | 上游会带回 query 前缀行/参数药丸/日期行/**LazyColumn 容器** | 与 `git show <pre-merge>:<file>` 比对 | ✅ fork 定制版 |
-| 6 | `huge-icons` / `haze` 钉版本 | 会被带回 1.4 / beta02，静默改变图标字形与输入框透明语义 | `grep -n 'huge-icons = \|haze = ' gradle/libs.versions.toml` → `1.3` / `2.0.0-alpha03` | ✅ 钉住 |
+| 6 | `huge-icons` / `haze` 钉版本 | 会被带回 1.4 / beta02，静默改变图标字形与输入框透明语义。**而且钉住的 1.3 这个构建本身缺弧**（见 §3.6） | `grep -n 'huge-icons = \|haze = ' gradle/libs.versions.toml` → `1.3` / `2.0.0-alpha03`；再跑 `python3 docs/superpowers/scripts/hugeicons_glyph_audit.py` | ✅ 钉住 + 10 个图标走 `ForkIcons` 本地补 |
 | 7 | `.claude/skills` 符号链接 + `CLAUDE.md` 被删 | 本机 `core.symlinks=false` → 退化成文本文件 | §3.4 的命令 | ✅ 已还原实体目录 |
 | 8 | fork 的 keep 规则放在哪 | 贴在 `rikkahub.keep` 尾部时与上游的尾部编辑形成冲突块 → 人工取 ours 时**会吃掉上游的 keep 修复**（已吃掉一条 jlatexmath 规则） | fork 规则应只在 `app/src/main/keepRules/fork.keep`；`git diff <分叉点>..<pre-merge> -- app/src/main/keepRules/rikkahub.keep` 只应出现上游自己的改动 | ✅ 已拆分（`fork.keep`；AGP 会合并同源集所有 `*.keep`） |
 | 9 | `WorkspaceShellContext` 的构造点与字段默认值 | 见 §3.1 | §3.1 的命令 | ✅ 已根治（唯一构造点 + 字段无默认值 + 单测锁死字段集合） |
@@ -157,6 +174,7 @@ git grep -oh 'R\.string\.[a-z_0-9]*' -- app/src/main | sort -u > /tmp/used.txt  
 | 18 | 终端 bind mount 第三处硬编码 | `WorkspaceTerminalSession.kt` 自己拼挂载表，与 `FileFolders.ROOTFS_BIND_MOUNTS` 不同步 → 终端看不到 `/upload` | 三处表逐条比对 | ⚠️ |
 | 19 | `values*/strings.xml` ×6 | 双向重改；fork 删过的串可能被上游新代码重新引用（`chat_message_tool_search_prefix` 先例） | §3.5 的 `R.string.*` 比对 | ⚠️ |
 | 20 | `compose_compiler_config.conf` / `baselineProfiles` | 前者有两条悬空类（已清）；后者两份 md5 相同且过期 → ART 静默忽略，启动优化正好失效在生成循环上 | `python docs/superpowers/scripts/baseline_profile_audit.py` | ⚠️ **待重新生成**（7 条已知过期规则列在脚本的 `KNOWN_STALE`；跑 `android-instrumented.yml` 的 baseline-profile 任务可在模拟器上重生成，产物走 artifact 不自动提交） |
+| 21 | `app/.../ui/components/icons/ForkIcons.kt`（fork 专有） | 里头 10 个图标与 `HugeIcons.*` **同名**，容易被当成「重复定义」顺手删掉或改回去 → 屏幕上立刻缺一半，且 CI 不会红 | 文件在；调用点用 `ForkIcons.*`；`hugeicons_glyph_audit.py` 退出码 0 | ✅ 已接入门禁 |
 
 ---
 
@@ -170,8 +188,9 @@ gh run view <id> --json conclusion,headSha                         # 核对 head
 gh run view <id> --json jobs                                       # 确认 build 真跑了（不是被 skip 的假绿）
 ```
 
-- `nightly-build-debug.yml` = 编译 + **全模块** `testDebugUnitTest` + 两个门禁脚本
-  （`prefs_key_audit.py` / `baseline_profile_audit.py --strict`）—— 唯一的单测门禁。
+- `nightly-build-debug.yml` = 编译 + **全模块** `testDebugUnitTest` + 三个门禁脚本
+  （`prefs_key_audit.py` / `baseline_profile_audit.py --strict` / `hugeicons_glyph_audit.py`）
+  —— 唯一的单测门禁。
   （2026-09-13 前只跑 `:app:testDebugUnitTest`，其余模块约 49 个测试文件从未执行。）
 - `android-instrumented.yml` = 每周六的 `connectedDebugAndroidTest`（x86_64 模拟器，
   `-PwithX86_64` 打开 x86_64 ABI）；同一个工作流可按需重新生成 baselineProfiles。
@@ -205,6 +224,7 @@ gh run view <id> --json jobs                                       # 确认 buil
 | `scripts/prefs_key_audit.py` | Settings 键「声明/读取/写入」三集合比对（第 12 类） |
 | `scripts/sync_audit_lists.sh` | 生成上游/fork/双方都改 的文件与提交清单 |
 | `scripts/apk_signer.py` | 从任意 APK 抽 v2 签名者证书 SHA-256（核对签名漂移） |
+| `scripts/hugeicons_glyph_audit.py` | huge-icons 字形完整性：pinned(1.3) 里少画一段的图标清单（347 个，清单在 `data/hugeicons-1.3-suspect.json`）+ 仓库用法比对；`--refresh` 联网重算清单 |
 | `scripts/baseline_profile_audit.py` | baselineProfiles 过期检测：两份文件是否逐字节相同 + 规则里指向已删类的条目（`--strict` 时过期即退出码 1） |
 
 **本机还能做的白盒验证**：纯逻辑（正则、序列化、解析器）可以用本机 JDK 直接跑 —— Kotlin 的 `Regex`
