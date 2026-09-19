@@ -64,6 +64,7 @@ import me.rerere.rikkahub.data.ai.transformers.RegexOutputTransformer
 import me.rerere.rikkahub.data.ai.transformers.TemplateTransformer
 import me.rerere.rikkahub.data.ai.transformers.ThinkTagTransformer
 import me.rerere.rikkahub.data.ai.transformers.TimeReminderTransformer
+import me.rerere.rikkahub.data.ai.transformers.UploadReminderTransformer
 import me.rerere.rikkahub.data.ai.transformers.WorkspaceReminderTransformer
 import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
@@ -914,6 +915,7 @@ class ChatService(
                 inputTransformers = buildList {
                     addAll(inputTransformers)
                     add(templateTransformer)
+                    add(UploadReminderTransformer)
                     add(workspaceReminderTransformer)
                 },
                 outputTransformers = outputTransformers,

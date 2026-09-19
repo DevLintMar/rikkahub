@@ -111,7 +111,8 @@ private fun buildWorkspacePrompt(workspace: WorkspaceEntity, cwd: String? = null
     append("</workspace>")
 }
 
-private fun UIMessage.appendText(extra: String): UIMessage {
+/** 把 [extra] 追加到第一条文本 part 上（没有就新建一条）。system 提示注入的两个 transformer 共用。 */
+internal fun UIMessage.appendText(extra: String): UIMessage {
     val updatedParts = parts.toMutableList()
     val firstTextIndex = updatedParts.indexOfFirst { it is UIMessagePart.Text }
     if (firstTextIndex >= 0) {
