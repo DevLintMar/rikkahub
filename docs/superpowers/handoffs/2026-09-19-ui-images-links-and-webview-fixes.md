@@ -1,7 +1,8 @@
 # 交接文档：界面四项 + file:// 崩溃 + 网页视图图片链路
 
 **最后核对：2026-09-19** —— 仓库 `HEAD = 09bb1970`（与 origin 同步）；`09bb1970` 的 CI
-（run `35428592889`）在本文档写就时仍在跑，**结论见 §3**（判断只认 `--json`）。
+（run `35428592889`）**已真绿**：`conclusion=success`、`headSha` 对得上、`build` 作业 21 步
+0 skipped、全模块单测通过（见 §3）。**本轮改动到此为止全部拿到编译+单测结论，下一步是设备核验（§5.1）。**
 
 ---
 
@@ -159,8 +160,13 @@ modifier.aspectRatio(cachedAspectRatio!!)            // ← 这里要的是「�
   全模块 `testDebugUnitTest` 跑过、`BUILD SUCCESSFUL in 3m 52s`。
 - `9fb0740b`：run `35428343921` = **failure**（就是 §2.6-3 那个 `getKoin`，`:app:compileDebugKotlin` 挂，
   后面 7 步 skipped）→ 修在 `09bb1970`。
-- `09bb1970`：run `35428592889`，本文档写就时在跑。**恢复后第一件事：用 `--json` 判它**（见 §3.1），
-  绿了才谈设备核验。
+- **`09bb1970` 已真绿**：run `35428592889`，`conclusion=success`，`headSha` 对得上，
+  `build` 作业 **21 步全 success、0 skipped**；`assembleDebug` 之外，`:app:testDebugUnitTest`
+  与其余 11 个模块的 `testDebugUnitTest` 全过（12 个模块，`BUILD SUCCESSFUL`）。
+  仓库门禁脚本也跑了，`hugeicons_glyph_audit.py` 报
+  「在用的 `HugeIcons.*` 没有画不全的（1 个假阳性已白名单：FolderClock）」。
+  **这是本轮第一次对全部改动拿到编译+单测结论** —— 前三次 CI 全红在编译期（§3.2），
+  `9fb0740b` 的正文（网页视图外网图）此前从未被任何一次绿构建覆盖过。
 
 ### 3.1 `gh run watch --exit-status` 的退出码**不可信**（本轮实测两次）
 
@@ -197,7 +203,7 @@ gh run view <id> --json jobs                        # 确认 build 没被 skip �
 ```bash
 git log --oneline 95f44008..HEAD          # 本轮 10 个代码提交 + 1 个文档提交
 git show 09bb1970 --stat                  # 最后一个代码提交
-gh run view 35428592889 --json conclusion # 先确认它绿没绿
+gh run view 35428592889 --json conclusion # 已确认成功（2026-09-19，success）
 ```
 
 - **提示词**：`data/ai/transformers/UploadReminderTransformer.kt`（无工作区）、
@@ -218,7 +224,7 @@ gh run view 35428592889 --json conclusion # 先确认它绿没绿
 | 项 | 怎么验 | 状态 |
 |---|---|---|
 | 网页视图里的 `file://` 图片 | 带工作区图片的消息 → 网页视图 | ✅ **用户 2026-09-19 已验证通过** |
-| 网页视图里的外网图（要经代理才通的） | 搜索结果里的图 → 网页视图 | ⏳ 待验证（`9fb0740b`，CI 绿之后） |
+| 网页视图里的外网图（要经代理才通的） | 搜索结果里的图 → 网页视图 | ⏳ 待验证（`9fb0740b`，首次编译结论来自 run `35428592889`） |
 | 聊天里图片的宽高比 | 竖图/横图各一张，看留白 | ⏳ 待验证（`82ba1cc9`） |
 | 点 `file://` 链接不崩 + 弹应用内预览 | 聊天正文与弹出层各点一次（弹出层那次才是原崩溃点） | ⏳ 待验证（`a8317c25`） |
 | 图标：网络项应是完整地球 | 偏好设置 → 网络 | ⏳ 待验证（`5a02c692`） |
@@ -262,8 +268,9 @@ gh run view 35428592889 --json conclusion # 先确认它绿没绿
 
 ## 7. 停靠点
 
-**先验证 `09bb1970` 的 CI 结论**（`gh run view 35428592889 --json conclusion`）→ 绿了就让用户装包过 §5.1 的表。
-其中**最有价值的一条是宽高比**（纯逻辑 bug，已修，一眼能看出对错）。
+**CI 已绿（run `35428592889`，见 §3）→ 直接进设备核验**：装 `09bb1970` 的 debug 包，过 §5.1 的表。
+其中**最有价值的一条是宽高比**（纯逻辑 bug，已修，一眼能看出对错），
+其次是**网页视图里的外网图**（`9fb0740b` 是唯一到这次 run 才第一次被编译验证的改动）。
 
 若网页视图的外网图仍裂：要用户给一个具体 URL（Console Logs 里能拿到），
 按 §5.2 最后两条分叉（站点侧 Referer 要求 vs 其它）。
