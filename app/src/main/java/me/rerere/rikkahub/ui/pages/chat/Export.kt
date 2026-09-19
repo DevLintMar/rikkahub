@@ -91,6 +91,7 @@ import me.rerere.highlight.LocalHighlighter
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findModelById
+import me.rerere.rikkahub.data.datastore.getAssistantById
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.ui.components.message.MessagePartBlock
 import me.rerere.rikkahub.ui.components.message.ThinkingStep
@@ -129,6 +130,13 @@ fun ChatExportSheet(
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val settings = LocalSettings.current
+    // 导出是一个独立的组合子树，拿不到会话上下文，而工作区沙箱路径（`file:///workspace/…`）
+    // 必须靠 workspaceId 才能还原成真实文件（见 `WorkspaceFileUrlResolver.resolveFile`：
+    // 需要工作区却没给 id 时直接返回 null）。不传的话 Coil 拿到的是解析不出的沙箱 URL，
+    // 导出的图里工作区图片整块空白。`/upload`、`/skills` 走 bind mount 不需要 id，一直正常。
+    val workspaceId = remember(settings.assistants, conversation.assistantId) {
+        settings.getAssistantById(conversation.assistantId)?.workspaceId?.toString()
+    }
     var imageExportOptions by remember { mutableStateOf(ImageExportOptions()) }
 
     if (visible) {
@@ -219,6 +227,7 @@ fun ChatExportSheet(
                                                 density = density,
                                                 conversation = conversation,
                                                 messages = selectedMessages,
+                                                workspaceId = workspaceId,
                                                 settings = settings,
                                                 options = imageExportOptions
                                             )
@@ -392,6 +401,11 @@ private suspend fun exportToImage(
     density: Density,
     conversation: Conversation,
     messages: List<UIMessage>,
+    /**
+     * 会话所属助手绑定的工作区 id。导出组合要渲染 markdown 里的 `file:///workspace/…` 图片，
+     * 没有它就解析不出真实文件（图片 part 的位图由 [preloadExportImages] 预加载，不受影响）。
+     */
+    workspaceId: String?,
     settings: Settings,
     options: ImageExportOptions = ImageExportOptions()
 ) {
@@ -421,6 +435,7 @@ private suspend fun exportToImage(
                     messages = messages,
                     options = options,
                     images = images,
+                    workspaceId = workspaceId,
                 )
             }
         }
@@ -509,6 +524,7 @@ private fun ExportedChatImage(
     messages: List<UIMessage>,
     options: ImageExportOptions = ImageExportOptions(),
     images: Map<String, ImageBitmap> = emptyMap(),
+    workspaceId: String? = null,
 ) {
     val navBackStack = remember { mutableStateListOf<NavKey>() }
     val navigator = Navigator(navBackStack)
@@ -563,6 +579,7 @@ private fun ExportedChatImage(
                             options = options,
                             prevMessage = messages.getOrNull(messages.indexOf(message) - 1),
                             images = images,
+                            workspaceId = workspaceId,
                         )
                     }
 
@@ -587,6 +604,7 @@ private fun ExportedChatMessage(
     prevMessage: UIMessage? = null,
     options: ImageExportOptions = ImageExportOptions(),
     images: Map<String, ImageBitmap> = emptyMap(),
+    workspaceId: String? = null,
 ) {
     if (message.parts.isEmptyUIMessage()) return
     val settings = LocalSettings.current
@@ -619,7 +637,8 @@ private fun ExportedChatMessage(
                                     is ThinkingStep.ReasoningStep -> {
                                         ExportedReasoningStep(
                                             reasoning = step.reasoning,
-                                            expanded = options.expandReasoning
+                                            expanded = options.expandReasoning,
+                                            workspaceId = workspaceId,
                                         )
                                     }
 
@@ -651,7 +670,8 @@ private fun ExportedChatMessage(
                                             ) {
                                                 MarkdownBlock(
                                                     content = part.text,
-                                                    modifier = Modifier.padding(8.dp)
+                                                    modifier = Modifier.padding(8.dp),
+                                                    workspaceId = workspaceId,
                                                 )
                                             }
                                         } else {
@@ -664,12 +684,14 @@ private fun ExportedChatMessage(
                                                 ) {
                                                     MarkdownBlock(
                                                         content = part.text,
-                                                        modifier = Modifier.padding(8.dp)
+                                                        modifier = Modifier.padding(8.dp),
+                                                        workspaceId = workspaceId,
                                                     )
                                                 }
                                             } else {
                                                 MarkdownBlock(
                                                     content = part.text,
+                                                    workspaceId = workspaceId,
                                                 )
                                             }
                                         }
@@ -728,7 +750,8 @@ private fun ExportedChatMessage(
 @Composable
 private fun ChainOfThoughtScope.ExportedReasoningStep(
     reasoning: UIMessagePart.Reasoning,
-    expanded: Boolean
+    expanded: Boolean,
+    workspaceId: String? = null,
 ) {
     val duration = reasoning.finishedAt?.let { endTime ->
         endTime - reasoning.createdAt
@@ -769,6 +792,7 @@ private fun ChainOfThoughtScope.ExportedReasoningStep(
                 content = reasoning.reasoning,
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.fillMaxWidth(),
+                workspaceId = workspaceId,
             )
         }
     )
