@@ -799,11 +799,12 @@ Expected: `conclusion = "success"`，`headSha` 对得上，`:app:testDebugUnitTe
 
         val interruptedText = { _: String -> "Agent \"搜索 AI 新闻\" 已中断（应用退出）" }
         val once = conversation.applyTaskDelivery(delivery, markerText = interruptedText)!!
-        val twice = once.applyTaskDelivery(delivery, markerText = interruptedText)!!
+        val twice = once.applyTaskDelivery(delivery, markerText = interruptedText)
 
+        // 幂等的判据就是「返回 null」——不能用 `?: once` 兜底，否则断言退化成自己跟自己比
+        assertNull("重复投递必须返回 null 表示无需变更", twice)
         assertEquals(3, once.messageNodes.size)
-        assertEquals(3, twice.messageNodes.size)     // 不再追加第二条标记
-        assertEquals(1, twice.messageNodes.count { it.messages.single().subAgentTaskMarkerOrNull() != null })
+        assertEquals(1, once.messageNodes.count { it.messages.single().subAgentTaskMarkerOrNull() != null })
     }
 
     @Test
@@ -983,7 +984,9 @@ internal fun List<UIMessage>.interruptedSubAgentTaskIds(isLive: (String) -> Bool
 }
 ```
 
-本任务需要的 import 追加：`kotlinx.serialization.json.JsonNull`、`kotlinx.serialization.json.jsonObject`、`me.rerere.rikkahub.data.model.Conversation`、`me.rerere.rikkahub.data.model.toMessageNode`、`me.rerere.rikkahub.utils.JsonInstant`。
+本任务需要的 import 追加：`kotlinx.serialization.json.JsonNull`、`kotlinx.serialization.json.buildJsonObject`、`kotlinx.serialization.json.JsonPrimitive`、`kotlinx.serialization.json.jsonObject`、`me.rerere.rikkahub.data.model.Conversation`、`me.rerere.rikkahub.data.model.toMessageNode`、`me.rerere.rikkahub.utils.JsonInstant`。
+
+> **不需要 `import kotlinx.serialization.json.put`**：本文件里 `put(key, value)` 的 value 全是 `JsonElement`，解析到的是 `JsonObjectBuilder` 的**成员**重载；只有 `put(key, String)` 那种才需要扩展函数（测试文件里用到了，所以测试文件有它）。
 
 - [ ] **Step 3: CI 验证**
 
@@ -2260,6 +2263,8 @@ CI 绿之后装 debug 包，按 spec §10.3 的 8 条清单验。**其中第 1 �
 ## 自检记录
 
 **Spec 覆盖**：§4.2 六个缺陷 → ①=Task 8（`ensureLoaded` + 对账）、②=Task 6/7（keepAlive）、③=Task 3+8（中断判据 + 对账）、④=Task 2+8（派生通知替代 pendingNotifications）、⑤=Task 4+8（FIFO 替代单槽位）、⑥=Task 3+9（工具结果改写 + 卡片终态）；§5 组件 → Task 1/2/3/4/6；§6 → Task 3；§7 → Task 2+8 Step 5；§8 → Task 1+3+8；§9 影响面 → 全部任务；§10.1 单测 → Task 1–6；§10.3 设备核验 → Task 9 Step 6；§10.2 CI → 每任务末步。
+
+**任务 3 实现者发现的计划缺陷**（控制器裁定，已记账）：①幂等用例对第二次投递用 `!!`，而该函数在「标记已存在」时按约定返回 `null` —— 照抄必 NPE；实现者先按测试侧最小改动改成 `?: once`，控制器进一步裁定改为显式 `assertNull`，因为 `?: once` 会让断言退化成自己跟自己比（正确返回 null 时 `twice === once`）。②导入清单写漏 `buildJsonObject` / `JsonPrimitive`，且把并不需要的 `put` 列了进去（本文件的 `put` 全解析到 `JsonObjectBuilder` 成员重载）。
 
 **任务 2 实现者发现的计划缺陷**（控制器裁定，已记账）：转义用例的 `<summary>` 断言写的是 `finished`，而实现按 `marker.status` 字面量输出 `completed` —— 断言必失败（实现者实测量化：修正前 13 PASS/1 FAIL，`expected finished actual completed`）。裁定接受实现者的改法：`<status>` 元素已承载 `completed|failed`，`<summary>` 是散文；改造前的代码本来就用状态词拼 summary，用字面量既与既有行为一致、也不动实现。
 
