@@ -25,6 +25,7 @@
 - 后台子代理无论用户当前在哪个会话、App 是否在前台，都能跑完并把结果落回原会话，并触发一轮 AI 回复。
 - 任何终态（完成 / 模型或网络失败 / 用户取消 / 进程中断）都有一条统一、可持久、AI 能读到的回执。
 - 会话历史永不因投递被破坏。
+- **异步子代理的结果正文不对用户展示**，只给 AI（§6.3、决策 5）。
 
 ### 非目标（明确不做）
 
@@ -32,7 +33,8 @@
 |---|---|
 | 不建新表、不动 DB schema | 验收标准用「终态进会话」就能满足（§6） |
 | 不做断点续跑 | 进程死了就判失败，不重放 |
-| **不引入「隐藏/不可见消息」概念** | 会话里不放需要展示层过滤的东西——那会逼聊天列表、全选、导出、搜索索引各自记得过滤一遍（§7） |
+| **不引入「隐藏/不可见消息」概念** | 会话里不放需要展示层过滤的东西——那会逼聊天列表、全选、导出、搜索索引各自记得过滤一遍（替代做法见 §6.3） |
+| 不改同步子代理（`run_in_background=false`）的结果展示 | 它的结果就是当轮给模型的 tool result，与 UI 解析的是同一串文本（`ChatMessageTools.kt:112-119`）；藏它要改 3 个展示面，还会牺牲「用户能读到子代理报告」（决策 5） |
 | 不做会话内「运行中任务面板」 | 只把卡片状态做对 + 一个取消按钮 |
 | 不改消息队列（`QueuedMessage` / `MessageQueue`） | 队列语义是「用户输入」，混入任务结果要为一件事改两个核心并发件 |
 | 不给 AI 加 `task_list` / `task_get` | `eb850b94` 因模型疯狂轮询而有意删除，保持删除 |
@@ -48,6 +50,7 @@
 | 2 | 重启后被打断的任务怎么办 | **静默补标记，等下次生成**：改写工具结果为失败 + 追加可见标记，**不自动开一轮生成**；AI 下次在该会话发言时看到 |
 | 3 | 多个子代理先后完成时怎么回流 | **逐个回流，各开一轮**（与工具描述里「逐个通知」的语义一致）；待触发集合因此必须是**按任务粒度**的 FIFO，不是单槽位 |
 | 4 | 整体方案 | **B 独立投递通道**：不借道消息队列；新增任务注册表 + 保活封装 + 统一投递入口 |
+| 5 | 结果正文给用户看吗 | **只藏异步**：异步的结果正文进标记 metadata，任何展示面都读不到；同步子代理保持现状（结果在卡片里可读） |
 
 ---
 
@@ -115,8 +118,8 @@ sub_agent(run_in_background=true)
                  ├─ ① 终态入库（随时可做、可丢）
                  │    ensureLoaded(conversationId)
                  │    一次 saveConversation：
-                 │      a. 把该 taskId 的 sub_agent 工具结果改写成终态 JSON   ← 幂等锚点 + 卡片状态 + 结果正文
-                 │      b. 追加一条可见标记节点（文本给人看，metadata 给程序读）
+                 │      a. 把该 taskId 的 sub_agent 工具结果改写成终态 JSON   ← 幂等锚点 + 卡片状态（不含结果正文）
+                 │      b. 追加一条可见标记节点（文本=状态给人看；metadata=taskId/status/reason/结果正文，只给 AI）
                  └─ ② 触发回复（需要时机）
                       会话空闲 → launchGenerationJob(keepAlive = true)   ← 带保活的通道
                       会话忙   → TaskDeliveryQueue 排队，生成结束回调里逐个触发
@@ -153,13 +156,14 @@ sub_agent(run_in_background=true)
 - 改写内容：
 
 ```json
-{"type":"sub_agent","status":"completed","reason":null,"description":"…","task_id":"sub_xxx","result":"…"}
-{"type":"sub_agent","status":"failed","reason":"user_cancelled|app_exit","description":"…","task_id":"sub_xxx","error":"…"}
+{"type":"sub_agent","status":"completed","reason":null,"task_id":"sub_xxx","description":"搜索 AI 新闻"}
+{"type":"sub_agent","status":"failed","reason":"user_cancelled|app_exit","task_id":"sub_xxx","description":"搜索 AI 新闻"}
 ```
 
-- `status` 维持 `completed|failed` 两值（现有 UI 的三个 pill 不用扩枚举）；`reason` 区分失败性质，`null` = 模型/网络错误。
-- 结果正文先过 `clipToolOutput`（`ToolOutputLimits.kt:17`，100KB 硬截断，与子代理内部工具输出同一条惯例）。子代理的最终结果是模型写的总结，天然有界，所以**不再引入 `/tool_outputs` 指针机制**（避免依赖助手是否有 shell 访问）。
+- `status` 维持 `completed|failed` 两值（现有 UI 的三个 pill 不用扩枚举）；`reason` 区分失败性质，`null` = 模型/网络错误。这个 JSON 只用于两件事：渲染卡片 pill、做对账锚点。
+- **结果正文与原始 error 不写在这里**（决策 5）：`UIMessagePart.Tool.output` 的 Text 文本同时是「发给模型的 tool 消息」和「UI 解析的对象」——`ToolUIContext.content` 就是把它拼起来再 parse（`ChatMessageTools.kt:112-119`），于是卡片、导出为图片（`Export.kt:313-316`）、详情里的原始 JSON 开关、`ChatPrewarm` 全都读得到。结果改放 §6.3 的 metadata，这些展示面**一个都不用改**。
 - **改写是幂等锚点**：对账判定「工具结果仍为 `started`」，改写后不会再命中。
+- **同步子代理不走这条路**：`run_in_background=false` 的结果必须留在 tool result 里（那是模型当轮的通道），保持现状（决策 5）。
 
 ### 6.3 可见标记：唯一的新节点，文本与元数据分工
 
@@ -170,12 +174,14 @@ UIMessage(
     role = MessageRole.SYSTEM,
     parts = listOf(
         UIMessagePart.Text(
-            text = "Agent \"搜索\" finished",          // 用户看得见
-            metadata = buildJsonObject {               // 用户看不见，程序读
+            text = "Agent \"搜索\" finished",          // 用户看得见：只有状态，没有结果
+            metadata = buildJsonObject {               // 用户看不见，也从不发给 provider
                 put("subAgentTask", buildJsonObject {
                     put("taskId", "sub_xxx")
                     put("status", "completed")         // completed | failed
                     put("reason", JsonNull)            // null | user_cancelled | app_exit
+                    put("result", "……子代理写的完整报告……")   // 结果正文；失败时为 null
+                    put("error", JsonNull)             // 原始错误正文；成功时为 null
                 })
             },
         )
@@ -183,8 +189,18 @@ UIMessage(
 )
 ```
 
-- `UIMessagePart.Text.metadata: JsonObject?` 是 `@Serializable`（`UIMessagePart.kt:82-85`）→ **随 `nodes` blob 一起持久化**，这是选它而不选隐藏节点的原因。
+- `UIMessagePart.Text.metadata: JsonObject?` 是 `@Serializable`（`UIMessagePart.kt:82-85`）→ **随 `nodes` blob 一起持久化**，这是选它而不选隐藏节点的原因；也是**结果正文唯一的持久化载体**（决策 5）。
+- **三条通道的分工**（决策 5 的落点）：
+
+| 载体 | 发给模型 | UI 渲染 | 持久化 |
+|---|---|---|---|
+| 工具结果（`Tool.output` 的 Text） | ✔ 就是 tool 消息正文 | ✔ 卡片 / 导出为图片 / 原始 JSON 开关 / prewarm 全读它 | ✔ |
+| `Text.text` | ✔（在历史里） | ✔ | ✔ |
+| `Text.metadata` | ✖ 只发 `text` | ✖ 渲染器只读 `text` | ✔ |
+
+- 结果正文写入前过 `clipToolOutput`（`ToolOutputLimits.kt:17`，100KB 硬截断）。子代理的最终结果是模型写的总结，天然有界，所以**不引入 `/tool_outputs` 指针机制**（避免依赖助手是否有 shell 访问）。
 - 文案随 `reason` 变：`finished` / `已取消` / `已中断（应用退出）`。
+- 卡片上的失败只显示**分类短文案**（应用退出 / 已取消 / 模型或网络错误），原始 error 只在 metadata 里给 AI。
 - **会话里不存在任何「需要展示层过滤」的节点**：聊天列表渲染、全选、导出为图片、复制、FTS/向量索引全都无需改动（见 §2 非目标第 3 条）。
 - 反例警示：`UIMessage.isSynthetic` 是 `@Transient`（`Message.kt:29-30`），**不持久化**，重新载入后一律为 false——任何「按 isSynthetic 判定」的写法都是错的。
 
@@ -205,13 +221,14 @@ UIMessage(
 >   <reason>…|（无）</reason>
 >   <pending-tasks>N</pending-tasks>       <!-- 运行时从 registry 取，是活信息 -->
 >   <summary>Agent "搜索" finished</summary>
->   <result>…</result>                     <!-- 取自 §6.2 改写后的工具结果的 result/error -->
+>   <result>…</result>                     <!-- 取自标记 metadata 的 result/error（§6.3） -->
 > </task-notification>
 > ```
 
 - **「只通知一次」由此免费获得**：AI 回复一出现，标记就不再派生通知；不需要「已投递」标志位，不需要清理，不会像现在这样永久重复注入（缺陷④消失）。
-- **判据失效是安全的**：因为通知是**冗余的**——结果正文与终态都在**工具结果**里（§6.2），标记也在历史里，模型即使一条通知都没拿到，也能从工具结果读到结果并回复。位置算错最坏是「多发一次」或「少发一次框架」，不会丢信息。这是它比「把通知当唯一载体」更稳的根本原因。
-- **跨进程可靠**：标记与工具结果都已入库，进程死了也不丢，下次生成照常派生（正好满足决策 2「静默补标记，等下次生成」）。
+- **判据是可靠的，不只是「失效也安全」**：标记总在投递时追加到**末尾**，所以任何排在标记**之后**的 assistant 回复，其请求必然是在标记已存在之后构建的——也就是必然已经派生过这条通知。于是「标记之后已有 assistant 文本 ⇒ 视为已汇报」不会漏发。反过来，正在流式生成中的那条 assistant 消息位置在标记**之前**（`updateCurrentMessages` 按下标合并，标记是后追加的），不会被误判成已汇报。
+- **跨进程可靠**：标记（含 metadata 里的结果正文）已入库，进程死了也不丢，下次生成照常派生（正好满足决策 2「静默补标记，等下次生成」）。
+- **已知边界**：重新生成 / 切换分支会截断目标点之后的节点，这类路径下标记可能被丢掉——今天那条可见标记也是同样的行为，不是本轮引入的回归。
 - 触发投递的那一轮不受影响：标记是投递时追加在**末尾**的，一定位于最后一条 assistant 消息之后 → 一定派生。
 
 ---
@@ -286,14 +303,15 @@ UIMessage(
 |---|---|---|
 | 标记之后已有 assistant 文本则不再派生通知 | §7 位置规则（替代「投递一次」状态） | `internal fun pendingTaskNotificationsFor(messages, liveCount): List<UIMessage>` |
 | 末尾的标记一定派生通知 | 触发投递的那一轮不能漏 | 同上 |
-| 通知正文取自工具结果的 result/error | 通知是**派生**的，不是存储的 | 同上 |
+| 通知正文取自标记 metadata 的 result/error | 通知是**派生**的，不是存储的 | 同上 |
+| **异步投递的工具结果里没有结果正文** | 决策 5：工具结果是 UI 最容易读到的载体，放进去等于给用户看 | 断言改写后的 output JSON 无 `result` / `error` 键 |
 | 对账只认 registry 里不存在的 `started` 任务 | §8.3 判据：存活任务不误判；已完成/已失败的旧结果不重复命中（幂等） | `internal fun interruptedSubAgentTasks(messages, isLive): List<…>` |
 | 投递改写不动历史节点数、只改那一个工具结果 | **修复①的回归测试**：5 节点的已载入会话，投递后 6 节点、原 5 个逐字段不变 | `internal fun Conversation.applyTaskDelivery(...)` |
-| 标记的 metadata 往返 | `subAgentTask.taskId/status/reason` 经 JSON 往返后仍可读（**持久化能力**是这套设计的地基） | JSON 往返断言 |
+| 标记的 metadata 往返 | `subAgentTask.taskId/status/reason/result/error` 经 JSON 往返后仍可读（**持久化能力**是地基：结果正文只存在这里） | JSON 往返断言 |
 | 未载入的 session 不会被投递路径当成已载入 | 空壳覆盖历史那道门：`loaded = false` 时必须先走 loader | `ConversationSessionTest` 现有形状（假 loader，断言 loader 被调用、状态来自 loader） |
 | 任务注册表 | 登记 / 终态 / `isLive` / 并发登记 / 取消已完成任务的幂等 | 新类，纯 Kotlin |
 | 待触发 FIFO | 顺序、同 taskId 去重、终态已入库的条目丢弃、**忙时不取消当前生成** | 新类，纯 Kotlin |
-| 终态 JSON 形状 | `status` / `reason` / `result` / `error` 能被现有 `SubAgentToolUI` 的 `getStringContent` 读出 | 同 `ToolStateSerializationTest` |
+| 终态 JSON 形状 | `status` / `reason` / `task_id` / `description` 能被现有 `SubAgentToolUI` 的 `getStringContent` 读出（**不含** result/error） | 同 `ToolStateSerializationTest` |
 
 ### 10.2 CI
 
@@ -321,7 +339,8 @@ UIMessage(
 | 风险 | 说明 / 缓解 |
 |---|---|
 | 事后改写工具结果会破坏 prompt cache 前缀 | 只在一个 task 终态时改一次该 part，生成期间不改；不改则卡片与历史永远错，代价可接受 |
-| 依赖 `UIMessagePart.Text.metadata` 持久化 | 单测钉住往返（10.1）；这是选它替代「隐藏节点」的前提，若哪天 metadata 被改成 `@Transient`，本设计必须重估 |
+| 依赖 `UIMessagePart.Text.metadata` 持久化 | 单测钉住往返（10.1）；这是选它替代「隐藏节点」的前提，**且结果正文只存在于这里**（决策 5）——若哪天 metadata 被改成 `@Transient`，结果会永久丢失，本设计必须重估 |
+| metadata 里可放最多 100KB 结果 → `nodes` blob 变大 | 这是「用户看不到结果」的代价；100KB 硬截断兜底（§6.3） |
 | 标记节点混进对话历史（AI 会看到 `Agent "x" finished`） | 有意为之——它就是可见回执；内容短、无语义歧义 |
 | 卡片停在前台服务通知上时间长 | 复用生成通知的代价；卡死由用户取消（不做 watchdog） |
 | `ensureLoaded` 与用户打开会话竞态 | `loaded` 是一次性单向标志，载入后不再重载；两条路径都走同一个 `updateConversation` |
