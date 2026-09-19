@@ -53,7 +53,10 @@ internal class MyWebViewClient(private val state: WebViewState) : WebViewClient(
         view: WebView,
         request: WebResourceRequest
     ): WebResourceResponse? {
+        // 本地虚拟域名 → 拦截器读文件；外网图片 → 用 app 自己的客户端取（带代理与 UA，
+        // 取不到时内部返回 null，交回 WebView 自己再试）；其余一律走系统
         return WebViewLocalAssets.intercept(view.context.applicationContext, request.url)
+            ?: WebViewRemoteImages.intercept(request)
             ?: super.shouldInterceptRequest(view, request)
     }
 
