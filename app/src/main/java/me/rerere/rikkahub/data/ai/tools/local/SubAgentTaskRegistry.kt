@@ -53,6 +53,13 @@ class SubAgentTaskRegistry {
     /**
      * 写终态。**已终态的任务不再被覆盖**：用户取消与正常完成可能同时到达，
      * 先到者胜，避免把「已完成」改写成「已取消」。
+     *
+     * 用 `ConcurrentHashMap.compute` 而不是「读 → 判断 → 写」：后者两次调用都读到
+     * `IN_PROGRESS` 时会双双写入、最后写入者胜，正好是这个守卫要挡的情形。`compute`
+     * 把整段判断与写入放进同一个原子操作里。
+     *
+     * 返回值语义：任务不存在 → `null`；已被别人写成终态 → 返回**已有的**那条（写入被拒绝）；
+     * 本次写入成功 → 返回新终态。
      */
     fun finish(
         taskId: String,
@@ -60,12 +67,12 @@ class SubAgentTaskRegistry {
         reason: SubAgentFailReason? = null,
         result: String? = null,
         error: String? = null,
-    ): SubAgentTaskInfo? {
-        val previous = tasks[taskId] ?: return null
-        if (previous.status != TaskStatus.IN_PROGRESS) return previous
-        return previous
-            .copy(status = status, reason = reason, result = result, error = error)
-            .also { tasks[taskId] = it }
+    ): SubAgentTaskInfo? = tasks.compute(taskId) { _, previous ->
+        when {
+            previous == null -> null
+            previous.status != TaskStatus.IN_PROGRESS -> previous
+            else -> previous.copy(status = status, reason = reason, result = result, error = error)
+        }
     }
 
     fun isLive(taskId: String): Boolean = tasks[taskId]?.status == TaskStatus.IN_PROGRESS
