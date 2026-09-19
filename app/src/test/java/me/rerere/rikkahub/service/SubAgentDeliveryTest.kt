@@ -307,13 +307,14 @@ class SubAgentDeliveryTest {
         val delivery = TaskDelivery("sub_1", "failed", "app_exit", null, null, "进程被回收")
 
         val interruptedText = { _: String -> "Agent \"搜索 AI 新闻\" 已中断（应用退出）" }
-        val once = conversation.applyTaskDelivery(delivery, markerText = interruptedText)!!
-        // 第二次投递时该任务的标记已在会话里，契约上返回 null（无需变更）——等价于会话原样不动
-        val twice = once.applyTaskDelivery(delivery, markerText = interruptedText) ?: once
 
+        val once = conversation.applyTaskDelivery(delivery, markerText = interruptedText)!!
+        val twice = once.applyTaskDelivery(delivery, markerText = interruptedText)
+
+        // 幂等的判据是「返回 null」：标记已在会话里，第二次投递不做任何变更
+        assertNull("重复投递必须返回 null 表示无需变更", twice)
         assertEquals(3, once.messageNodes.size)
-        assertEquals(3, twice.messageNodes.size)     // 不再追加第二条标记
-        assertEquals(1, twice.messageNodes.count { it.messages.single().subAgentTaskMarkerOrNull() != null })
+        assertEquals(1, once.messageNodes.count { it.messages.single().subAgentTaskMarkerOrNull() != null })
     }
 
     @Test
