@@ -331,6 +331,7 @@ import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -479,8 +480,8 @@ class SubAgentDeliveryTest {
             pendingTaskCount = 0,
         )
 
-        assertTrue(!xml.contains("<reason>"))
-        assertTrue(!xml.contains("<result>"))
+        assertFalse(xml.contains("<reason>"))
+        assertFalse(xml.contains("<result>"))
     }
 
     @Test
@@ -498,7 +499,8 @@ class SubAgentDeliveryTest {
         )
 
         assertTrue(xml.contains("&lt;injected&gt;"))
-        assertEquals(2, Regex("</result>").findAll(xml).count())
+        // 结果里的 `</result>` 已被转义，所以整段 XML 里只有闭合标签那一处字面量
+        assertEquals(1, Regex("</result>").findAll(xml).count())
         assertTrue(xml.contains("<summary>Agent \"a&lt;b&gt;c\" finished</summary>"))
     }
 
@@ -595,13 +597,13 @@ internal fun List<UIMessage>.pendingTaskMarkers(): List<SubAgentTaskMarker> {
     var hasAssistantTextAfter = false
     for (index in indices.reversed()) {
         val message = this[index]
-        message.subAgentTaskMarkerOrNull()?.let { marker ->
+        val marker = message.subAgentTaskMarkerOrNull()
+        if (marker != null) {
             if (!hasAssistantTextAfter) found += marker
-            return@let
-        } ?: run {
-            val isAssistantText = message.role == MessageRole.ASSISTANT &&
-                message.parts.any { it is UIMessagePart.Text && it.text.isNotBlank() }
-            if (isAssistantText) hasAssistantTextAfter = true
+        } else if (message.role == MessageRole.ASSISTANT &&
+            message.parts.any { it is UIMessagePart.Text && it.text.isNotBlank() }
+        ) {
+            hasAssistantTextAfter = true
         }
     }
     return found.reversed()
@@ -686,7 +688,7 @@ Expected: `conclusion = "success"`，`headSha` 对得上，`:app:testDebugUnitTe
 - Produces：
   - `internal data class TaskDelivery(taskId: String, status: String, reason: String?, description: String?, result: String?, error: String?)`
   - `internal const val SUB_AGENT_RESULT_MAX_CHARS = 100_000`
-  - `internal fun Conversation.applyTaskDelivery(delivery: TaskDelivery, markerText: String): Conversation?`（返回 `null` = 无需变更）
+  - `internal fun Conversation.applyTaskDelivery(delivery: TaskDelivery, markerText: (description: String) -> String): Conversation?`（返回 `null` = 无需变更；`markerText` 收到的是**解析后的** description——工具结果里没写时才回退成 taskId）
   - `internal fun List<UIMessage>.interruptedSubAgentTaskIds(isLive: (String) -> Boolean): List<String>`
 
 - [ ] **Step 1: 写失败测试**（追加到 `SubAgentDeliveryTest.kt`）
@@ -734,7 +736,7 @@ Expected: `conclusion = "success"`，`headSha` 对得上，`:app:testDebugUnitTe
                 result = "三条新闻……",
                 error = null,
             ),
-            markerText = "Agent \"搜索 AI 新闻\" finished",
+            markerText = { _ -> "Agent \"搜索 AI 新闻\" finished" },
         )!!
 
         // 只追加一条标记节点，历史节点数 +1
@@ -761,7 +763,8 @@ Expected: `conclusion = "success"`，`headSha` 对得上，`:app:testDebugUnitTe
 
         val updated = conversation.applyTaskDelivery(
             delivery = TaskDelivery("sub_1", "completed", null, null, "三条新闻……", null),
-            markerText = "Agent \"搜索 AI 新闻\" finished",
+            // 用 lambda 拼文案顺带钉住「description 从工具结果里解析出来」这条路径
+            markerText = { desc -> "Agent \"$desc\" finished" },
         )!!
 
         val markerPart = updated.messageNodes.last().messages.single().parts.single() as UIMessagePart.Text
@@ -774,7 +777,12 @@ Expected: `conclusion = "success"`，`headSha` 对得上，`:app:testDebugUnitTe
     fun `找不到对应工具结果时返回 null`() {
         val conversation = conversationOf(userText("起个子代理"), toolCallMessage(subAgentToolPart("sub_1")))
 
-        assertNull(conversation.applyTaskDelivery(TaskDelivery("sub_other", "completed", null, null, "x", null), "m"))
+        assertNull(
+            conversation.applyTaskDelivery(
+                TaskDelivery("sub_other", "completed", null, null, "x", null),
+                markerText = { _ -> "m" },
+            ),
+        )
     }
 
     @Test
@@ -782,8 +790,9 @@ Expected: `conclusion = "success"`，`headSha` 对得上，`:app:testDebugUnitTe
         val conversation = conversationOf(userText("起个子代理"), toolCallMessage(subAgentToolPart("sub_1")))
         val delivery = TaskDelivery("sub_1", "failed", "app_exit", null, null, "进程被回收")
 
-        val once = conversation.applyTaskDelivery(delivery, "Agent \"搜索 AI 新闻\" 已中断（应用退出）")!!
-        val twice = once.applyTaskDelivery(delivery, "Agent \"搜索 AI 新闻\" 已中断（应用退出）")!!
+        val interruptedText = { _: String -> "Agent \"搜索 AI 新闻\" 已中断（应用退出）" }
+        val once = conversation.applyTaskDelivery(delivery, markerText = interruptedText)!!
+        val twice = once.applyTaskDelivery(delivery, markerText = interruptedText)!!
 
         assertEquals(3, once.messageNodes.size)
         assertEquals(3, twice.messageNodes.size)     // 不再追加第二条标记
@@ -797,11 +806,12 @@ Expected: `conclusion = "success"`，`headSha` 对得上，`:app:testDebugUnitTe
 
         val updated = conversation.applyTaskDelivery(
             TaskDelivery("sub_1", "completed", null, null, huge, null),
-            "marker",
+            markerText = { _ -> "marker" },
         )!!
 
         val stored = updated.messageNodes.last().messages.single().subAgentTaskMarkerOrNull()?.result.orEmpty()
-        assertTrue(stored.length <= SUB_AGENT_RESULT_MAX_CHARS)
+        // clipTaskResult = take(MAX) + "[truncated]"，所以长度是 MAX + 后缀长度
+        assertEquals(SUB_AGENT_RESULT_MAX_CHARS + "[truncated]".length, stored.length)
         assertTrue(stored.endsWith("[truncated]"))
     }
 
@@ -867,8 +877,15 @@ private fun UIMessagePart.Tool.matchesTask(taskId: String): Boolean =
  *
  * 返回 `null` 表示无需变更——找不到对应工具结果，或者该任务的标记已经在会话里（幂等）。
  * 结果正文只进标记 metadata，**绝不进工具结果**（决策 5）。
+ *
+ * `markerText` 是**函数**而不是成品字符串：可见文案要过 `stringResource`（Android 资源在本文件里用不了），
+ * 而 description 可能来自工具结果（`delivery.description` 为 null 时）——所以由调用方拿着解析后的
+ * description 去拼文案。中断对账那条路径就是靠它才能显示出子代理的名字而不是 taskId。
  */
-internal fun Conversation.applyTaskDelivery(delivery: TaskDelivery, markerText: String): Conversation? {
+internal fun Conversation.applyTaskDelivery(
+    delivery: TaskDelivery,
+    markerText: (description: String) -> String,
+): Conversation? {
     if (messageNodes.any { node -> node.messages.any { it.subAgentTaskMarkerOrNull()?.taskId == delivery.taskId } }) {
         return null
     }
@@ -890,7 +907,12 @@ internal fun Conversation.applyTaskDelivery(delivery: TaskDelivery, markerText: 
                     description = original?.get("description")?.jsonPrimitive?.contentOrNull
                 }
                 val rewritten = buildJsonObject {
-                    original?.forEach { (key, value) -> if (key != "status" && key != "reason" && key != "task_id") put(key, value) }
+                    // status/reason/task_id 由本次投递决定；result/error 一律不留在工具结果里（决策 5）
+                    original?.forEach { (key, value) ->
+                        if (key !in setOf("status", "reason", "task_id", "result", "error")) {
+                            put(key, value)
+                        }
+                    }
                     put("type", JsonPrimitive(SUB_AGENT_TOOL_NAME))
                     put("status", JsonPrimitive(delivery.status))
                     if (delivery.reason != null) put("reason", JsonPrimitive(delivery.reason))
@@ -915,7 +937,7 @@ internal fun Conversation.applyTaskDelivery(delivery: TaskDelivery, markerText: 
         role = MessageRole.SYSTEM,
         parts = listOf(
             UIMessagePart.Text(
-                text = markerText,
+                text = markerText(effectiveDescription),
                 metadata = buildJsonObject {
                     put(SUB_AGENT_TASK_METADATA_KEY, buildJsonObject {
                         put("taskId", JsonPrimitive(delivery.taskId))
@@ -1069,8 +1091,12 @@ class TaskDeliveryQueue {
     private val pending = ArrayDeque<String>()
 
     @Synchronized
-    fun enqueue(taskId: String): Boolean =
-        if (pending.contains(taskId)) false else pending.addLast(taskId)
+    fun enqueue(taskId: String): Boolean {
+        // kotlin.collections.ArrayDeque.addLast 返回 Unit，不能直接当表达式返回值用
+        if (pending.contains(taskId)) return false
+        pending.addLast(taskId)
+        return true
+    }
 
     @Synchronized
     fun peek(): String? = pending.firstOrNull()
@@ -1615,7 +1641,8 @@ class SubAgentRuntime(
     /** 取消一个还在跑的任务。返回 false 表示任务不存在或已经到达终态。 */
     fun cancel(taskId: String): Boolean {
         val job = jobs.remove(taskId) ?: return false
-        return job.cancel().let { true }
+        job.cancel()
+        return true
     }
 
     private suspend fun finish(
@@ -1804,7 +1831,8 @@ Expected: `conclusion = "success"`。**这一步之后旧 recall 机制仍在跑
                     result = null,
                     error = context.getString(R.string.sub_agent_error_app_exit),
                 ),
-                markerText = context.getString(R.string.sub_agent_task_marker_interrupted, taskId),
+                // 用 lambda：description 由 applyTaskDelivery 从工具结果里解析（这里拿不到）
+                markerText = { description -> taskMarkerText(description, "failed", SubAgentFailReason.APP_EXIT) },
             )
             if (updated != null) current = updated
         }
@@ -1856,7 +1884,7 @@ Expected: `conclusion = "success"`。**这一步之后旧 recall 机制仍在跑
                 result = event.result,
                 error = event.error,
             ),
-            markerText = taskMarkerText(event.description, status, event.reason),
+            markerText = { description -> taskMarkerText(description, status, event.reason) },
         ) ?: return
 
         // 只有来自「实时完成」的投递才触发新的一轮；中断对账走的不是这条入口。
@@ -2225,6 +2253,8 @@ CI 绿之后装 debug 包，按 spec §10.3 的 8 条清单验。**其中第 1 �
 ## 自检记录
 
 **Spec 覆盖**：§4.2 六个缺陷 → ①=Task 8（`ensureLoaded` + 对账）、②=Task 6/7（keepAlive）、③=Task 3+8（中断判据 + 对账）、④=Task 2+8（派生通知替代 pendingNotifications）、⑤=Task 4+8（FIFO 替代单槽位）、⑥=Task 3+9（工具结果改写 + 卡片终态）；§5 组件 → Task 1/2/3/4/6；§6 → Task 3；§7 → Task 2+8 Step 5；§8 → Task 1+3+8；§9 影响面 → 全部任务；§10.1 单测 → Task 1–6；§10.3 设备核验 → Task 9 Step 6；§10.2 CI → 每任务末步。
+
+**Pre-flight 扫描修掉的计划缺陷**（由控制器在开工前修正，已记账）：T2 的 `?.let {} ?: run {}` 改为 if/else；T2 转义测试里 `</result>` 的期望计数 2 → 1；`applyTaskDelivery` 的 `markerText` 由成品字符串改为 `(String) -> String`（否则中断对账只能拿 taskId 当子代理名）；改写时显式剔除 `result`/`error`；截断断言改为 `MAX + 后缀长度`；T4 `addLast` 返回 Unit 不能当表达式；T7 去掉 `cancel().let { true }`。
 
 **已知缺口（执行者注意）**：
 - **`github-build-only` 环境**：本机跑不了 Gradle，所以每个任务的「跑测试」都是 push + CI。计划里每个任务都给了完整的 CI 命令，Task 1–6 可以合并到一次 CI。
