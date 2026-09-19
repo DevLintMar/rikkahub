@@ -1,7 +1,8 @@
 # 交接文档：导出为图片的工作区图片 + 工作区备份/导入的权限位
 
-**最后核对：2026-09-19** —— 仓库 `HEAD = 7e86ce18`（与 origin 同步）。`e02edafd` 的 CI 已绿；
-`7e86ce18` 的 CI 在本文档写就时在跑，**结论只认 `--json`**（判定方式见 §3.1）。
+**最后核对：2026-09-19** —— 仓库 `HEAD = 7e86ce18`（与 origin 同步）。**两次修复的 CI 都已真绿**
+（`e02edafd` run `35430010140`、`7e86ce18` run `35431237348`，判定方式见 §3.1）。
+下一步就是设备核验（§5.1）。
 
 ---
 
@@ -105,10 +106,14 @@ CI 是 ubuntu-latest，所以它们是**真跑**的。
 ## 3. git / CI 状态
 
 - 代码 HEAD = `7e86ce18`，与 origin 同步。
-- `e02edafd`：run `35430010140`，`conclusion=success`，`build` 作业 **21 步 0 skipped**。
-- `7e86ce18`：run `35431237348`，本文档写就时在跑。**恢复后第一件事**：按 §3.1 判它。
-  这次多了一个看点：**新增的 `WorkspaceBackupTest` 三条用例在 Linux 上是否真绿**
-  （它们是本次修复的证明，不是装饰）。
+- `e02edafd`：run `35430010140`，`conclusion=success`，`headSha` 对得上，`build` 作业
+  **21 步 0 skipped**。
+- **`7e86ce18` 也已真绿**：run `35431237348`，`conclusion=success`，`headSha` 对得上，
+  `build` 作业 **21 步 0 skipped**；`:app:testDebugUnitTest` 与 `:workspace:testDebugUnitTest`
+  都跑了并 `BUILD SUCCESSFUL` —— 新增的 `WorkspaceBackupTest` 第一次执行。
+  注意：**run 只上传 `room-schemas` artifact，看不到单测逐条结果**；那三条用例靠
+  `assumeTrue` 在非 POSIX 文件系统上跳过，而 CI 是 ubuntu-latest（ext4，POSIX 视图受支持），
+  所以可执行位那条断言是**真跑**的，不是被跳过后的假绿。
 
 ### 3.1 结论只认 `--json`（`gh run watch` 的退出码不可信）
 
@@ -180,8 +185,8 @@ gh run view 35431237348 --json conclusion
 
 ## 7. 停靠点
 
-**先判 `7e86ce18` 的 CI**（`gh run view 35431237348 --json conclusion`，见 §3.1）→ 绿了让用户过
-§5.1 的表。两条里**工作区导入那条最有价值**：它是「整包功能不可用」，一眼就能判对错
+**CI 两次都已绿（见 §3）→ 直接进设备核验**：装 `7e86ce18` 的 debug 包过 §5.1 的表。
+两条里**工作区导入那条最有价值**：它是「整包功能不可用」，一眼就能判对错
 （导入后终端能起来就是好的）。
 
 若导入后仍报错，先看报错文案再动手：proot 的「找不到」与「不可执行」是两句不同的话（§2.2），
