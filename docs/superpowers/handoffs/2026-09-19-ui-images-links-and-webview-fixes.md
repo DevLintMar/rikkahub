@@ -195,9 +195,9 @@ gh run view <id> --json jobs                        # 确认 build 没被 skip �
 ## 4. 恢复地图
 
 ```bash
-git log --oneline 95f44008..HEAD          # 本轮 9 个提交
-git show 9fb0740b --stat                  # 最后一个提交
-gh run view 35428343921 --json conclusion # 先确认它绿没绿
+git log --oneline 95f44008..HEAD          # 本轮 10 个代码提交 + 1 个文档提交
+git show 09bb1970 --stat                  # 最后一个代码提交
+gh run view 35428592889 --json conclusion # 先确认它绿没绿
 ```
 
 - **提示词**：`data/ai/transformers/UploadReminderTransformer.kt`（无工作区）、
@@ -268,5 +268,5 @@ gh run view 35428343921 --json conclusion # 先确认它绿没绿
 若网页视图的外网图仍裂：要用户给一个具体 URL（Console Logs 里能拿到），
 按 §5.2 最后两条分叉（站点侧 Referer 要求 vs 其它）。
 
-本轮改动面比往常大（9 个提交、10 个文件），但**没有动数据/DB/构建配置**，
+本轮改动面比往常大（10 个代码提交、11 个文件），但**没有动数据/DB/构建配置**，
 回滚锚点是 `95f44008`。
