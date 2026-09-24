@@ -156,6 +156,11 @@ class ChatGenerationForegroundService : Service() {
             }
             isForeground = true
         } catch (e: Exception) {
+            // 进前台失败时把**所有**持有者一起清掉并停服务，是有意的：Android 要求
+            // startForegroundService 之后必须在几秒内真的 startForeground，否则系统直接
+            // 抛 RemoteServiceException 杀掉进程——服务已不可能合法存活。
+            // 代价是持有者对此毫不知情（聊天生成、以及 Task 7 起的子代理网络流），它们会继续跑
+            // 但失去前台保护；它们无法自救，所以这里只记日志、不做通知。
             Log.e(TAG, "Failed to enter foreground", e)
             activeGenerations.clear()
             stopSelf()
