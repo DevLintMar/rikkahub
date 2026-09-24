@@ -1716,7 +1716,7 @@ class SubAgentRuntime(
     }
 ```
 
-> 位置顺序必须与构造参数顺序一致：`context, eventBus, ttsManager, settingsStore, providerManager, appScope, keepAlive, agentManager`。请照着构造函数的实际参数顺序传，不要凭这里的示例顺序。
+> **更正（Task 7 实现者指出，已核实）**：位置顺序**不**需要刻意对齐。Koin 的 `get()` 是 `inline fun <reified T : Any> get(): T`，`T` 由**该位置形参的声明类型**推断，所以每个 `get()` 解析成什么类型只取决于「它是第几个实参」，与书写顺序无关——把两个 `get()` 对调会产生完全相同的代码。要保证的是**实参个数与形参个数一致**（多一个或少一个才是编译错误）。原话「位置顺序必须一致，否则编译报错」把机制说错了；结论（在 `keepAlive` 形参的位置插一个新 `get()`）仍然正确，就是实现者所做的。
 
 - [ ] **Step 4: 改订阅方与 `RouteActivity`**
 
@@ -1804,6 +1804,10 @@ Expected: `conclusion = "success"`。
                 .updateCurrentMessages(assistant.presetMessages)
             updateConversation(conversationId, newConversation)
         }
+        // 必须置位：§6.1 明写「initializeConversation 完成后置 true」。漏了这行的后果不是「慢一点」，
+        // 而是 `ensureLoaded` 之后每次都会以为会话没载入过，于是**每条投递都重新读库 + updateConversation
+        // 整段替换内存态**——用户正在生成时会把还没落盘的流式内容冲掉（正是 §6.1 警告的那件事）。
+        getOrCreateSession(conversationId).loaded = true
         // 补这一行：这条路径是「软件退出 / 子代理中断」失败回执的**主要**来源——新进程里 registry
         // 是空的，用户打开那个会话时工具结果仍停在 started，正是这里把它补成终态。
         // 静默：只补标记不触发生成（决策 2），AI 下次在这个会话里发言时由派生通知看到。
@@ -2315,6 +2319,12 @@ CI 绿之后装 debug 包，按 spec §10.3 的 8 条清单验。**其中第 1 �
 ## 自检记录
 
 **Spec 覆盖**：§4.2 六个缺陷 → ①=Task 8（`ensureLoaded` + 对账）、②=Task 6/7（keepAlive）、③=Task 3+8（中断判据 + 对账）、④=Task 2+8（派生通知替代 pendingNotifications）、⑤=Task 4+8（FIFO 替代单槽位）、⑥=Task 3+9（工具结果改写 + 卡片终态）；§5 组件 → Task 1/2/3/4/6；§6 → Task 3；§7 → Task 2+8 Step 5；§8 → Task 1+3+8；§9 影响面 → 全部任务；§10.1 单测 → Task 1–6；§10.3 设备核验 → Task 9 Step 6；§10.2 CI → 每任务末步。
+
+**Task 7 实现者指出的机制性错误**（控制器裁定，已记账）：我在 Task 7 Step 3 写的「位置顺序必须与构造参数顺序一致，否则编译报错」把机制说错了 —— Koin 的 `get()` 是 `inline fun <reified T : Any> get(): T`，`T` 由该位置**形参的声明类型**推断，因此每个 `get()` 的类型只取决于它的实参位置，与书写顺序无关（对调两个 `get()` 产生相同代码）；真正会编译报错的是实参个数与形参个数不符。结论（在 `keepAlive` 形参处插一个新 `get()`）不受影响。已把计划里那句改对，并记下「实现者纠正了控制器的裁定」这件事本身。
+
+**控制器自查抓出的计划缺陷（三）**（我自己引入、自己在 Task 8 派发前核出，已记账）：我在「让 `ensureLoaded` 自成一体、`initializeConversation` 保持原样」这条修正里**丢掉了 `loaded = true`** —— 原计划那行在 `loadConversation` 尾部（`getOrCreateSession(conversationId).loaded = true`），而两条路径都靠它。后果不是「慢一点」：用户打开会话后 `loaded` 永远为 false ⇒ 之后每条投递都走「重新读库 + `updateConversation`」整段替换内存态 ⇒ 用户正在生成时把未落盘的流式内容冲掉，正是 §6.1 警告的那件事。spec §6.1 本来就写着「`initializeConversation` 完成后置 true」，是我改计划时把它弄丢了。
+
+> **教训（同一处修正里犯了两次，必须记下来）**：拆「共享的载入方法」时，我逐项搬了它的**主职责**，却连丢两次它的**尾部副作用**——先是 `reconcileInterruptedSubAgentTasks`（差点砍掉「软件退出补失败回执」的主要路径），后是 `loaded = true`。凡拆一个既有方法，必须把它**除主职责之外还顺手做了什么**逐条列出并逐一交代去向，而不是只盯它「读库 + updateConversation」那两行。（这条已在 Task 8 派发前修好，未进入任何已派发的 brief。）
 
 **任务 7 派发前核出的计划缺陷（二）**（控制器裁定，已记账）：Step 5 用 `git add -A` —— 实现者若在仓库内留下任何探针/临时文件，会被一并提交进 master。改为显式列出本任务的 6 个路径。同时把「行为与今天一致」这句写准：它只是「旧 recall 机制刻意留到 Task 8 才删」，而 `executeAsync` 本任务确实新增了行为（取消时补 `USER_CANCELLED` 终态事件；用 `keepAlive` 自己持有前台服务），这两条不能为了「保持一致」而回退。
 
