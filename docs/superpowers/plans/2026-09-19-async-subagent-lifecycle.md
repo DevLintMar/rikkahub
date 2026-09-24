@@ -2153,13 +2153,18 @@ Expected: `conclusion = "success"`。
   <string name="sub_agent_error_app_exit">应用已退出或后台进程在任务完成前被回收。</string>
 ```
 
-> XML 里 `\"` 不是合法转义，**必须**写成 `\"` 在 Android strings.xml 中的正确形式：`"` 直接用 `\"` 会报错。用 `&quot;`：`<string name="sub_agent_task_marker_finished">Agent &quot;%1$s&quot; finished</string>`。
+> **上面代码块里的 `\"` 就是正确写法，照抄即可，不要改。** aapt2 的字符串资源支持反斜杠转义，`\"` 是合法的双引号写法；本仓 `res/values/strings.xml` 里已有 **5 处** `\"`（如 `sub_agents_page_delete_message`、`history_page_delete_conversation_confirm`）而 **0 处** `&quot;`。（原先这里写的「`\"` 不是合法转义、改用 `&quot;`」是本控制器写错的：它会把正确的代码改成与本仓惯例不一致的写法。）
 
 - [ ] **Step 9: CI 验证**
 
 ```bash
-git add -A
-git commit -m "feat(subagent): 投递走统一两步通道（终态入库 + 保活触发），删除 pendingNotifications 与单槽位 recall"
+# 显式列出本任务改的文件。**不要用 `git add -A`**：探针/临时文件若落在仓库内会被一并提交。
+git add app/src/main/java/me/rerere/rikkahub/service/ChatService.kt \
+        app/src/main/java/me/rerere/rikkahub/ui/pages/chat/ChatVM.kt \
+        app/src/main/res/values/strings.xml app/src/main/res/values-zh/strings.xml
+git commit -m "feat(subagent): 投递走统一两步通道（终态入库 + 保活触发），删除 pendingNotifications 与单槽位 recall" \
+           -m "（一两句说清「为什么」）" \
+           -m "Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 git push origin master
 gh workflow run nightly-build-debug.yml --repo DevLintMar/rikkahub --ref master
 gh run view <run-id> --json conclusion,headSha
@@ -2321,6 +2326,8 @@ CI 绿之后装 debug 包，按 spec §10.3 的 8 条清单验。**其中第 1 �
 **Spec 覆盖**：§4.2 六个缺陷 → ①=Task 8（`ensureLoaded` + 对账）、②=Task 6/7（keepAlive）、③=Task 3+8（中断判据 + 对账）、④=Task 2+8（派生通知替代 pendingNotifications）、⑤=Task 4+8（FIFO 替代单槽位）、⑥=Task 3+9（工具结果改写 + 卡片终态）；§5 组件 → Task 1/2/3/4/6；§6 → Task 3；§7 → Task 2+8 Step 5；§8 → Task 1+3+8；§9 影响面 → 全部任务；§10.1 单测 → Task 1–6；§10.3 设备核验 → Task 9 Step 6；§10.2 CI → 每任务末步。
 
 **Task 7 实现者指出的机制性错误**（控制器裁定，已记账）：我在 Task 7 Step 3 写的「位置顺序必须与构造参数顺序一致，否则编译报错」把机制说错了 —— Koin 的 `get()` 是 `inline fun <reified T : Any> get(): T`，`T` 由该位置**形参的声明类型**推断，因此每个 `get()` 的类型只取决于它的实参位置，与书写顺序无关（对调两个 `get()` 产生相同代码）；真正会编译报错的是实参个数与形参个数不符。结论（在 `keepAlive` 形参处插一个新 `get()`）不受影响。已把计划里那句改对，并记下「实现者纠正了控制器的裁定」这件事本身。
+
+**控制器自查抓出的计划缺陷（四）**（Task 8 派发前核出，已记账）：Step 8 那段转义说明**自相矛盾且事实错误** —— 它断言「`\"` 不是合法转义」并要求改用 `&quot;`，而 Step 8 自己的代码块用的就是 `\"`，且本仓 `values/strings.xml` 里已有 5 处 `\"`、0 处 `&quot;`（aapt2 的字符串资源本就支持反斜杠转义）。照那段说明做，实现者会把**正确的**代码改成与本仓惯例不一致的写法 —— 这是最坏的一类指令错误：叫人对的东西动手。已改写成「照抄 `\"` 即可」并附上 5/0 的实测计数。同一轮还把 Step 9 的 `git add -A` 换成显式路径（与 Task 7 同类）。
 
 **控制器自查抓出的计划缺陷（三）**（我自己引入、自己在 Task 8 派发前核出，已记账）：我在「让 `ensureLoaded` 自成一体、`initializeConversation` 保持原样」这条修正里**丢掉了 `loaded = true`** —— 原计划那行在 `loadConversation` 尾部（`getOrCreateSession(conversationId).loaded = true`），而两条路径都靠它。后果不是「慢一点」：用户打开会话后 `loaded` 永远为 false ⇒ 之后每条投递都走「重新读库 + `updateConversation`」整段替换内存态 ⇒ 用户正在生成时把未落盘的流式内容冲掉，正是 §6.1 警告的那件事。spec §6.1 本来就写着「`initializeConversation` 完成后置 true」，是我改计划时把它弄丢了。
 
