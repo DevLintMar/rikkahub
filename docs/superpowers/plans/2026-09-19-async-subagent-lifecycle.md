@@ -2377,8 +2377,13 @@ val LocalSubAgentTaskActions = staticCompositionLocalOf<SubAgentTaskActions?> { 
 - [ ] **Step 5: CI 验证**
 
 ```bash
-git add -A
-git commit -m "feat(subagent): 卡片显示终态与失败分类，运行中可取消任务"
+# 显式列出本任务改的文件。**不要用 `git add -A`**：探针/临时文件若落在仓库内会被一并提交。
+git add app/src/main/java/me/rerere/rikkahub/ui/components/message/tools/BuiltinToolUIs.kt \
+        app/src/main/java/me/rerere/rikkahub/ui/pages/chat/ChatPage.kt \
+        app/src/main/res/values/strings.xml app/src/main/res/values-zh/strings.xml
+git commit -m "feat(subagent): 卡片显示终态与失败分类，运行中可取消任务" \
+           -m "（一两句说清「为什么」）" \
+           -m "Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 git push origin master
 gh workflow run nightly-build-debug.yml --repo DevLintMar/rikkahub --ref master
 gh run view <run-id> --json conclusion,headSha
@@ -2413,6 +2418,8 @@ CI 绿之后装 debug 包，按 spec §10.3 的 8 条清单验。**其中第 1 �
 
 **同轮修正的两处 Task 8 事实性错误**（实现者指出）：① Step 6.4 只列了 `sendQueuedMessage` 一处 `checkPendingRecall`，实为**三处**（`regenerateAtMessage`、`handleToolApproval`）——虽因「漏改即编译不过」而自纠，但错误计数会让人以为改完一处就收工；② 本步**缺一个必需 import**（`SubAgentFailReason`，`reconcileInterruptedSubAgentTasks` 与 `taskMarkerText` 都要用），照 brief 抄会编译不过。
 
+**Task 9 派发前核出的两处计划缺陷**（控制器裁定，已记账）：① Step 5 又是 `git add -A`（与 Task 7/8 同类），换成显式 4 路径；② 「已知缺口」里那条转义说明**仍写着上轮已被判定为错的结论**（断言双引号要写 `&quot;`、别照抄 `\"`），而 Task 8 正是照 `\"` 写完并 CI 通过——**同一处错误在另一个位置留了副本**。已写实并附 5/0 实测计数。教训：更正一处错误结论时，要在**整个计划**里搜同一说法（而非只改被派发的那一段），否则副本会继续误导。
+
 **控制器自查抓出的计划缺陷（四）**（Task 8 派发前核出，已记账）：Step 8 那段转义说明**自相矛盾且事实错误** —— 它断言「`\"` 不是合法转义」并要求改用 `&quot;`，而 Step 8 自己的代码块用的就是 `\"`，且本仓 `values/strings.xml` 里已有 5 处 `\"`、0 处 `&quot;`（aapt2 的字符串资源本就支持反斜杠转义）。照那段说明做，实现者会把**正确的**代码改成与本仓惯例不一致的写法 —— 这是最坏的一类指令错误：叫人对的东西动手。已改写成「照抄 `\"` 即可」并附上 5/0 的实测计数。同一轮还把 Step 9 的 `git add -A` 换成显式路径（与 Task 7 同类）。
 
 **控制器自查抓出的计划缺陷（三）**（我自己引入、自己在 Task 8 派发前核出，已记账）：我在「让 `ensureLoaded` 自成一体、`initializeConversation` 保持原样」这条修正里**丢掉了 `loaded = true`** —— 原计划那行在 `loadConversation` 尾部（`getOrCreateSession(conversationId).loaded = true`），而两条路径都靠它。后果不是「慢一点」：用户打开会话后 `loaded` 永远为 false ⇒ 之后每条投递都走「重新读库 + `updateConversation`」整段替换内存态 ⇒ 用户正在生成时把未落盘的流式内容冲掉，正是 §6.1 警告的那件事。spec §6.1 本来就写着「`initializeConversation` 完成后置 true」，是我改计划时把它弄丢了。
@@ -2439,6 +2446,6 @@ CI 绿之后装 debug 包，按 spec §10.3 的 8 条清单验。**其中第 1 �
 
 **已知缺口（执行者注意）**：
 - **`github-build-only` 环境**：本机跑不了 Gradle，所以每个任务的「跑测试」都是 push + CI。计划里每个任务都给了完整的 CI 命令，Task 1–6 可以合并到一次 CI。
-- **Task 8 Step 8 的 strings.xml 转义**：Android 资源里双引号要写 `&quot;`（计划里已注明正确写法，别照抄上面 `\"` 的示例）。
+- **`strings.xml` 里的双引号**：本仓惯例是写 `\"`（`values/strings.xml` 里已有 **5 处**、`&quot;` **0 处**；aapt2 的字符串资源本就支持反斜杠转义）。Task 8 已按此写完并 CI 通过；Task 9 新增的六条文案不含引号，不受影响。**若将来要加，照抄 `\"` 即可。**（这条原话写的是「要写 `&quot;`、别照抄 `\"` 示例」——那是本控制器写错的，会让实现者把正确的代码改成与本仓惯例不一致的写法，已在 Task 8 派发前更正，此处一并写实。）
 - **Task 2 与 Task 3 共用一个文件**：Task 2 只写「读」那一半，import 保持最小；Task 3 才引入写 metadata 需要的 `JsonNull` / `buildJsonObject` / `put` / `JsonPrimitive`。别在 Task 2 就抄 Task 3 的 import。
 - 未覆盖但 spec 明确为「非目标」的：DB 迁移、断点续跑、同步子代理结果可见性、任务面板、watchdog——都不是缺口。
