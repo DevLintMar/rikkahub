@@ -1904,6 +1904,15 @@ Expected: `conclusion = "success"`。
         }
         if (current !== conversation) {
             Log.i(TAG, "reconcileInterruptedSubAgentTasks: $conversationId (${interrupted.size} task(s))")
+            // 与 `deliverTaskResult` 同一个理由，这里也**先同步写内存**再落库：`saveConversation` 内部
+            // 的 `updateConversation` 在它自己的 `existsConversationById` **挂起之后**才执行。那段挂起里
+            // 若起了新一轮生成（生成结束回调排空队列、或另一条投递的 `saveConversation` 尾部），
+            // 该生成会快照到「未含本次对账标记」的状态；等我们恢复再把内存设成含标记的那份，
+            // 它在飞的 assistant 消息就会按 index 落进标记节点 —— 与 Critical 一模一样的机制链，
+            // 只是这次的后果是「中断通知永久派发不出去」而不是「结果正文丢失」。
+            // 守卫（本函数开头那个 `isActive` 检查）到这里的改写之间没有任何挂起点，
+            // 所以先写内存即可把它关掉。
+            updateConversation(conversationId, current)
             saveConversation(conversationId, current)
         }
     }
@@ -1989,6 +1998,14 @@ Expected: `conclusion = "success"`。
         // 第二条投递落库后其 `saveConversation` 尾部排空队列，或用户队列消息被排空
         // （`removeQueuedMessage` / `finishEditQueuedMessage` 都会调 `advanceConversation`）。
         // 只等一次会把「闸门」与「改写」之间留下一段挂起，机制链就重新成立。
+        //
+        // **承重不变量：`awaitIdle` 返回到 `updateConversation` 之间不得有任何挂起点。**
+        // 因为 `isActive == false` 并不只意味着「没有生成」——`setJob` 会先把 LAZY 的 job 装进
+        // `_generationJob` 再 `start()`，那一瞬间 `isActive` 也是 false，而它的请求快照是稍后
+        // 在 `handleMessageComplete` 里才构建的。这段改写之所以安全，靠的正是「同一个不挂起
+        // 片段」：本协程在 Main 上，只要不挂起，任何新装的 job 的协程体都排在我们之后，
+        // 快照必然包含我们刚写的标记。**别在这两行之间插入任何 suspend 调用（包括日志之外的
+        // I/O、`yield`、`delay`）**——那会让整条机制链重新成立，且没有任何测试会报警。
         awaitIdle(session)
 
         val updated = session.state.value.applyTaskDelivery(
@@ -2417,6 +2434,11 @@ CI 绿之后装 debug 包，按 spec §10.3 的 8 条清单验。**其中第 1 �
 **Task 8 实现者发现的计划缺陷 · 严重（控制器裁定，已记账）**：Task 8 Step 2 的中断对账判据写的是 `registry.isLive(taskId)`，而 `isLive` =「registry 里那条是 IN_PROGRESS」。于是**本进程里刚刚完成、投递尚未落地**的任务会被误判为中断：那一刻工具结果仍是 `started`（① 终态入库在 `ensureLoaded` 返回之后才做），registry 里已是 COMPLETED ⇒ `isLive` 为假 ⇒ 判中断 ⇒ 写上一条**假的**「应用退出」回执并落库；随后真正的投递走到 `applyTaskDelivery` 时标记已存在、按幂等契约返回 `null` ⇒ **真投递被静默丢弃**（结果正文丢失、`enqueue` 永不执行、**不触发 AI 回复**）。触发条件只是 `session.loaded == false`，即**会话被 5 秒空闲回收**——正是验收标准第一条（「切屏走了之后仍能跑完并触发回复」）的主场景；spec §10.3 的第 1 条设备核验本会撞上它。spec 自身也自相矛盾：§8.3 写 `!isLive`，而它自己的测试表写「registry 里**不存在**」。修法：判据改为 `get(taskId) == null`（本进程完全不认识它），并把谓词参数由 `isLive` 改名为 `isTracked`（**缺陷的根因就是这个名**，留着它下一个人还会把 `isLive` 传回来）。`SubAgentDeliveryTest` 的四处调用都是尾随 lambda、无具名实参，故测试零改动。（发现方：Task 8 实现者，在审查前自行核出并完整给了可达性链与两个备选方案，未擅自改计划——这正是常设指令要求的做法。）
 
 **同轮修正的两处 Task 8 事实性错误**（实现者指出）：① Step 6.4 只列了 `sendQueuedMessage` 一处 `checkPendingRecall`，实为**三处**（`regenerateAtMessage`、`handleToolApproval`）——虽因「漏改即编译不过」而自纠，但错误计数会让人以为改完一处就收工；② 本步**缺一个必需 import**（`SubAgentFailReason`，`reconcileInterruptedSubAgentTasks` 与 `taskMarkerText` 都要用），照 brief 抄会编译不过。
+
+**Critical 的 scoped re-review 结论 + Fix 轮 4**（控制器裁定，已记账）：复核判定 **A1 = PARTIAL** —— `deliverTaskResult` 那条路径**确实关上了**（A2「闸门机制成立」逐项验过：不热自旋、不误判、不死锁；A3「无实质破损」也逐项验过：对账跳过是「延后」而非「丢失」、双重 `updateConversation` 的第二次 diff 为空、`TASK_NOTIFICATION_TAG` 与 `taskXml` 首行逐字节等价），但 **A4 = PARTIAL**：闸门与改写必须处于**同一不挂起片段**这条承重不变量在代码里**没有写明**（我在 Fix 轮 3 删掉了断言它的那句，却没有在它重新成立的 gate 2 处重述）。且报出 2 条新 Important：
+> ① **对账的守卫不紧贴其写入**（`ChatService.kt:417` 守卫 → `:421` 读 → `:427` 在局部变量上改写 → `:443` `saveConversation` 内的 `existsConversationById` **挂起** → `:1507` 才写内存）：那段挂起里起的生成会快照到「未含对账标记」的状态，随后对账把内存设成含标记的那份 ⇒ 在飞 assistant 仍落进标记节点 ⇒ **中断通知永久派发不出去**。**修（Fix 轮 4）**：与 `deliverTaskResult` 同一修法——落库前先 `updateConversation` 同步写内存（守卫到改写之间无挂起点，故此举即关闭）。② **`generateSuggestion` 从 `Dispatchers.IO` 做无锁读-改-写**（`ChatService.kt:1270-1274`，由 `:1111` 在生成结束那一刻启动）：其读-改-写可吞掉投递刚写的标记 ⇒ `stillPending = false` ⇒ 不触发回复，且之后某次 `saveConversation` 会把无标记的内存态落库（正文丢失）。**判「记录而不修」**（理由见下方 Ruling）。
+
+`Ruling: Important ② 记录进最终审查清单、本轮不修 — 理由：它是**既有**的无锁写类别（generateSuggestion 与其它写者一直都这么竞争），不属于本计划引入；修它要改的是聊天建议这个**不相干功能**的语义（把它的两处状态更新串行化到 Main 或只更新自有字段），已超出计划声明的影响面；而实际窗口很窄——`generateSuggestion` 那处读-改-写是相邻两条语句、中间不挂起，且它由生成结束那一刻启动、在我们的闸门释放之前就已执行，只有「投递的写入恰好落在它的 read 与 write 之间」才丢（数条指令级的窗口）。带全部分析与触发条件交最终审查（opus）判断是否在合并前修 — 代价：若恰好命中，症状是「一轮回复没触发 + 结果正文从库里消失」，且不会有测试报警`
 
 **Task 9 派发前核出的两处计划缺陷**（控制器裁定，已记账）：① Step 5 又是 `git add -A`（与 Task 7/8 同类），换成显式 4 路径；② 「已知缺口」里那条转义说明**仍写着上轮已被判定为错的结论**（断言双引号要写 `&quot;`、别照抄 `\"`），而 Task 8 正是照 `\"` 写完并 CI 通过——**同一处错误在另一个位置留了副本**。已写实并附 5/0 实测计数。教训：更正一处错误结论时，要在**整个计划**里搜同一说法（而非只改被派发的那一段），否则副本会继续误导。
 
