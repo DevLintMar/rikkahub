@@ -22,6 +22,17 @@ import kotlin.uuid.Uuid
 private const val TAG = "ChatGenerationFgs"
 
 /**
+ * 通知文案：只要有一个聊天生成在跑就显示「正在生成」，否则显示「后台任务运行中」。
+ * 抽成顶层函数是为了能在 JVM 单测里钉住这条判定。
+ */
+internal fun foregroundNotificationLabelRes(activeBackgroundFlags: Collection<Boolean>): Int =
+    if (activeBackgroundFlags.isNotEmpty() && activeBackgroundFlags.all { it }) {
+        R.string.notification_sub_agent_running
+    } else {
+        R.string.notification_live_update_title
+    }
+
+/**
  * Keeps the app process in the foreground while one or more chat generations are active.
  *
  * Generation itself remains owned by [ChatService]. This service only provides the Android
@@ -33,14 +44,21 @@ class ChatGenerationForegroundService : Service() {
         private const val ACTION_RELEASE = "me.rerere.rikkahub.action.CHAT_GENERATION_RELEASE"
         private const val EXTRA_GENERATION_ID = "generation_id"
         private const val EXTRA_CONVERSATION_ID = "conversation_id"
+        private const val EXTRA_BACKGROUND_TASK = "background_task"
 
         const val NOTIFICATION_ID = 2002
 
-        fun acquire(context: Context, generationId: Uuid, conversationId: Uuid): Boolean {
+        fun acquire(
+            context: Context,
+            generationId: Uuid,
+            conversationId: Uuid,
+            backgroundTask: Boolean = false,
+        ): Boolean {
             val intent = Intent(context, ChatGenerationForegroundService::class.java).apply {
                 action = ACTION_ACQUIRE
                 putExtra(EXTRA_GENERATION_ID, generationId.toString())
                 putExtra(EXTRA_CONVERSATION_ID, conversationId.toString())
+                putExtra(EXTRA_BACKGROUND_TASK, backgroundTask)
             }
             return runCatching {
                 ContextCompat.startForegroundService(context, intent)
@@ -63,7 +81,9 @@ class ChatGenerationForegroundService : Service() {
         }
     }
 
-    private val activeGenerations = linkedMapOf<String, String>()
+    private data class ActiveGeneration(val conversationId: String, val backgroundTask: Boolean)
+
+    private val activeGenerations = linkedMapOf<String, ActiveGeneration>()
     private var isForeground = false
     private val appScope: AppScope by inject()
     private val chatService: ChatService by inject()
@@ -91,7 +111,7 @@ class ChatGenerationForegroundService : Service() {
     override fun onTimeout(startId: Int, fgsType: Int) {
         Log.e(TAG, "Foreground service timed out (type=$fgsType)")
         activeGenerations.values
-            .mapNotNull { runCatching { Uuid.parse(it) }.getOrNull() }
+            .mapNotNull { runCatching { Uuid.parse(it.conversationId) }.getOrNull() }
             .distinct()
             .forEach { conversationId ->
                 appScope.launch {
@@ -105,8 +125,9 @@ class ChatGenerationForegroundService : Service() {
     private fun acquire(intent: Intent) {
         val generationId = intent.getStringExtra(EXTRA_GENERATION_ID) ?: return stopService()
         val conversationId = intent.getStringExtra(EXTRA_CONVERSATION_ID) ?: return stopService()
-        activeGenerations[generationId] = conversationId
-        updateForegroundNotification(conversationId)
+        val backgroundTask = intent.getBooleanExtra(EXTRA_BACKGROUND_TASK, false)
+        activeGenerations[generationId] = ActiveGeneration(conversationId, backgroundTask)
+        updateForegroundNotification()
     }
 
     private fun release(intent: Intent) {
@@ -114,13 +135,15 @@ class ChatGenerationForegroundService : Service() {
         if (activeGenerations.isEmpty()) {
             stopService()
         } else {
-            updateForegroundNotification(activeGenerations.values.last())
+            updateForegroundNotification()
         }
     }
 
-    private fun updateForegroundNotification(conversationId: String) {
+    private fun updateForegroundNotification() {
+        val conversationId = activeGenerations.values.lastOrNull()?.conversationId
+        val labelRes = foregroundNotificationLabelRes(activeGenerations.values.map { it.backgroundTask })
         try {
-            val notification = buildNotification(conversationId)
+            val notification = buildNotification(conversationId, labelRes)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 ServiceCompat.startForeground(
                     this,
@@ -147,12 +170,12 @@ class ChatGenerationForegroundService : Service() {
         stopSelf()
     }
 
-    private fun buildNotification(conversationId: String) =
+    private fun buildNotification(conversationId: String?, labelRes: Int) =
         NotificationCompat.Builder(this, CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_rikkahub)
             .setContentTitle(getString(R.string.app_name))
-            .setContentText(getString(R.string.notification_live_update_title))
-            .setContentIntent(getConversationPendingIntent(conversationId))
+            .setContentText(getString(labelRes))
+            .setContentIntent(conversationId?.let { getConversationPendingIntent(it) })
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .setOngoing(true)
             .setOnlyAlertOnce(true)

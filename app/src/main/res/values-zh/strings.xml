@@ -1317,6 +1317,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="tool_ui_sub_agent_completed">已完成</string>
   <string name="tool_ui_sub_agent_failed">失败</string>
   <string name="tool_ui_sub_agent_started">已在后台启动</string>
+  <string name="notification_sub_agent_running">后台任务运行中</string>
   <string name="tool_ui_replay">重播</string>
   <string name="tool_ui_view_json">查看 JSON</string>
   <string name="tool_ui_view_style">查看样式</string>

@@ -170,6 +170,7 @@ class ChatService(
     private val filesManager: FilesManager,
     private val workspaceRepository: WorkspaceRepository,
     private val folderRepository: FolderRepository,
+    private val keepAlive: GenerationKeepAlive,
 ) {
     // workspace 系统提示注入 (依赖 workspaceRepository, 故在类内构造)
     private val workspaceReminderTransformer = WorkspaceReminderTransformer(workspaceRepository)
@@ -339,18 +340,15 @@ class ChatService(
         if (!keepAliveInBackground) return appScope.launch(start = CoroutineStart.LAZY) { block() }
 
         return appScope.launch(start = CoroutineStart.LAZY) {
-            val generationId = Uuid.random()
-            val foregroundStarted = ChatGenerationForegroundService.acquire(
-                context = context,
-                generationId = generationId,
-                conversationId = conversationId,
-            )
+            // 刻意不传 backgroundTask：这条通道只跑**聊天生成**，此刻持有前台服务的就是这轮回复生成，
+            // 文案该是「正在生成回复…」。子代理自己的网络流不走这里，它直接用
+            // keepAlive.hold(..., backgroundTask = true)（Task 7）。给本函数加一个永不被传的
+            // backgroundTask 形参，等于邀请后来者把一轮回复生成误标成「后台任务」。
+            val token = keepAlive.hold(conversationId)
             try {
                 block()
             } finally {
-                if (foregroundStarted) {
-                    ChatGenerationForegroundService.release(context, generationId)
-                }
+                keepAlive.release(token)
             }
         }
     }

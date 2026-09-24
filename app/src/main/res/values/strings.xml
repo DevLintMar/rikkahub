@@ -1351,6 +1351,7 @@
   <string name="tool_ui_sub_agent_completed">Completed</string>
   <string name="tool_ui_sub_agent_failed">Failed</string>
   <string name="tool_ui_sub_agent_started">Started in background</string>
+  <string name="notification_sub_agent_running">Background task running</string>
   <string name="tool_ui_replay">Replay</string>
   <string name="tool_ui_scrape_truncated">… truncated, %1$d characters in total</string>
   <string name="tool_ui_scrape_status">HTTP %1$d</string>
