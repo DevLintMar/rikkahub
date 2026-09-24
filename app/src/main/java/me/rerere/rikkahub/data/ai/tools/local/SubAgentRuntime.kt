@@ -2,8 +2,10 @@ package me.rerere.rikkahub.data.ai.tools.local
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import me.rerere.ai.core.ReasoningLevel
@@ -22,6 +24,7 @@ import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
+import me.rerere.rikkahub.service.GenerationKeepAlive
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.uuid.Uuid
 
@@ -37,20 +40,13 @@ data class AsyncSubAgentHandle(
 )
 
 
-data class TaskInfo(
-    val taskId: String,
-    val description: String,
-    val prompt: String,
-    val status: TaskStatus,
-    val result: String? = null,
-    val error: String? = null,
-)
-
 class SubAgentRuntime(
     private val providerManager: ProviderManager,
     private val settingsStore: SettingsStore,
     private val appScope: AppScope,
     private val eventBus: AppEventBus,
+    private val registry: SubAgentTaskRegistry,
+    private val keepAlive: GenerationKeepAlive,
 ) {
     companion object {
         private val DEFAULT_SYSTEM_PROMPT = """
@@ -61,8 +57,8 @@ class SubAgentRuntime(
         """.trimIndent()
     }
 
-    /** 所有异步任务的追踪状态 */
-    private val tasks = ConcurrentHashMap<String, TaskInfo>()
+    /** 正在跑的 job，用于「取消任务」。与 registry 同生命周期，两者一起在终态时移除。 */
+    private val jobs = ConcurrentHashMap<String, Job>()
 
     suspend fun executeSync(
         prompt: String,
@@ -181,31 +177,76 @@ class SubAgentRuntime(
         systemPrompt: String? = null,
     ): AsyncSubAgentHandle {
         val taskId = "sub_${Uuid.random().toString().take(8)}"
-        tasks[taskId] = TaskInfo(
+        registry.register(
             taskId = taskId,
+            conversationId = conversationId,
             description = description,
             prompt = prompt,
-            status = TaskStatus.IN_PROGRESS,
         )
         val job = appScope.launch {
-            val result = executeSync(prompt = prompt, modelOverride = modelOverride, tools = tools, systemPrompt = systemPrompt)
-            tasks[taskId] = tasks.getValue(taskId).copy(
-                status = if (result.success) TaskStatus.COMPLETED else TaskStatus.FAILED,
-                result = if (result.success) result.text else null,
-                error = if (!result.success) result.error else null,
-            )
-            eventBus.emit(
-                AppEvent.SubAgentCompleted(
-                    conversationId = conversationId,
-                    taskId = taskId,
-                    description = description,
+            // 子代理的网络流必须自己持有前台服务：父生成一结束就会释放它，而任务可能还要跑很久。
+            val token = keepAlive.hold(conversationId, backgroundTask = true)
+            try {
+                val result = executeSync(
                     prompt = prompt,
-                    result = if (result.success) result.text else "Error: ${result.error ?: "Unknown"}",
-                    success = result.success,
+                    modelOverride = modelOverride,
+                    tools = tools,
+                    systemPrompt = systemPrompt,
                 )
-            )
+                finish(
+                    taskId = taskId,
+                    status = if (result.success) TaskStatus.COMPLETED else TaskStatus.FAILED,
+                    reason = null,
+                    result = result.text.takeIf { result.success },
+                    error = result.error.takeIf { !result.success },
+                )
+            } catch (e: CancellationException) {
+                // 用户点了「取消任务」：仍然要留一条终态回执，否则会话里永远停在 started。
+                withContext(NonCancellable) {
+                    finish(
+                        taskId = taskId,
+                        status = TaskStatus.FAILED,
+                        reason = SubAgentFailReason.USER_CANCELLED,
+                        result = null,
+                        error = "cancelled",
+                    )
+                }
+                throw e
+            } finally {
+                keepAlive.release(token)
+                jobs.remove(taskId)
+            }
         }
+        jobs[taskId] = job
         return AsyncSubAgentHandle(taskId = taskId, job = job)
+    }
+
+    /** 取消一个还在跑的任务。返回 false 表示任务不存在或已经到达终态。 */
+    fun cancel(taskId: String): Boolean {
+        val job = jobs.remove(taskId) ?: return false
+        job.cancel()
+        return true
+    }
+
+    private suspend fun finish(
+        taskId: String,
+        status: TaskStatus,
+        reason: SubAgentFailReason?,
+        result: String?,
+        error: String?,
+    ) {
+        val info = registry.finish(taskId, status, reason, result, error) ?: return
+        eventBus.emit(
+            AppEvent.SubAgentTaskFinished(
+                conversationId = info.conversationId,
+                taskId = info.taskId,
+                description = info.description,
+                status = status,
+                reason = reason,
+                result = result,
+                error = error,
+            )
+        )
     }
 
     /**
@@ -216,10 +257,4 @@ class SubAgentRuntime(
         if (modelOverride != null) return modelOverride
         return settings.subAgentModelId
     }
-
-    /** 供 TaskList/TaskGet 工具读取的任务列表快照 */
-    fun getTaskInfos(): List<TaskInfo> = tasks.values.toList()
-
-    /** 供 TaskGet 工具读取的单个任务详情 */
-    fun getTaskInfo(taskId: String): TaskInfo? = tasks[taskId]
 }

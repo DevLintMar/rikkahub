@@ -201,7 +201,7 @@ class ChatService(
         // 监听子代理/工作流后台执行完成事件（仅有这一个 init 块订阅事件总线）
         appScope.launch {
             appEventBus.events.collect { event ->
-                if (event is AppEvent.SubAgentCompleted) {
+                if (event is AppEvent.SubAgentTaskFinished) {
                     handleSubAgentRecall(event)
                 }
             }
@@ -712,21 +712,21 @@ class ChatService(
 
     // ---- 子代理 recall：不打断生成，等自然结束再触发 ----
 
-    private fun handleSubAgentRecall(event: AppEvent.SubAgentCompleted) {
+    private fun handleSubAgentRecall(event: AppEvent.SubAgentTaskFinished) {
         launchWithConversationReference(event.conversationId) {
             try {
                 val conversation = getConversationFlow(event.conversationId).value
-                val statusText = if (event.success) "completed" else "failed"
+                val statusText = if (event.status == TaskStatus.COMPLETED) "completed" else "failed"
 
                 // 1. 存 notification（供下次生成时注入）
-                val pendingCount = localTools.subAgentRuntime.getTaskInfos().count { it.status == TaskStatus.IN_PROGRESS }
+                val pendingCount = localTools.subAgentTaskRegistry.liveCount()
                 val notificationXml = buildString {
                     appendLine("<task-notification>")
                     appendLine("  <task-id>${event.taskId}</task-id>")
                     appendLine("  <status>$statusText</status>")
                     appendLine("  <pending-tasks>$pendingCount</pending-tasks>")
                     appendLine("  <summary>Agent \"${event.description}\" $statusText</summary>")
-                    appendLine("  <result>${event.result}</result>")
+                    appendLine("  <result>${event.result ?: event.error ?: ""}</result>")
                     append("</task-notification>")
                 }
                 pendingNotifications.getOrPut(event.conversationId) { mutableListOf() } +=
@@ -738,11 +738,11 @@ class ChatService(
                 // 2. 主 agent 空闲则立即 recall，否则等生成结束
                 val session = sessions[event.conversationId]
                 if (session?.getJob()?.isActive != true) {
-                    fireRecall(event.conversationId, event.description, event.success)
+                    fireRecall(event.conversationId, event.description, event.status == TaskStatus.COMPLETED)
                 } else {
                     pendingRecall[event.conversationId] = PendingRecall(
                         description = event.description,
-                        success = event.success,
+                        success = event.status == TaskStatus.COMPLETED,
                     )
                 }
             } catch (e: Exception) {

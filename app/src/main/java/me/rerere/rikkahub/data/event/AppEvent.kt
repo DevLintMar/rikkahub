@@ -1,6 +1,8 @@
 package me.rerere.rikkahub.data.event
 
 import me.rerere.ai.ui.UIMessage
+import me.rerere.rikkahub.data.ai.tools.local.SubAgentFailReason
+import me.rerere.rikkahub.data.ai.tools.local.TaskStatus
 import kotlin.uuid.Uuid
 
 sealed class AppEvent {
@@ -24,13 +26,18 @@ sealed class AppEvent {
         val contentPreview: String?,
     ) : AppEvent()
 
-    /** 子代理/工作流后台执行完成事件。 */
-    data class SubAgentCompleted(
+    /**
+     * 子代理任务到达终态（完成 / 失败 / 用户取消 / 进程中断对账）。
+     *
+     * [result] 是结果正文，**只给 AI**：ChatService 会把它写进标记 metadata，不写进工具结果、不展示给用户。
+     */
+    data class SubAgentTaskFinished(
         val conversationId: Uuid,
         val taskId: String,
         val description: String,
-        val prompt: String,
-        val result: String,
-        val success: Boolean,
+        val status: TaskStatus,
+        val reason: SubAgentFailReason?,
+        val result: String?,
+        val error: String?,
     ) : AppEvent()
 }

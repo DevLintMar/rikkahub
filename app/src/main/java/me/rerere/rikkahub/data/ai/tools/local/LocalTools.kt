@@ -7,6 +7,7 @@ import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.data.ai.agents.AgentManager
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.event.AppEventBus
+import me.rerere.rikkahub.service.GenerationKeepAlive
 import me.rerere.tts.provider.TTSManager
 import kotlin.uuid.Uuid
 
@@ -17,6 +18,7 @@ class LocalTools(
     private val settingsStore: SettingsStore,
     private val providerManager: ProviderManager,
     private val appScope: AppScope,
+    private val keepAlive: GenerationKeepAlive,
     val agentManager: AgentManager,
 ) {
     val javascriptTool by lazy { buildJavascriptTool() }
@@ -36,8 +38,17 @@ class LocalTools(
     val calendarCreateTool by lazy { buildCalendarCreateTool(context) }
 
     // Sub-agent & Workflow
+    val subAgentTaskRegistry = SubAgentTaskRegistry()
+
     val subAgentRuntime by lazy {
-        SubAgentRuntime(providerManager, settingsStore, appScope, eventBus)
+        SubAgentRuntime(
+            providerManager = providerManager,
+            settingsStore = settingsStore,
+            appScope = appScope,
+            eventBus = eventBus,
+            registry = subAgentTaskRegistry,
+            keepAlive = keepAlive,
+        )
     }
     val workflowEngine by lazy { WorkflowEngine(subAgentRuntime) }
 
