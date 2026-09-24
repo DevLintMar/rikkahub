@@ -1858,7 +1858,7 @@ Expected: `conclusion = "success"`。
 
 ```kotlin
     /**
-     * 载入会话后补中断回执：工具结果仍是 `started` 且 registry 里没有存活任务 → 判定为中断。
+     * 载入会话后补中断回执：工具结果仍是 `started` **且本进程完全不认识这个 taskId** → 判定为中断。
      *
      * 静默：**不触发**生成（决策 2），AI 下次在这个会话里发言时自然通过派生通知看到。
      * 幂等：改写后 `status` 变终态，下次不再命中。
@@ -1866,8 +1866,15 @@ Expected: `conclusion = "success"`。
     private suspend fun reconcileInterruptedSubAgentTasks(conversationId: Uuid) {
         val session = sessions[conversationId] ?: return
         val conversation = session.state.value
+        // 判据是「registry 里没有这个 taskId」而不是「registry 里它不是 IN_PROGRESS」。
+        // 后者会把**本进程里刚刚完成、投递还没落地**的任务误判成中断：那一刻工具结果仍是 `started`
+        // （① 终态入库在 ensureLoaded 返回之后才做），而 registry 里已是 COMPLETED ⇒ `isLive` 为假
+        // ⇒ 被判中断 ⇒ 先写一条**假的**「应用退出」回执并落库；随后真正的投递走到 `applyTaskDelivery`
+        // 时标记已存在、按幂等契约返回 null ⇒ **真投递被静默丢弃**：结果正文丢失、且不触发 AI 回复。
+        // 这正是验收标准第一条要保证的场景（用户切屏离开 → 会话被 5 秒空闲回收 → 子代理完成 →
+        // 投递的 ensureLoaded 先跑对账）。「本进程不认识它」才等于「它随上一个进程一起死了」。
         val interrupted = conversation.currentMessages.interruptedSubAgentTaskIds { taskId ->
-            localTools.subAgentTaskRegistry.isLive(taskId)
+            localTools.subAgentTaskRegistry.get(taskId) == null
         }
         if (interrupted.isEmpty()) return
 
@@ -1893,6 +1900,14 @@ Expected: `conclusion = "success"`。
         }
     }
 ```
+
+**（控制器裁定，Task 8 修复轮补入）**
+
+> **同时要把 `SubAgentDelivery.kt` 的参数改名**：`internal fun List<UIMessage>.interruptedSubAgentTaskIds(isLive: (String) -> Boolean)` → `isTracked`，函数体 `if (!isLive(taskId)) ids += taskId` → `if (!isTracked(taskId)) ids += taskId`。
+> 这不是洁癖：**这个缺陷的根因就是那个名字**——`isLive` 让调用方以为「不存活 ⇒ 判定中断」，而正确的问法是「本进程是否登记过它」。保留旧名，下一个人很可能把 `isLive` 再传回来，于是同一个 bug 以「无冲突、编译器不报、测试不报」的方式复活。
+> `SubAgentDeliveryTest` 的四处调用都是**尾随 lambda 位置传参**（无具名实参），所以**测试文件无需任何改动**；`SubAgentTaskRegistry.isLive` 本身语义不变（它仍表示「在跑」），只有这个谓词参数的**问法**变了。
+
+> **本步需要的 import**：`ChatService.kt` 要加 `import me.rerere.rikkahub.data.ai.tools.local.SubAgentFailReason`（`reconcileInterruptedSubAgentTasks` 与 `taskMarkerText` 都用到）。`TaskStatus` 若也报未解析则一并加；两者都在 `data.ai.tools.local` 包。
 
 - [ ] **Step 3: 投递入口**
 
@@ -2111,13 +2126,7 @@ Expected: `conclusion = "success"`。
 
 3. 函数 `handleSubAgentRecall`、`fireRecall`、`setSessionJob`、`checkPendingRecall` 整段删除。
 
-4. `sendQueuedMessage` 里这一行（`session.setJob(job)` 之后的兜底回调）：
-
-```kotlin
-        job.invokeOnCompletion { checkPendingRecall(conversationId) }
-```
-
-删掉（`advanceConversation` 已由生成结束回调负责）。
+4. `job.invokeOnCompletion { checkPendingRecall(conversationId) }` —— **原计划只列了 `sendQueuedMessage` 一处，实为三处**（另两处在 `regenerateAtMessage`、`handleToolApproval`，都是各自 `session.setJob(job)` 之后的兜底回调）。三处全删（`advanceConversation` 已由生成结束回调负责）。**硬判据**：删完后 `git grep -n "checkPendingRecall" -- app/src/main` 必须清零——漏一处编译不过。
 
 5. `getOrCreateSession` 的 `onGenerationFinished` 里那行 `appScope.launch { dispatchNextQueuedMessage(id) }` 现在是 `appScope.launch { advanceConversation(id) }`（Step 4 的全局替换已覆盖）。
 
@@ -2326,6 +2335,10 @@ CI 绿之后装 debug 包，按 spec §10.3 的 8 条清单验。**其中第 1 �
 **Spec 覆盖**：§4.2 六个缺陷 → ①=Task 8（`ensureLoaded` + 对账）、②=Task 6/7（keepAlive）、③=Task 3+8（中断判据 + 对账）、④=Task 2+8（派生通知替代 pendingNotifications）、⑤=Task 4+8（FIFO 替代单槽位）、⑥=Task 3+9（工具结果改写 + 卡片终态）；§5 组件 → Task 1/2/3/4/6；§6 → Task 3；§7 → Task 2+8 Step 5；§8 → Task 1+3+8；§9 影响面 → 全部任务；§10.1 单测 → Task 1–6；§10.3 设备核验 → Task 9 Step 6；§10.2 CI → 每任务末步。
 
 **Task 7 实现者指出的机制性错误**（控制器裁定，已记账）：我在 Task 7 Step 3 写的「位置顺序必须与构造参数顺序一致，否则编译报错」把机制说错了 —— Koin 的 `get()` 是 `inline fun <reified T : Any> get(): T`，`T` 由该位置**形参的声明类型**推断，因此每个 `get()` 的类型只取决于它的实参位置，与书写顺序无关（对调两个 `get()` 产生相同代码）；真正会编译报错的是实参个数与形参个数不符。结论（在 `keepAlive` 形参处插一个新 `get()`）不受影响。已把计划里那句改对，并记下「实现者纠正了控制器的裁定」这件事本身。
+
+**Task 8 实现者发现的计划缺陷 · 严重（控制器裁定，已记账）**：Task 8 Step 2 的中断对账判据写的是 `registry.isLive(taskId)`，而 `isLive` =「registry 里那条是 IN_PROGRESS」。于是**本进程里刚刚完成、投递尚未落地**的任务会被误判为中断：那一刻工具结果仍是 `started`（① 终态入库在 `ensureLoaded` 返回之后才做），registry 里已是 COMPLETED ⇒ `isLive` 为假 ⇒ 判中断 ⇒ 写上一条**假的**「应用退出」回执并落库；随后真正的投递走到 `applyTaskDelivery` 时标记已存在、按幂等契约返回 `null` ⇒ **真投递被静默丢弃**（结果正文丢失、`enqueue` 永不执行、**不触发 AI 回复**）。触发条件只是 `session.loaded == false`，即**会话被 5 秒空闲回收**——正是验收标准第一条（「切屏走了之后仍能跑完并触发回复」）的主场景；spec §10.3 的第 1 条设备核验本会撞上它。spec 自身也自相矛盾：§8.3 写 `!isLive`，而它自己的测试表写「registry 里**不存在**」。修法：判据改为 `get(taskId) == null`（本进程完全不认识它），并把谓词参数由 `isLive` 改名为 `isTracked`（**缺陷的根因就是这个名**，留着它下一个人还会把 `isLive` 传回来）。`SubAgentDeliveryTest` 的四处调用都是尾随 lambda、无具名实参，故测试零改动。（发现方：Task 8 实现者，在审查前自行核出并完整给了可达性链与两个备选方案，未擅自改计划——这正是常设指令要求的做法。）
+
+**同轮修正的两处 Task 8 事实性错误**（实现者指出）：① Step 6.4 只列了 `sendQueuedMessage` 一处 `checkPendingRecall`，实为**三处**（`regenerateAtMessage`、`handleToolApproval`）——虽因「漏改即编译不过」而自纠，但错误计数会让人以为改完一处就收工；② 本步**缺一个必需 import**（`SubAgentFailReason`，`reconcileInterruptedSubAgentTasks` 与 `taskMarkerText` 都要用），照 brief 抄会编译不过。
 
 **控制器自查抓出的计划缺陷（四）**（Task 8 派发前核出，已记账）：Step 8 那段转义说明**自相矛盾且事实错误** —— 它断言「`\"` 不是合法转义」并要求改用 `&quot;`，而 Step 8 自己的代码块用的就是 `\"`，且本仓 `values/strings.xml` 里已有 5 处 `\"`、0 处 `&quot;`（aapt2 的字符串资源本就支持反斜杠转义）。照那段说明做，实现者会把**正确的**代码改成与本仓惯例不一致的写法 —— 这是最坏的一类指令错误：叫人对的东西动手。已改写成「照抄 `\"` 即可」并附上 5/0 的实测计数。同一轮还把 Step 9 的 `git add -A` 换成显式路径（与 Task 7 同类）。
 

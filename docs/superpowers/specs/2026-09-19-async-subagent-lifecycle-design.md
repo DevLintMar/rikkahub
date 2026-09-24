@@ -256,7 +256,9 @@ UIMessage(
 ### 8.3 中断对账
 
 - **时机**：`ensureLoaded` 载入完成后跑一次 `reconcileInterruptedSubAgentTasks(conversationId)`。
-- **判据**：`sub_agent` 工具结果 `status == "started"` **且** `!registry.isLive(taskId)`。这一条同时覆盖「进程被回收后重启」与「任务在运行中丢失」。
+- **判据**：`sub_agent` 工具结果 `status == "started"` **且 registry 里没有这个 taskId**（`registry.get(taskId) == null`），即「本进程完全不认识它」——只有这一种情形才等于「它随上一个进程一起死了」。
+  **不能用 `!registry.isLive(taskId)`**：本进程里刚完成、投递尚未落地的任务，那一刻工具结果仍是 `started` 而 registry 已是 `COMPLETED`，既不是 live 又还没被改写 ⇒ 会被误判成中断并写出一条假的「应用退出」回执，随后真正的投递因标记已存在、按幂等契约返回 `null` 而被**静默丢弃**（结果正文丢失、且不触发回复）。这与本文件 §10.3 第 1 条设备核验的主场景（切屏离开、会话被回收）正面冲突。
+  （措辞曾自相矛盾：本节原写 `!isLive`，而下文测试表写的是「registry 里**不存在**」——测试表是对的，本节按它修正。）
 - **幂等**：改写后 status 变 `failed`，下次不再命中；同一会话有多个中断任务时逐个补标记，**不额外触发**生成。
 - **为什么不在启动时全量扫库**：要在消息 JSON blob 上做 LIKE 查询，既脆又慢；而「下次生成」必然发生在会话被打开之后，懒对账在语义上已经足够。
 - **不区分「进度死了多少」**：只要没有存活任务就是中断，不猜、不续跑。
