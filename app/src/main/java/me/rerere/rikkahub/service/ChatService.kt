@@ -507,17 +507,20 @@ class ChatService(
         //
         //    用 while + 复查当前值，而不是一次 `first {}`：`first {}` 是按**发射时**的值判定的，
         //    而生成结束回调排空队列时，可能在我们被调度回来之前就又起了一轮。
-        //    等到之后，下面的改写在**同一个不挂起片段**里完成，且 AppScope 是 `Dispatchers.Main`，
-        //    所以从「看到空闲」到「改完节点」之间不会有别的协程插进来。
-        while (session.generationJob.value?.isActive == true) {
-            session.generationJob.first { it?.isActive != true }
-        }
+        awaitIdle(session)
 
         if (!ensureLoaded(event.conversationId)) {
             Log.w(TAG, "deliverTaskResult: conversation ${event.conversationId} 已不存在，丢弃投递")
             return
         }
         val status = if (event.status == TaskStatus.COMPLETED) "completed" else "failed"
+
+        // 再等一次，而且是**紧贴改写**的一次：上面 `ensureLoaded` 里有挂起点（会话未载入时要读库；
+        // 中断对账若命中还要落库），而这段时间里别的路径可能已经起了新一轮生成——例如同一会话的
+        // 第二条投递落库后其 `saveConversation` 尾部排空队列，或用户队列消息被排空
+        // （`removeQueuedMessage` / `finishEditQueuedMessage` 都会调 `advanceConversation`）。
+        // 只等一次会把「闸门」与「改写」之间留下一段挂起，机制链就重新成立。
+        awaitIdle(session)
 
         val updated = session.state.value.applyTaskDelivery(
             delivery = TaskDelivery(
@@ -544,6 +547,22 @@ class ChatService(
         // 只有来自「实时完成」的投递才触发新的一轮；中断对账走的不是这条入口。
         session.taskDeliveries.enqueue(event.taskId)
         saveConversation(event.conversationId, updated)
+    }
+
+    /**
+     * 等到这个会话没有在飞的生成。
+     *
+     * **每次改动节点树之前都要调**，不只是进 `deliverTaskResult` 时调一次：调用点之间可能有挂起点
+     * （见两处调用点的注释），只等一次会让「闸门」与「改写」之间留下一次挂起。机制见 `deliverTaskResult`
+     * 上方那段说明。
+     *
+     * 用 while + 复查当前值，而不是一次 `first {}`：`first {}` 是按**发射时**的值判定的，
+     * 而生成结束回调排空队列时，可能在我们被调度回来之前就又起了一轮。
+     */
+    private suspend fun awaitIdle(session: ConversationSession) {
+        while (session.generationJob.value?.isActive == true) {
+            session.generationJob.first { it?.isActive != true }
+        }
     }
 
     private fun taskMarkerText(description: String, status: String, reason: SubAgentFailReason?): String = when {
