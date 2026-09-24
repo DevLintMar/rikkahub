@@ -44,7 +44,7 @@
 
 | 文件 | 改动 |
 |---|---|
-| `service/ChatService.kt` | 新增 `ensureLoaded` / `reconcileInterruptedSubAgentTasks` / `deliverTaskResult` / `cancelSubAgentTask`；`initializeConversation` 拆出 `loadConversation`；`dispatchNextQueuedMessage` → `advanceConversation`（多一个投递分支）；注入逻辑改为派生；**删除** `pendingNotifications` / `PendingRecall` / `handleSubAgentRecall` / `fireRecall` / `setSessionJob` / `checkPendingRecall` |
+| `service/ChatService.kt` | 新增 `ensureLoaded` / `reconcileInterruptedSubAgentTasks` / `deliverTaskResult` / `cancelSubAgentTask`；`initializeConversation` 只在末尾补一行对账（**不**拆共用方法，见 Task 8 Step 1）；`dispatchNextQueuedMessage` → `advanceConversation`（多一个投递分支）；注入逻辑改为派生；**删除** `pendingNotifications` / `PendingRecall` / `handleSubAgentRecall` / `fireRecall` / `setSessionJob` / `checkPendingRecall` |
 | `service/ConversationSession.kt` | 新增 `loaded` 标志与 `taskDeliveries` |
 | `service/ChatGenerationForegroundService.kt` | `acquire` 多一个 `backgroundTask` 参数；通知文案按「是否只有后台任务」选择 |
 | `data/event/AppEvent.kt` | `SubAgentCompleted` → `SubAgentTaskFinished`（带 `status` / `reason`） |
@@ -1479,13 +1479,16 @@ internal fun foregroundNotificationLabelRes(activeBackgroundFlags: Collection<Bo
     private fun launchGenerationJob(
         conversationId: Uuid,
         keepAliveInBackground: Boolean = true,
-        backgroundTask: Boolean = false,
         block: suspend () -> Unit,
     ): Job {
         if (!keepAliveInBackground) return appScope.launch(start = CoroutineStart.LAZY) { block() }
 
         return appScope.launch(start = CoroutineStart.LAZY) {
-            val token = keepAlive.hold(conversationId, backgroundTask = backgroundTask)
+            // 刻意不传 backgroundTask：这条通道只跑**聊天生成**，此刻持有前台服务的就是这轮回复生成，
+            // 文案该是「正在生成回复…」。子代理自己的网络流不走这里，它直接用
+            // keepAlive.hold(..., backgroundTask = true)（Task 7）。给本函数加一个永不被传的
+            // backgroundTask 形参，等于邀请后来者把一轮回复生成误标成「后台任务」。
+            val token = keepAlive.hold(conversationId)
             try {
                 block()
             } finally {
@@ -1760,15 +1763,40 @@ Expected: `conclusion = "success"`。**这一步之后旧 recall 机制仍在跑
 - Consumes: Task 2/3 的全部纯函数、Task 5 的 `loaded`/`taskDeliveries`、Task 7 的 `SubAgentTaskFinished`
 - Produces：`ChatService.cancelSubAgentTask(taskId: String)`、`ChatService.deliverTaskResult(event)`、`ChatService.ensureLoaded(conversationId)`
 
-- [ ] **Step 1: 拆 `initializeConversation`，加 `ensureLoaded`**
+- [ ] **Step 1: 加 `ensureLoaded`（**不**拆共用方法）**
 
-把现有 `initializeConversation`（`ChatService.kt:360` 起）整段替换成：
+**① `initializeConversation`**（`ChatService.kt:360` 起）**保持原样，只在末尾补一行**：
 
 ```kotlin
     suspend fun initializeConversation(conversationId: Uuid, folderId: Uuid? = null) {
-        loadConversation(conversationId, folderId = folderId, selectAssistant = true, createIfMissing = true)
+        getOrCreateSession(conversationId) // 确保 session 存在
+        val conversation = conversationRepo.getConversationById(conversationId)
+        if (conversation != null) {
+            updateConversation(conversationId, conversation)
+            settingsStore.updateAssistant(conversation.assistantId)
+        } else {
+            // 新建对话, 并添加预设消息
+            val currentSettings = settingsStore.settingsFlowRaw.first()
+            val assistant = currentSettings.getCurrentAssistant()
+            val baseConversation = Conversation.ofId(
+                id = conversationId,
+                assistantId = assistant.id,
+                newConversation = true
+            )
+            val newConversation = (if (folderId != null) baseConversation.copy(folderId = folderId) else baseConversation)
+                .updateCurrentMessages(assistant.presetMessages)
+            updateConversation(conversationId, newConversation)
+        }
+        // 补这一行：这条路径是「软件退出 / 子代理中断」失败回执的**主要**来源——新进程里 registry
+        // 是空的，用户打开那个会话时工具结果仍停在 started，正是这里把它补成终态。
+        // 静默：只补标记不触发生成（决策 2），AI 下次在这个会话里发言时由派生通知看到。
+        reconcileInterruptedSubAgentTasks(conversationId)
     }
+```
 
+**② 新增 `ensureLoaded`**：
+
+```kotlin
     /**
      * 背景路径（子代理投递、中断对账）在改会话内容之前必须过这一关。
      *
@@ -1778,42 +1806,34 @@ Expected: `conclusion = "success"`。**这一步之后旧 recall 机制仍在跑
     private suspend fun ensureLoaded(conversationId: Uuid): Boolean {
         val session = getOrCreateSession(conversationId)
         if (session.loaded) return true
-        return loadConversation(conversationId, folderId = null, selectAssistant = false, createIfMissing = false)
-    }
-
-    private suspend fun loadConversation(
-        conversationId: Uuid,
-        folderId: Uuid?,
-        selectAssistant: Boolean,
-        createIfMissing: Boolean,
-    ): Boolean {
-        getOrCreateSession(conversationId)
-        val conversation = conversationRepo.getConversationById(conversationId)
-        if (conversation != null) {
-            updateConversation(conversationId, conversation)
-            // 只有「用户打开了会话」才切全局助手；背景投递不该有这个副作用。
-            if (selectAssistant) settingsStore.updateAssistant(conversation.assistantId)
-        } else {
-            if (!createIfMissing) return false
-            val currentSettings = settingsStore.settingsFlowRaw.first()
-            val baseConversation = Conversation.ofId(
-                id = conversationId,
-                assistantId = currentSettings.getCurrentAssistant().id,
-                newConversation = true,
-            )
-            val newConversation = (if (folderId != null) baseConversation.copy(folderId = folderId) else baseConversation)
-                .updateCurrentMessages(currentSettings.getCurrentAssistant().presetMessages)
-            updateConversation(conversationId, newConversation)
+        val conversation = conversationRepo.getConversationById(conversationId) ?: return false
+        synchronized(session) {
+            // 同一会话可能同时有两条背景路径在载入（两个子代理任务几乎同时完成，或投递与「用户打开
+            // 会话」触发的中断对账撞上）。`getConversationById` 是挂起调用，两条协程都会在它这里让出，
+            // 于是两条都会带着「自己读到的那份」走到这一步。若不复查，后到者的 `updateConversation`
+            // 会整段替换内存态（底层 `ConversationRepository.updateConversation` 是 deleteByConversation
+            // + saveMessageNodes），把先到者刚写入的标记与改写后的工具结果抹掉；随后它自己的
+            // `saveConversation` 再把这份抹掉后的状态落库——先到者那次投递就真丢了，而且那条工具结果
+            // 在库里仍是 `started`，会被对账判成「中断」，给出一个错的失败回执。
+            //
+            // 复查与置位必须在同一个锁里：否则两条都会通过复查。
+            if (!session.loaded) {
+                updateConversation(conversationId, conversation)
+                session.loaded = true
+            }
         }
-        getOrCreateSession(conversationId).loaded = true
+        // 对账放在锁外：它自己会再读一次 state 并（必要时）落库，与「应用载入结果」不是同一件事；
+        // 它也是幂等的（改写后 status 就是终态，第二次不会再命中）。
         reconcileInterruptedSubAgentTasks(conversationId)
         return true
     }
 ```
 
+> **为什么不按原计划「拆出 `loadConversation` 给两条路径共用」**：两者的不变量是**相反**的。`initializeConversation` 是「用户打开了会话」——必须**总是**重载、并且**总要**切全局助手；`ensureLoaded` 是背景路径——**已载入就绝不重载**（§6.1：内存态在生成期间领先于库，重载会把正在生成的内容冲掉），**绝不**切全局助手，而且还要在锁内复查 `loaded`。把这些藏进 `selectAssistant` / `createIfMissing` 两个布尔开关里，改一处就可能悄悄改掉另一条路径的语义。两处真正必须共有的只有末尾那一行对账，所以它在两边各写一次、各带一句为什么——重复 4 行，换来两条路径的不变量各自局部可见。
+
 - [ ] **Step 2: 中断对账**
 
-在 `loadConversation` 之后加：
+在 `ensureLoaded` 之后加：
 
 ```kotlin
     /**
@@ -1862,11 +1882,26 @@ Expected: `conclusion = "success"`。**这一步之后旧 recall 机制仍在跑
 
     private fun handleTaskFinished(event: AppEvent.SubAgentTaskFinished) {
         appScope.launch {
+            // 整段投递期间持一个引用。
+            //
+            // 为什么必须持：`taskDeliveries` 刻意不进 `isInUse`（spec §5.4），所以队列本身**不**阻止
+            // 会话被空闲回收。而空闲定时器是**提前**装好的（`release()` 让 refCount 归零时 arm 一颗
+            // `delay(5s)`），它只在自己 fire 的那一刻检查 `refCount <= 0 && !isGenerating`。
+            // 投递是挂起函数（`saveConversation` 落库会让出线程），若此刻恰好有一颗先前装好的定时器
+            // 到期，`removeSession` 会因 `isInUse == false` 而**回收会话**——队列随会话一起消失
+            // （`sessions.remove` + `session.cleanup()`），随后 `saveConversation` 尾部的
+            // `advanceConversation` 会因 `sessions[id]` 为 null 直接 return，**这一轮生成再也不会被触发**。
+            // ① 终态已入库所以状态不丢（§5.2），丢的是 ②「触发一轮 AI 回复」——正是验收标准第一条。
+            //
+            // 这不违反 §5.4：调用返回后引用即释放，队列依旧不让会话常驻。
+            addConversationReference(event.conversationId)
             try {
                 deliverTaskResult(event)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 Log.e(TAG, "deliverTaskResult failed", e)
+            } finally {
+                removeConversationReference(event.conversationId)
             }
         }
     }
@@ -2263,6 +2298,12 @@ CI 绿之后装 debug 包，按 spec §10.3 的 8 条清单验。**其中第 1 �
 ## 自检记录
 
 **Spec 覆盖**：§4.2 六个缺陷 → ①=Task 8（`ensureLoaded` + 对账）、②=Task 6/7（keepAlive）、③=Task 3+8（中断判据 + 对账）、④=Task 2+8（派生通知替代 pendingNotifications）、⑤=Task 4+8（FIFO 替代单槽位）、⑥=Task 3+9（工具结果改写 + 卡片终态）；§5 组件 → Task 1/2/3/4/6；§6 → Task 3；§7 → Task 2+8 Step 5；§8 → Task 1+3+8；§9 影响面 → 全部任务；§10.1 单测 → Task 1–6；§10.3 设备核验 → Task 9 Step 6；§10.2 CI → 每任务末步。
+
+**任务 5 审查发现的计划缺陷**（控制器裁定，已记账）：`ensureLoaded` 的「查 `loaded` → 读库 → `updateConversation`」不是原子的 —— `loaded` 只是 `@Volatile`（可见性，不是原子性），而 `getConversationById` 是挂起调用、两条背景协程都会在它那里让出，于是两条都带着各自读到的那份走到 `updateConversation`（整段替换 state），后到者抹掉先到者刚追加的内容并落库；那条工具结果因此在库里仍是 `started`，会被对账判成「中断」，给出**错的失败回执**。修法：`ensureLoaded` 自成一体（不再与 `initializeConversation` 共用 `loadConversation`——两者不变量相反），在 `synchronized(session)` 内复查 `loaded` 并置位。**不改 Task 5**：`@Volatile var loaded` 本身是对的，原子性属于「载入」这个操作，而它住在 ChatService。（发现方：Task 5 的任务审查者，判为 Important。）
+
+**任务 5 派发前发现的计划缺陷（二）**（控制器裁定，已记账）：Task 6 给 `launchGenerationJob` 加的 `backgroundTask` 形参**全集无人传** —— 子代理自己的网络流不走这条通道（Task 7 直接用 `keepAlive.hold(..., backgroundTask = true)`），而 Task 8 的投递触发传的是 `keepAliveInBackground = true` 且不传 `backgroundTask`；一轮「AI 回复生成」本就该显示「正在生成回复…」而不是「后台任务运行中」。留着它 = 邀请后来者把回复生成误标成后台任务。修法：从 `launchGenerationJob` 去掉该形参（`acquire` / `hold` 上的保留，它们真的被用到）。
+
+**任务 5 派发前发现的计划缺陷**（控制器裁定，已记账）：Task 8 的 `handleTaskFinished` 在整段投递期间不持会话引用 —— 而 `taskDeliveries` 刻意不进 `isInUse`（§5.4），空闲定时器又是提前 arm 的（`release()` 归零时装、fire 时才判 `refCount <= 0 && !isGenerating`），投递又会在 `saveConversation` 落库处让出线程：三者叠加，一颗先前装好的定时器可以在「enqueue 之后、advanceConversation 之前」把会话连同队列一起回收，于是 ② 触发永远不会发生（① 终态仍在库，所以这不是数据丢失，而是验收标准第一条「触发 AI 的回复」的静默失效，且只在「子代理恰好在目标会话最后一次 release 后 5 秒内完成」这个窄窗口里发生）。修法是在 `handleTaskFinished` 里 `addConversationReference` / `finally { removeConversationReference }` —— 3 行，且调用返回即释放，不改变 §5.4 的结论。
 
 **任务 3 实现者发现的计划缺陷**（控制器裁定，已记账）：①幂等用例对第二次投递用 `!!`，而该函数在「标记已存在」时按约定返回 `null` —— 照抄必 NPE；实现者先按测试侧最小改动改成 `?: once`，控制器进一步裁定改为显式 `assertNull`，因为 `?: once` 会让断言退化成自己跟自己比（正确返回 null 时 `twice === once`）。②导入清单写漏 `buildJsonObject` / `JsonPrimitive`，且把并不需要的 `put` 列了进去（本文件的 `put` 全解析到 `JsonObjectBuilder` 成员重载）。
 
