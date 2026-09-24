@@ -403,7 +403,7 @@ class ChatService(
     }
 
     /**
-     * 载入会话后补中断回执：工具结果仍是 `started` 且 registry 里没有存活任务 → 判定为中断。
+     * 载入会话后补中断回执：工具结果仍是 `started` **且本进程完全不认识这个 taskId** → 判定为中断。
      *
      * 静默：**不触发**生成（决策 2），AI 下次在这个会话里发言时自然通过派生通知看到。
      * 幂等：改写后 `status` 变终态，下次不再命中。
@@ -411,8 +411,15 @@ class ChatService(
     private suspend fun reconcileInterruptedSubAgentTasks(conversationId: Uuid) {
         val session = sessions[conversationId] ?: return
         val conversation = session.state.value
+        // 判据是「registry 里没有这个 taskId」而不是「registry 里它不是 IN_PROGRESS」。
+        // 后者会把**本进程里刚刚完成、投递还没落地**的任务误判成中断：那一刻工具结果仍是 `started`
+        // （① 终态入库在 ensureLoaded 返回之后才做），而 registry 里已是 COMPLETED ⇒ `isLive` 为假
+        // ⇒ 被判中断 ⇒ 先写一条**假的**「应用退出」回执并落库；随后真正的投递走到 `applyTaskDelivery`
+        // 时标记已存在、按幂等契约返回 null ⇒ **真投递被静默丢弃**：结果正文丢失、且不触发 AI 回复。
+        // 这正是验收标准第一条要保证的场景（用户切屏离开 → 会话被 5 秒空闲回收 → 子代理完成 →
+        // 投递的 ensureLoaded 先跑对账）。「本进程不认识它」才等于「它随上一个进程一起死了」。
         val interrupted = conversation.currentMessages.interruptedSubAgentTaskIds { taskId ->
-            localTools.subAgentTaskRegistry.isLive(taskId)
+            localTools.subAgentTaskRegistry.get(taskId) == null
         }
         if (interrupted.isEmpty()) return
 

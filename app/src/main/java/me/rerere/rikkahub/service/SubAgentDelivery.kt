@@ -226,12 +226,16 @@ internal fun Conversation.applyTaskDelivery(
 }
 
 /**
- * 中断对账的判据：工具结果仍是 `started` **且** registry 里没有对应的存活任务。
+ * 中断对账的判据：工具结果仍是 `started` **且 registry 里没有这个 taskId**（`get(taskId) == null`），
+ * 即「本进程完全不认识它」——只有这一种情形才等于「它随上一个进程一起死了」。
  *
- * 一条判据同时覆盖「进程被回收后重启」与「任务在运行中丢失」；改写后 `status` 变终态，
- * 所以这条判据天然幂等。
+ * 参数名是 `isTracked` 而不是 `isLive`：问法必须是「本进程是否登记过它」。若问「它是否还在跑」，
+ * 本进程里刚完成、投递尚未落地的任务那一刻既不是 live、工具结果又还是 `started`，会被误判成中断，
+ * 先写出一条假的「应用退出」回执，随后真正的投递因标记已存在而按幂等契约返回 null 被**静默丢弃**。
+ *
+ * 改写后 `status` 变终态，所以这条判据天然幂等。
  */
-internal fun List<UIMessage>.interruptedSubAgentTaskIds(isLive: (String) -> Boolean): List<String> {
+internal fun List<UIMessage>.interruptedSubAgentTaskIds(isTracked: (String) -> Boolean): List<String> {
     val ids = mutableListOf<String>()
     forEach { message ->
         message.parts.filterIsInstance<UIMessagePart.Tool>().forEach { part ->
@@ -239,7 +243,7 @@ internal fun List<UIMessage>.interruptedSubAgentTaskIds(isLive: (String) -> Bool
             val json = runCatching { JsonInstant.parseToJsonElement(part.outputText()).jsonObject }.getOrNull() ?: return@forEach
             if (json["status"]?.jsonPrimitive?.contentOrNull != "started") return@forEach
             val taskId = json["task_id"]?.jsonPrimitive?.contentOrNull ?: return@forEach
-            if (!isLive(taskId)) ids += taskId
+            if (!isTracked(taskId)) ids += taskId
         }
     }
     return ids
