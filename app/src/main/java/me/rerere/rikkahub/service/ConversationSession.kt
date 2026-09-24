@@ -29,6 +29,20 @@ class ConversationSession(
     val state = MutableStateFlow(initial)
     val messageQueue = MessageQueue()
 
+    /**
+     * 会话真实内容是否已从库里载入。
+     *
+     * `getOrCreateSession` 建的是**空壳**（`Conversation.ofId()`），只有 `initializeConversation`
+     * 或 `ChatService.ensureLoaded` 才会把真实内容填进来。任何要改会话内容的背景路径
+     * （子代理投递、中断对账）都必须先看这个标志——否则会拿空壳去 `saveConversation`，
+     * 而 `ConversationRepository.updateConversation` 是「删光节点再写」，等于抹掉历史。
+     */
+    @Volatile
+    var loaded: Boolean = false
+
+    /** 待触发的子代理投递（按任务粒度，逐个开一轮）。刻意不纳入 [isInUse]，见 memory/设计 §5.4。 */
+    val taskDeliveries = TaskDeliveryQueue()
+
     // 从队列取出到写入会话历史之间，附件仍需作为有效引用保留。
     @Volatile
     var submittingMessage: QueuedMessage? = null

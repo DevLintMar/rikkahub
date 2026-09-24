@@ -190,4 +190,35 @@ class ConversationSessionTest {
             scope.cancel()
         }
     }
+
+    @Test
+    fun `loaded 默认为 false 且可置位`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val id = Uuid.random()
+        val session = ConversationSession(id, Conversation.ofId(id), scope, {})
+        try {
+            assertFalse(session.loaded)
+            session.loaded = true
+            assertTrue(session.loaded)
+        } finally {
+            session.cleanup()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `待触发的任务投递不把会话标记为在用`() = runBlocking {
+        // §5.4：投递物是「写进会话的记录」，不需要靠钉住会话保住——所以刻意不纳入 isInUse。
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val id = Uuid.random()
+        val session = ConversationSession(id, Conversation.ofId(id), scope, {})
+        try {
+            session.taskDeliveries.enqueue("sub_1")
+            assertEquals("投递物必须真的进了队列，否则下面的否定断言恒真", 1, session.taskDeliveries.size())
+            assertFalse("投递队列不该让会话常驻（靠 ensureLoaded 而不是钉住）", session.isInUse)
+        } finally {
+            session.cleanup()
+            scope.cancel()
+        }
+    }
 }
