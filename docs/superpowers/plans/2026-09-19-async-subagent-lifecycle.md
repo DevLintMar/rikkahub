@@ -1728,7 +1728,10 @@ class SubAgentRuntime(
                 }
 ```
 
-`handleSubAgentRecall` 里两处 `event.success` 改成 `event.status == TaskStatus.COMPLETED`；`event.result` 现在是可空的，`<result>` 那行改成 `event.result ?: event.error ?: ""`。
+`handleSubAgentRecall` 里 `event.success` 是**三处**（已实地核对：`:719` 的 `statusText`、`:741` 的 `fireRecall(...)` 实参、`:745` 的 `PendingRecall(success = ...)`），全部改成 `event.status == TaskStatus.COMPLETED`；`event.result` 现在是可空的，`:729` 的 `<result>` 那行改成 `event.result ?: event.error ?: ""`。
+
+> 新事件**丢掉 `prompt` 字段是安全的**：已 grep 全仓，`SubAgentCompleted` 的消费者只有 `ChatService`（`:204` / `:715`）与 `RouteActivity`（`:281`），无一处读 `prompt`。
+> `Step 2` 的 import 清单里 `java.util.concurrent.ConcurrentHashMap` **本文件已经 import 过**（`:22`），不要再加一遍——删掉 `tasks` 之后它依然需要，因为新的 `jobs` 也用它。
 
 pendingCount 那行复原成：
 
@@ -2298,6 +2301,8 @@ CI 绿之后装 debug 包，按 spec §10.3 的 8 条清单验。**其中第 1 �
 ## 自检记录
 
 **Spec 覆盖**：§4.2 六个缺陷 → ①=Task 8（`ensureLoaded` + 对账）、②=Task 6/7（keepAlive）、③=Task 3+8（中断判据 + 对账）、④=Task 2+8（派生通知替代 pendingNotifications）、⑤=Task 4+8（FIFO 替代单槽位）、⑥=Task 3+9（工具结果改写 + 卡片终态）；§5 组件 → Task 1/2/3/4/6；§6 → Task 3；§7 → Task 2+8 Step 5；§8 → Task 1+3+8；§9 影响面 → 全部任务；§10.1 单测 → Task 1–6；§10.3 设备核验 → Task 9 Step 6；§10.2 CI → 每任务末步。
+
+**任务 7 派发前核出的计划事实性错误**（控制器裁定，已记账）：Task 7 Step 4 写「`handleSubAgentRecall` 里两处 `event.success`」，实为**三处**（`:719`/`:741`/`:745`）——虽然新事件没有 `success` 字段、编译器会逼出全部三处（不会静默漏改），但错误计数会让人以为改完两处就结束。同时补记「新事件丢掉 `prompt` 是安全的」的核验结论（消费者只有 `ChatService` 与 `RouteActivity`，无处读它），避免实现者为了「保字段」而自造无消费者的成员。
 
 **任务 5 审查发现的计划缺陷**（控制器裁定，已记账）：`ensureLoaded` 的「查 `loaded` → 读库 → `updateConversation`」不是原子的 —— `loaded` 只是 `@Volatile`（可见性，不是原子性），而 `getConversationById` 是挂起调用、两条背景协程都会在它那里让出，于是两条都带着各自读到的那份走到 `updateConversation`（整段替换 state），后到者抹掉先到者刚追加的内容并落库；那条工具结果因此在库里仍是 `started`，会被对账判成「中断」，给出**错的失败回执**。修法：`ensureLoaded` 自成一体（不再与 `initializeConversation` 共用 `loadConversation`——两者不变量相反），在 `synchronized(session)` 内复查 `loaded` 并置位。**不改 Task 5**：`@Volatile var loaded` 本身是对的，原子性属于「载入」这个操作，而它住在 ChatService。（发现方：Task 5 的任务审查者，判为 Important。）
 
