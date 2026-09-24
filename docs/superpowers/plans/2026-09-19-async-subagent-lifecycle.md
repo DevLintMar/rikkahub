@@ -1978,15 +1978,20 @@ Expected: `conclusion = "success"`。
         //    而生成结束回调排空队列时，可能在我们被调度回来之前就又起了一轮。
         //    等到之后，下面的改写在**同一个不挂起片段**里完成，且 AppScope 是 `Dispatchers.Main`，
         //    所以从「看到空闲」到「改完节点」之间不会有别的协程插进来。
-        while (session.generationJob.value?.isActive == true) {
-            session.generationJob.first { it?.isActive != true }
-        }
+        awaitIdle(session)
 
         if (!ensureLoaded(event.conversationId)) {
             Log.w(TAG, "deliverTaskResult: conversation ${event.conversationId} 已不存在，丢弃投递")
             return
         }
         val status = if (event.status == TaskStatus.COMPLETED) "completed" else "failed"
+
+        // 再等一次，而且是**紧贴改写**的一次：上面 `ensureLoaded` 里有挂起点（会话未载入时要读库；
+        // 中断对账若命中还要落库），而这段时间里别的路径可能已经起了新一轮生成——例如同一会话的
+        // 第二条投递落库后其 `saveConversation` 尾部排空队列，或用户队列消息被排空
+        // （`removeQueuedMessage` / `finishEditQueuedMessage` 都会调 `advanceConversation`）。
+        // 只等一次会把「闸门」与「改写」之间留下一段挂起，机制链就重新成立。
+        awaitIdle(session)
 
         val updated = session.state.value.applyTaskDelivery(
             delivery = TaskDelivery(
@@ -2013,6 +2018,22 @@ Expected: `conclusion = "success"`。
         // 只有来自「实时完成」的投递才触发新的一轮；中断对账走的不是这条入口。
         session.taskDeliveries.enqueue(event.taskId)
         saveConversation(event.conversationId, updated)
+    }
+
+    /**
+     * 等到这个会话没有在飞的生成。
+     *
+     * **每次改动节点树之前都要调**，不只是进 `deliverTaskResult` 时调一次：调用点之间可能有挂起点
+     * （见两处调用点的注释），只等一次会让「闸门」与「改写」之间留下一次挂起。机制见 `deliverTaskResult`
+     * 上方那段说明。
+     *
+     * 用 while + 复查当前值，而不是一次 `first {}`：`first {}` 是按**发射时**的值判定的，
+     * 而生成结束回调排空队列时，可能在我们被调度回来之前就又起了一轮。
+     */
+    private suspend fun awaitIdle(session: ConversationSession) {
+        while (session.generationJob.value?.isActive == true) {
+            session.generationJob.first { it?.isActive != true }
+        }
     }
 
     private fun taskMarkerText(description: String, status: String, reason: SubAgentFailReason?): String = when {
@@ -2381,6 +2402,8 @@ CI 绿之后装 debug 包，按 spec §10.3 的 8 条清单验。**其中第 1 �
 **Task 7 实现者指出的机制性错误**（控制器裁定，已记账）：我在 Task 7 Step 3 写的「位置顺序必须与构造参数顺序一致，否则编译报错」把机制说错了 —— Koin 的 `get()` 是 `inline fun <reified T : Any> get(): T`，`T` 由该位置**形参的声明类型**推断，因此每个 `get()` 的类型只取决于它的实参位置，与书写顺序无关（对调两个 `get()` 产生相同代码）；真正会编译报错的是实参个数与形参个数不符。结论（在 `keepAlive` 形参处插一个新 `get()`）不受影响。已把计划里那句改对，并记下「实现者纠正了控制器的裁定」这件事本身。
 
 **Task 8 任务审查发现的缺陷 · Critical（控制器裁定，已记账）**：投递的 ① **无条件**改动会话节点树（追加标记节点 + 改写工具结果），而它可能发生在**某个生成还在飞**的时候——只要该生成处于「请求已构建、首个 `GenerationChunk.Messages` 未到」的窗口（一次 provider 往返，很宽）。此时：`updateCurrentMessages` 按下标合并（`messages[index]` → `messageNodes[index]`，节点里没有该消息就追加并把 `selectIndex` 移过去），而生成用的是冻结快照，于是该生成的 assistant 消息会落进**标记节点** ⇒ 标记对 `currentMessages` 隐形 ⇒ `pendingTaskMarkers()` 找不到它 ⇒ `startTaskDelivery` 判 `stillPending = false` ⇒ **不触发那一轮、结果正文再也派发不出去**（正文只在标记 metadata 里）；同时工具结果的终态改写会被那一轮的旧版本按 id 覆盖回去。**设计前提本身是错的**：spec §7 断言「生成中的 assistant 位置在标记之前」，那**只在首个 chunk 落地之后**成立。旧机制没踩到，是因为 `handleSubAgentRecall` 只在空闲时才追加可见节点（`if (session?.getJob()?.isActive != true)`）——Task 8 去掉了这个前提。修法：`deliverTaskResult` 开头加「等会话空闲」闸门（`while` + 复查当前值，因为 `first {}` 按发射时的值判定，而生成结束回调排空队列时可能在我们恢复前又起一轮），闸门放在 `ensureLoaded` **之前**（对账也改节点树）；`reconcileInterruptedSubAgentTasks` 自身也加「有生成在飞则跳过」的守卫（`initializeConversation` 路径会走到）；① 落库前先同步写一次内存以消除并发投递的读-改-写竞争。**验收标准第一条**在这个窗口里会静默失效。
+
+**Fix 轮 3（控制器裁定，同上 Critical 的收尾）**：实现者报回「闸门与改写之间的那段挂起不可利用」，我复核后**判为过于乐观**，并要求把它关死。机制：闸门原本只在**进函数时**判定一次，而 `ensureLoaded` 在会话未载入时要读库（对账命中还要落库）——那是一段真实挂起；同一会话的**第二条并发投递**（D1 落库后其 `saveConversation` 尾部排空队列并起了新一轮 G，D2 才从自己的读库挂起中恢复并改写节点树），或**用户队列消息被排空**（`removeQueuedMessage` / `finishEditQueuedMessage` 都会调 `advanceConversation`），都能在这段挂起里起一轮生成 ⇒ 机制链重新成立。修法：抽 `awaitIdle(session)` 并在**紧贴改写**处再调一次，使「看到空闲 → 改完节点」这一段局部地不挂起。这一条同样没有单测能覆盖。
 
 **同轮附带两条 Minor**：① `handleMessageComplete` 的注入过滤用字面量 `"<task-notification>"` 而非 `TASK_NOTIFICATION_TAG`（既有代码）——该过滤是「通知绝不写回会话」那道边界的唯一守卫；② `applyTaskDelivery` 返回 null（= 已投递/工具结果已不存在）时没有任何日志，现场分辨不出「投递被跳过」。
 
