@@ -1744,15 +1744,29 @@ pendingCount 那行复原成：
 - [ ] **Step 5: CI 验证**
 
 ```bash
-git add -A
-git commit -m "feat(subagent): runtime 接入任务登记表与保活，事件改为带终态与原因的 SubAgentTaskFinished"
+# 只加本任务改的 6 个文件。**不要用 `git add -A`**：若探针/临时文件落在仓库内会被一并提交。
+git add app/src/main/java/me/rerere/rikkahub/data/event/AppEvent.kt \
+        app/src/main/java/me/rerere/rikkahub/data/ai/tools/local/SubAgentRuntime.kt \
+        app/src/main/java/me/rerere/rikkahub/data/ai/tools/local/LocalTools.kt \
+        app/src/main/java/me/rerere/rikkahub/service/ChatService.kt \
+        app/src/main/java/me/rerere/rikkahub/RouteActivity.kt \
+        app/src/main/java/me/rerere/rikkahub/di/AppModule.kt
+git commit -m "feat(subagent): runtime 接入任务登记表与保活，事件改为带终态与原因的 SubAgentTaskFinished" \
+           -m "（一两句说清「为什么」）" \
+           -m "Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 git push origin master
 gh workflow run nightly-build-debug.yml --repo DevLintMar/rikkahub --ref master
 gh run view <run-id> --json conclusion,headSha
 gh run view <run-id> --json jobs
 ```
 
-Expected: `conclusion = "success"`。**这一步之后旧 recall 机制仍在跑（只是换了事件类型），行为与今天一致——是刻意的，方便二分。**
+Expected: `conclusion = "success"`。
+
+**这一步之后旧 recall 机制仍在跑（只是换了事件类型），刻意留到 Task 8 才删，方便二分。**
+
+> 但**「行为与今天完全一致」并不严格成立**，别为了让它们一致而回退这两条——它们正是本任务要引入的行为：
+> ① 用户取消时会补一条 `USER_CANCELLED` 终态事件（今天取消什么都不发，会话里永远停在 `started`）；
+> ② 用 `keepAlive.hold` 自己持有前台服务（今天子代理在父生成结束、父释放 FGS 之后没有任何保护）。
 
 ---
 
@@ -2301,6 +2315,8 @@ CI 绿之后装 debug 包，按 spec §10.3 的 8 条清单验。**其中第 1 �
 ## 自检记录
 
 **Spec 覆盖**：§4.2 六个缺陷 → ①=Task 8（`ensureLoaded` + 对账）、②=Task 6/7（keepAlive）、③=Task 3+8（中断判据 + 对账）、④=Task 2+8（派生通知替代 pendingNotifications）、⑤=Task 4+8（FIFO 替代单槽位）、⑥=Task 3+9（工具结果改写 + 卡片终态）；§5 组件 → Task 1/2/3/4/6；§6 → Task 3；§7 → Task 2+8 Step 5；§8 → Task 1+3+8；§9 影响面 → 全部任务；§10.1 单测 → Task 1–6；§10.3 设备核验 → Task 9 Step 6；§10.2 CI → 每任务末步。
+
+**任务 7 派发前核出的计划缺陷（二）**（控制器裁定，已记账）：Step 5 用 `git add -A` —— 实现者若在仓库内留下任何探针/临时文件，会被一并提交进 master。改为显式列出本任务的 6 个路径。同时把「行为与今天一致」这句写准：它只是「旧 recall 机制刻意留到 Task 8 才删」，而 `executeAsync` 本任务确实新增了行为（取消时补 `USER_CANCELLED` 终态事件；用 `keepAlive` 自己持有前台服务），这两条不能为了「保持一致」而回退。
 
 **任务 7 派发前核出的计划事实性错误**（控制器裁定，已记账）：Task 7 Step 4 写「`handleSubAgentRecall` 里两处 `event.success`」，实为**三处**（`:719`/`:741`/`:745`）——虽然新事件没有 `success` 字段、编译器会逼出全部三处（不会静默漏改），但错误计数会让人以为改完两处就结束。同时补记「新事件丢掉 `prompt` 是安全的」的核验结论（消费者只有 `ChatService` 与 `RouteActivity`，无处读它），避免实现者为了「保字段」而自造无消费者的成员。
 
