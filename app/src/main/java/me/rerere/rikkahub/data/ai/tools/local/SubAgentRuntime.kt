@@ -235,16 +235,19 @@ class SubAgentRuntime(
         result: String?,
         error: String?,
     ) {
+        // 以 registry 返回的那条为准，而不是本次调用的实参：`SubAgentTaskRegistry.finish` 的契约是
+        // 「先到者胜」，写入被拒时 `info` 是已存在的终态条目——若这里仍用实参发事件，事件就会报告
+        // 输家想要的 status/reason/result，却带着赢家的 conversationId/description（两者被拆开）。
         val info = registry.finish(taskId, status, reason, result, error) ?: return
         eventBus.emit(
             AppEvent.SubAgentTaskFinished(
                 conversationId = info.conversationId,
                 taskId = info.taskId,
                 description = info.description,
-                status = status,
-                reason = reason,
-                result = result,
-                error = error,
+                status = info.status,
+                reason = info.reason,
+                result = info.result,
+                error = info.error,
             )
         )
     }
