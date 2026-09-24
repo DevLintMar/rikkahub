@@ -53,6 +53,7 @@ import me.rerere.rikkahub.data.ai.mcp.McpManager
 import me.rerere.rikkahub.data.ai.tools.ChatToolFactory
 import me.rerere.rikkahub.data.ai.tools.InvalidMcpServerNamesException
 import me.rerere.rikkahub.data.ai.tools.local.LocalTools
+import me.rerere.rikkahub.data.ai.tools.local.SubAgentFailReason
 import me.rerere.rikkahub.data.ai.tools.local.TaskStatus
 import me.rerere.rikkahub.data.ai.tools.shouldUseExternalWebSearch
 import me.rerere.rikkahub.data.ai.transformers.Base64ImageToLocalFileTransformer
@@ -183,26 +184,12 @@ class ChatService(
     private val _errors = MutableStateFlow<List<ChatError>>(emptyList())
     val errors: StateFlow<List<ChatError>> = _errors.asStateFlow()
 
-    // 子代理完成通知（用户不可见，仅注入 AI 上下文）
-    private data class SubAgentNotification(
-        val insertedAt: Int,
-        val xml: String,
-    )
-    private val pendingNotifications = ConcurrentHashMap<Uuid, MutableList<SubAgentNotification>>()
-
-    // 子代理 pending recall（存事件数据，待生成结束后触发）
-    private data class PendingRecall(
-        val description: String,
-        val success: Boolean,
-    )
-    private val pendingRecall = ConcurrentHashMap<Uuid, PendingRecall>()
-
     init {
         // 监听子代理/工作流后台执行完成事件（仅有这一个 init 块订阅事件总线）
         appScope.launch {
             appEventBus.events.collect { event ->
                 if (event is AppEvent.SubAgentTaskFinished) {
-                    handleSubAgentRecall(event)
+                    handleTaskFinished(event)
                 }
             }
         }
@@ -258,7 +245,7 @@ class ChatService(
                         } == true) {
                         session.messageQueue.failReplyWaiters(context.getString(R.string.chat_page_voice_tool_approval))
                     }
-                    appScope.launch { dispatchNextQueuedMessage(id) }
+                    appScope.launch { advanceConversation(id) }
                 },
             ).also {
                 _sessionsVersion.value++
@@ -374,6 +361,152 @@ class ChatService(
                 .updateCurrentMessages(assistant.presetMessages)
             updateConversation(conversationId, newConversation)
         }
+        // 必须置位：§6.1 明写「initializeConversation 完成后置 true」。漏了这行的后果不是「慢一点」，
+        // 而是 `ensureLoaded` 之后每次都会以为会话没载入过，于是**每条投递都重新读库 + updateConversation
+        // 整段替换内存态**——用户正在生成时会把还没落盘的流式内容冲掉（正是 §6.1 警告的那件事）。
+        getOrCreateSession(conversationId).loaded = true
+        // 补这一行：这条路径是「软件退出 / 子代理中断」失败回执的**主要**来源——新进程里 registry
+        // 是空的，用户打开那个会话时工具结果仍停在 started，正是这里把它补成终态。
+        // 静默：只补标记不触发生成（决策 2），AI 下次在这个会话里发言时由派生通知看到。
+        reconcileInterruptedSubAgentTasks(conversationId)
+    }
+
+    /**
+     * 背景路径（子代理投递、中断对账）在改会话内容之前必须过这一关。
+     *
+     * 返回 false 表示会话在库里不存在——**不新建、不复活**（`saveConversation` 对不存在的 id 会
+     * `insertConversation`，直接投递等于把用户删掉的会话变回来）。
+     */
+    private suspend fun ensureLoaded(conversationId: Uuid): Boolean {
+        val session = getOrCreateSession(conversationId)
+        if (session.loaded) return true
+        val conversation = conversationRepo.getConversationById(conversationId) ?: return false
+        synchronized(session) {
+            // 同一会话可能同时有两条背景路径在载入（两个子代理任务几乎同时完成，或投递与「用户打开
+            // 会话」触发的中断对账撞上）。`getConversationById` 是挂起调用，两条协程都会在它这里让出，
+            // 于是两条都会带着「自己读到的那份」走到这一步。若不复查，后到者的 `updateConversation`
+            // 会整段替换内存态（底层 `ConversationRepository.updateConversation` 是 deleteByConversation
+            // + saveMessageNodes），把先到者刚写入的标记与改写后的工具结果抹掉；随后它自己的
+            // `saveConversation` 再把这份抹掉后的状态落库——先到者那次投递就真丢了，而且那条工具结果
+            // 在库里仍是 `started`，会被对账判成「中断」，给出一个错的失败回执。
+            //
+            // 复查与置位必须在同一个锁里：否则两条都会通过复查。
+            if (!session.loaded) {
+                updateConversation(conversationId, conversation)
+                session.loaded = true
+            }
+        }
+        // 对账放在锁外：它自己会再读一次 state 并（必要时）落库，与「应用载入结果」不是同一件事；
+        // 它也是幂等的（改写后 status 就是终态，第二次不会再命中）。
+        reconcileInterruptedSubAgentTasks(conversationId)
+        return true
+    }
+
+    /**
+     * 载入会话后补中断回执：工具结果仍是 `started` 且 registry 里没有存活任务 → 判定为中断。
+     *
+     * 静默：**不触发**生成（决策 2），AI 下次在这个会话里发言时自然通过派生通知看到。
+     * 幂等：改写后 `status` 变终态，下次不再命中。
+     */
+    private suspend fun reconcileInterruptedSubAgentTasks(conversationId: Uuid) {
+        val session = sessions[conversationId] ?: return
+        val conversation = session.state.value
+        val interrupted = conversation.currentMessages.interruptedSubAgentTaskIds { taskId ->
+            localTools.subAgentTaskRegistry.isLive(taskId)
+        }
+        if (interrupted.isEmpty()) return
+
+        var current = conversation
+        interrupted.forEach { taskId ->
+            val updated = current.applyTaskDelivery(
+                delivery = TaskDelivery(
+                    taskId = taskId,
+                    status = "failed",
+                    reason = SubAgentFailReason.APP_EXIT.wire,
+                    description = null,
+                    result = null,
+                    error = context.getString(R.string.sub_agent_error_app_exit),
+                ),
+                // 用 lambda：description 由 applyTaskDelivery 从工具结果里解析（这里拿不到）
+                markerText = { description -> taskMarkerText(description, "failed", SubAgentFailReason.APP_EXIT) },
+            )
+            if (updated != null) current = updated
+        }
+        if (current !== conversation) {
+            Log.i(TAG, "reconcileInterruptedSubAgentTasks: $conversationId (${interrupted.size} task(s))")
+            saveConversation(conversationId, current)
+        }
+    }
+
+    // ---- 子代理任务投递（完成 / 失败 / 取消 / 中断 四条路径共用） ----
+
+    private fun handleTaskFinished(event: AppEvent.SubAgentTaskFinished) {
+        appScope.launch {
+            // 整段投递期间持一个引用。
+            //
+            // 为什么必须持：`taskDeliveries` 刻意不进 `isInUse`（spec §5.4），所以队列本身**不**阻止
+            // 会话被空闲回收。而空闲定时器是**提前**装好的（`release()` 让 refCount 归零时 arm 一颗
+            // `delay(5s)`），它只在自己 fire 的那一刻检查 `refCount <= 0 && !isGenerating`。
+            // 投递是挂起函数（`saveConversation` 落库会让出线程），若此刻恰好有一颗先前装好的定时器
+            // 到期，`removeSession` 会因 `isInUse == false` 而**回收会话**——队列随会话一起消失
+            // （`sessions.remove` + `session.cleanup()`），随后 `saveConversation` 尾部的
+            // `advanceConversation` 会因 `sessions[id]` 为 null 直接 return，**这一轮生成再也不会被触发**。
+            // ① 终态已入库所以状态不丢（§5.2），丢的是 ②「触发一轮 AI 回复」——正是验收标准第一条。
+            //
+            // 这不违反 §5.4：调用返回后引用即释放，队列依旧不让会话常驻。
+            addConversationReference(event.conversationId)
+            try {
+                deliverTaskResult(event)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Log.e(TAG, "deliverTaskResult failed", e)
+            } finally {
+                removeConversationReference(event.conversationId)
+            }
+        }
+    }
+
+    /**
+     * ① 终态入库（随时可做、可丢）→ ② 触发回复（需要时机）。
+     *
+     * 做完 ① 之后进程立刻死掉也不丢：结果正文在标记 metadata 里、终态在工具结果里，都已入库；
+     * 通知会在下次生成时重新派生。
+     */
+    private suspend fun deliverTaskResult(event: AppEvent.SubAgentTaskFinished) {
+        if (!ensureLoaded(event.conversationId)) {
+            Log.w(TAG, "deliverTaskResult: conversation ${event.conversationId} 已不存在，丢弃投递")
+            return
+        }
+        val session = sessions[event.conversationId] ?: return
+        val status = if (event.status == TaskStatus.COMPLETED) "completed" else "failed"
+
+        val updated = session.state.value.applyTaskDelivery(
+            delivery = TaskDelivery(
+                taskId = event.taskId,
+                status = status,
+                reason = event.reason?.wire,
+                description = event.description,
+                result = event.result,
+                error = event.error,
+            ),
+            markerText = { description -> taskMarkerText(description, status, event.reason) },
+        ) ?: return
+
+        // 只有来自「实时完成」的投递才触发新的一轮；中断对账走的不是这条入口。
+        session.taskDeliveries.enqueue(event.taskId)
+        saveConversation(event.conversationId, updated)
+    }
+
+    private fun taskMarkerText(description: String, status: String, reason: SubAgentFailReason?): String = when {
+        status == "completed" -> context.getString(R.string.sub_agent_task_marker_finished, description)
+        reason == SubAgentFailReason.USER_CANCELLED -> context.getString(R.string.sub_agent_task_marker_cancelled, description)
+        reason == SubAgentFailReason.APP_EXIT -> context.getString(R.string.sub_agent_task_marker_interrupted, description)
+        else -> context.getString(R.string.sub_agent_task_marker_failed, description)
+    }
+
+    /** 取消一个还在跑的子代理任务（卡片上的按钮）。对不存在或已终态的任务是空操作。 */
+    fun cancelSubAgentTask(taskId: String) {
+        localTools.subAgentRuntime.cancel(taskId)
     }
 
     // ---- 发送消息 ----
@@ -383,7 +516,7 @@ class ChatService(
 
     fun removeQueuedMessage(conversationId: Uuid, messageId: Uuid) {
         sessions[conversationId]?.messageQueue?.remove(messageId)?.let(::cleanupQueuedAttachments)
-        dispatchNextQueuedMessage(conversationId)
+        advanceConversation(conversationId)
     }
 
     fun beginEditQueuedMessage(conversationId: Uuid, messageId: Uuid): QueuedMessage? =
@@ -396,7 +529,7 @@ class ChatService(
     ) {
         sessions[conversationId]?.messageQueue?.finishEdit(messageId, parts)
             ?.let(::cleanupQueuedAttachments)
-        dispatchNextQueuedMessage(conversationId)
+        advanceConversation(conversationId)
     }
 
     private fun cleanupQueuedAttachments(previous: QueuedMessage) {
@@ -429,7 +562,7 @@ class ChatService(
 
     fun resumeMessageQueue(conversationId: Uuid) {
         sessions[conversationId]?.messageQueue?.resume()
-        dispatchNextQueuedMessage(conversationId)
+        advanceConversation(conversationId)
     }
 
     fun sendMessage(conversationId: Uuid, content: List<UIMessagePart>, answer: Boolean = true) {
@@ -438,7 +571,7 @@ class ChatService(
         synchronized(session) {
             if (session.messageQueue.state.value.messages.isEmpty()) session.messageQueue.resume()
             session.messageQueue.enqueue(content, answer)
-            dispatchNextQueuedMessage(conversationId)
+            advanceConversation(conversationId)
         }
     }
 
@@ -456,22 +589,55 @@ class ChatService(
             }) { context.getString(R.string.chat_page_voice_tools_before_resume) }
             if (session.messageQueue.state.value.messages.isEmpty()) session.messageQueue.resume()
             session.messageQueue.enqueue(listOf(UIMessagePart.Text(text)), reply = reply)
-            dispatchNextQueuedMessage(conversationId)
+            advanceConversation(conversationId)
         }
         return reply
     }
 
-    private fun dispatchNextQueuedMessage(conversationId: Uuid): Job? {
+    /**
+     * 会话推进的唯一入口：同一时刻只允许一件事在跑，顺序是「用户排队消息 → 子代理投递」。
+     *
+     * 所有「状态变了，也许该继续」的地方都调它（生成结束、投递入库、队列增减、保存）。
+     */
+    private fun advanceConversation(conversationId: Uuid): Job? {
         val session = sessions[conversationId] ?: return null
         synchronized(session) {
             // A pending tool approval is still part of the current turn.
             if (session.getJob() != null || session.state.value.currentMessages.any { message ->
                     message.parts.any { it is UIMessagePart.Tool && it.isPending }
                 }) return null
-            val next = session.messageQueue.takeNext() ?: return null
-            session.submittingMessage = next
-            return sendQueuedMessage(session, next)
+            val next = session.messageQueue.takeNext()
+            if (next != null) {
+                session.submittingMessage = next
+                return sendQueuedMessage(session, next)
+            }
+            return startTaskDelivery(session)
         }
+    }
+
+    /**
+     * 为队首任务开一轮生成。
+     *
+     * 用 `setJob(job, cancelPrevious = false)`：**绝不取消用户正在跑的生成**（旧实现走
+     * `setJob(job)`，默认会取消前一个，存在把用户刚发起的生成掐掉的窗口）。
+     */
+    private fun startTaskDelivery(session: ConversationSession): Job? {
+        val taskId = session.taskDeliveries.peek() ?: return null
+        val stillPending = session.state.value.currentMessages.pendingTaskMarkers().any { it.taskId == taskId }
+        session.taskDeliveries.takeNext()
+        if (!stillPending) {
+            // 这条结果已经被后续回复消化掉了（例如用户中途说了话），不必再开一轮。
+            return startTaskDelivery(session)
+        }
+        val job = launchGenerationJob(
+            conversationId = session.id,
+            keepAliveInBackground = true,
+        ) {
+            handleMessageComplete(session.id)
+        }
+        session.setJob(job, cancelPrevious = false)
+        job.invokeOnCompletion { appScope.launch { advanceConversation(session.id) } }
+        return job
     }
 
     private fun sendQueuedMessage(session: ConversationSession, queued: QueuedMessage): Job {
@@ -534,7 +700,6 @@ class ChatService(
             }
         }
         session.setJob(job)
-        job.invokeOnCompletion { checkPendingRecall(conversationId) }
         return job
     }
 
@@ -618,7 +783,6 @@ class ChatService(
         }
 
         session.setJob(job)
-        job.invokeOnCompletion { checkPendingRecall(conversationId) }
     }
 
     // ---- 处理工具调用审批 ----
@@ -699,95 +863,6 @@ class ChatService(
         }
 
         session.setJob(job, cancelPrevious = false)
-        job.invokeOnCompletion { checkPendingRecall(conversationId) }
-    }
-
-    /** 检查是否有 pending recall，有则触发 */
-    private fun checkPendingRecall(conversationId: Uuid) {
-        val pending = pendingRecall.remove(conversationId)
-        if (pending != null) {
-            fireRecall(conversationId, pending.description, pending.success)
-        }
-    }
-
-    // ---- 子代理 recall：不打断生成，等自然结束再触发 ----
-
-    private fun handleSubAgentRecall(event: AppEvent.SubAgentTaskFinished) {
-        launchWithConversationReference(event.conversationId) {
-            try {
-                val conversation = getConversationFlow(event.conversationId).value
-                val statusText = if (event.status == TaskStatus.COMPLETED) "completed" else "failed"
-
-                // 1. 存 notification（供下次生成时注入）
-                val pendingCount = localTools.subAgentTaskRegistry.liveCount()
-                val notificationXml = buildString {
-                    appendLine("<task-notification>")
-                    appendLine("  <task-id>${event.taskId}</task-id>")
-                    appendLine("  <status>$statusText</status>")
-                    appendLine("  <pending-tasks>$pendingCount</pending-tasks>")
-                    appendLine("  <summary>Agent \"${event.description}\" $statusText</summary>")
-                    appendLine("  <result>${event.result ?: event.error ?: ""}</result>")
-                    append("</task-notification>")
-                }
-                pendingNotifications.getOrPut(event.conversationId) { mutableListOf() } +=
-                    SubAgentNotification(
-                        insertedAt = conversation.currentMessages.size,
-                        xml = notificationXml,
-                    )
-
-                // 2. 主 agent 空闲则立即 recall，否则等生成结束
-                val session = sessions[event.conversationId]
-                if (session?.getJob()?.isActive != true) {
-                    fireRecall(event.conversationId, event.description, event.status == TaskStatus.COMPLETED)
-                } else {
-                    pendingRecall[event.conversationId] = PendingRecall(
-                        description = event.description,
-                        success = event.status == TaskStatus.COMPLETED,
-                    )
-                }
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                Log.e(TAG, "handleSubAgentRecall failed", e)
-            }
-        }
-    }
-
-    /** 触发一次 recall：先追加可见消息再调用 handleMessageComplete */
-    private fun fireRecall(conversationId: Uuid, description: String, success: Boolean) {
-        // 追加可见提示（SYSTEM role → 无头像、AI 不可见）
-        val statusLabel = if (success) "finished" else "failed"
-        val conversation = getConversationFlow(conversationId).value
-        val visibleMsg = UIMessage(
-            role = MessageRole.SYSTEM,
-            parts = listOf(UIMessagePart.Text("Agent \"$description\" $statusLabel"))
-        )
-        val updatedConversation = conversation.copy(
-            messageNodes = conversation.messageNodes + visibleMsg.toMessageNode(),
-            updateAt = Instant.now()
-        )
-        updateConversation(conversationId, updatedConversation)
-
-        setSessionJob(conversationId) {
-            handleMessageComplete(conversationId)
-        }
-    }
-
-    /**
-     * 设置会话生成 job，并在 job 结束后检查 pending recall。
-     * 所有触发生成的地方都应使用此方法而非直接 session.setJob()，
-     * 以确保 pending recall 不会因竞态丢失。
-     */
-    private fun setSessionJob(conversationId: Uuid, block: suspend () -> Unit) {
-        val session = sessions[conversationId] ?: return
-        val job = appScope.launch { block() }
-        session.setJob(job)
-        job.invokeOnCompletion {
-            // job 结束后检查 pending recall
-            val pending = pendingRecall.remove(conversationId)
-            if (pending != null) {
-                fireRecall(conversationId, pending.description, pending.success)
-            }
-        }
     }
 
     // ---- 处理消息补全 ----
@@ -878,21 +953,8 @@ class ChatService(
                     } else {
                         raw
                     }
-                    // 注入用户不可见的子代理完成通知，固定在触发 recall 时的位置
-                    val notes = pendingNotifications[conversationId].orEmpty()
-                    if (notes.isEmpty()) {
-                        base
-                    } else {
-                        val offset = messageRange?.start ?: 0
-                        val withNotes = base.toMutableList()
-                        notes.sortedByDescending { it.insertedAt }.forEach { note ->
-                            val pos = note.insertedAt - offset
-                            if (pos in 0..withNotes.size) {
-                                withNotes.add(pos, UIMessage.system(prompt = note.xml))
-                            }
-                        }
-                        withNotes
-                    }
+                    // 按标记派生待汇报的子代理任务通知（不落库，只存在于这一次请求）
+                    injectTaskNotifications(base, localTools.subAgentTaskRegistry.liveCount())
                 },
                 assistant = assistant,
                 conversationId = conversationId,
@@ -1384,7 +1446,7 @@ class ChatService(
 
         // 删除消息或切换分支也可能解除工具审批阻塞，保存成功后重新检查队列。
         // 调度器仍会检查当前生成任务、待审批工具、暂停状态及编辑占位。
-        dispatchNextQueuedMessage(conversationId)
+        advanceConversation(conversationId)
     }
 
     // ---- 翻译消息 ----

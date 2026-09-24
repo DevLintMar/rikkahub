@@ -1352,6 +1352,11 @@
   <string name="tool_ui_sub_agent_failed">Failed</string>
   <string name="tool_ui_sub_agent_started">Started in background</string>
   <string name="notification_sub_agent_running">Background task running</string>
+  <string name="sub_agent_task_marker_finished">Agent \"%1$s\" finished</string>
+  <string name="sub_agent_task_marker_failed">Agent \"%1$s\" failed</string>
+  <string name="sub_agent_task_marker_cancelled">Agent \"%1$s\" cancelled</string>
+  <string name="sub_agent_task_marker_interrupted">Agent \"%1$s\" interrupted (app exited)</string>
+  <string name="sub_agent_error_app_exit">App exited or the background process was reclaimed before the task finished.</string>
   <string name="tool_ui_replay">Replay</string>
   <string name="tool_ui_scrape_truncated">… truncated, %1$d characters in total</string>
   <string name="tool_ui_scrape_status">HTTP %1$d</string>

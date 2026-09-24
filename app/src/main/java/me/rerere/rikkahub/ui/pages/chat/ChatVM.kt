@@ -148,6 +148,8 @@ class ChatVM(
 
     fun resumeMessageQueue() = chatService.resumeMessageQueue(_conversationId)
 
+    fun cancelSubAgentTask(taskId: String) = chatService.cancelSubAgentTask(taskId)
+
     // 生成完成
     val generationDoneFlow: SharedFlow<Uuid> = chatService.generationDoneFlow
 
