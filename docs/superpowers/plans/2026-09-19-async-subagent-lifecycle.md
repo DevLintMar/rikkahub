@@ -1865,6 +1865,14 @@ Expected: `conclusion = "success"`。
      */
     private suspend fun reconcileInterruptedSubAgentTasks(conversationId: Uuid) {
         val session = sessions[conversationId] ?: return
+        // 有生成在飞时直接跳过：本函数会追加标记节点并改写工具结果，而生成期间对节点树的改动会被
+        // 按下标合并的 assistant 消息吃掉（机制见 `deliverTaskResult` 闸门处的注释）。
+        // `initializeConversation` 这条路径会撞上该情形——用户打开一个正在后台生成的会话。
+        // 跳过是安全的：本函数幂等，且每次载入都会再跑一次；重启后 registry 为空时必然补上回执。
+        if (session.generationJob.value?.isActive == true) {
+            Log.i(TAG, "reconcileInterruptedSubAgentTasks: $conversationId 跳过（有生成在飞）")
+            return
+        }
         val conversation = session.state.value
         // 判据是「registry 里没有这个 taskId」而不是「registry 里它不是 IN_PROGRESS」。
         // 后者会把**本进程里刚刚完成、投递还没落地**的任务误判成中断：那一刻工具结果仍是 `started`
@@ -1949,11 +1957,35 @@ Expected: `conclusion = "success"`。
      * 通知会在下次生成时重新派生。
      */
     private suspend fun deliverTaskResult(event: AppEvent.SubAgentTaskFinished) {
+        // 闸门放在 `ensureLoaded` **之前**：`ensureLoaded` 内部会调中断对账，而它同样会改动节点树。
+        val session = getOrCreateSession(event.conversationId)
+
+        // ① 与「载入时的中断对账」都会改动会话的节点树（追加标记节点、改写工具结果），
+        //    而**生成在飞时绝不能动**。机制（本任务最难发现的坑）：
+        //    `Conversation.updateCurrentMessages` 是**按下标合并**的 —— `messages[index]` 落到
+        //    `messageNodes[index]`，节点里没有这条消息就**追加进该节点并把 selectIndex 移过去**；
+        //    而 `GenerationLoop.generateInternal` 用的是一份**冻结快照**（`:432 var messages = messages`，
+        //    之后每个 chunk 都基于它累积，从不重读会话）。于是生成在飞时追加节点会造成错位：
+        //    该生成第一个 chunk 的 assistant 消息会落进**标记节点** → 标记对 `currentMessages` 隐形
+        //    （`pendingTaskMarkers()` 只扫 `currentMessages`）⇒ `startTaskDelivery` 判 `stillPending = false`
+        //    ⇒ **不触发那一轮、结果正文再也派发不出去**（正文只在标记 metadata 里）；同时工具结果的
+        //    终态改写会被那一轮的旧版本按 id 覆盖回去（终态丢失）。
+        //    触发窗口是「请求已构建、首个 token 未到」的一次 provider 往返——很宽，不是窄缝。
+        //    设计 §7 原先断言「生成中的 assistant 位置在标记之前」，那只在**首个 chunk 落地之后**成立。
+        //    旧机制没踩到，是因为 `handleSubAgentRecall` 只在空闲时才追加可见节点；Task 8 去掉了那个前提。
+        //
+        //    用 while + 复查当前值，而不是一次 `first {}`：`first {}` 是按**发射时**的值判定的，
+        //    而生成结束回调排空队列时，可能在我们被调度回来之前就又起了一轮。
+        //    等到之后，下面的改写在**同一个不挂起片段**里完成，且 AppScope 是 `Dispatchers.Main`，
+        //    所以从「看到空闲」到「改完节点」之间不会有别的协程插进来。
+        while (session.generationJob.value?.isActive == true) {
+            session.generationJob.first { it?.isActive != true }
+        }
+
         if (!ensureLoaded(event.conversationId)) {
             Log.w(TAG, "deliverTaskResult: conversation ${event.conversationId} 已不存在，丢弃投递")
             return
         }
-        val session = sessions[event.conversationId] ?: return
         val status = if (event.status == TaskStatus.COMPLETED) "completed" else "failed"
 
         val updated = session.state.value.applyTaskDelivery(
@@ -1966,7 +1998,17 @@ Expected: `conclusion = "success"`。
                 error = event.error,
             ),
             markerText = { description -> taskMarkerText(description, status, event.reason) },
-        ) ?: return
+        ) ?: run {
+            // 无变更 = 这条结果已被消化过（标记已存在，或工具结果已不在）。记一行日志：
+            // 现场只有这一行能看出「投递被跳过」。
+            Log.w(TAG, "deliverTaskResult: ${event.taskId} 无需变更，跳过（已投递或工具结果已不存在）")
+            return
+        }
+
+        // 先在**内存**里落一次，再落库：`saveConversation` 内的 `updateConversation` 在它自己的一次
+        // 挂起读库**之后**才执行，两条并发投递会双双读到「还不含对方标记」的内存态，后写者会把先写者
+        // 从内存与库里一起抹掉。先同步写内存可保证第二条投递读到的是「已含第一条标记」的状态。
+        updateConversation(event.conversationId, updated)
 
         // 只有来自「实时完成」的投递才触发新的一轮；中断对账走的不是这条入口。
         session.taskDeliveries.enqueue(event.taskId)
@@ -2131,6 +2173,8 @@ Expected: `conclusion = "success"`。
 5. `getOrCreateSession` 的 `onGenerationFinished` 里那行 `appScope.launch { dispatchNextQueuedMessage(id) }` 现在是 `appScope.launch { advanceConversation(id) }`（Step 4 的全局替换已覆盖）。
 
 6. `onGenerationFinished` 里的 `session.messageQueue.pause()` 等逻辑**保持不动**。
+
+**（Fix 轮 2 附带，控制器裁定）**：`handleMessageComplete` 的 `.collect` 里那句过滤目前写的是**字面量** `part.text.contains("<task-notification>")`。改成用 `SubAgentDelivery.kt` 里已有的 `TASK_NOTIFICATION_TAG` 常量。这不是洁癖：这条过滤是「派生通知只存在于请求里、绝不写回会话」那道边界的**唯一**守卫，而字面量与常量会各自漂移——一旦有人改常量、或将来有 transformer 重写该文本，注入块就会变成**持久化的可见消息**。该字面量是既有代码（非本任务引入），顺手一并改。
 
 - [ ] **Step 7: ChatVM 暴露取消**
 
@@ -2335,6 +2379,10 @@ CI 绿之后装 debug 包，按 spec §10.3 的 8 条清单验。**其中第 1 �
 **Spec 覆盖**：§4.2 六个缺陷 → ①=Task 8（`ensureLoaded` + 对账）、②=Task 6/7（keepAlive）、③=Task 3+8（中断判据 + 对账）、④=Task 2+8（派生通知替代 pendingNotifications）、⑤=Task 4+8（FIFO 替代单槽位）、⑥=Task 3+9（工具结果改写 + 卡片终态）；§5 组件 → Task 1/2/3/4/6；§6 → Task 3；§7 → Task 2+8 Step 5；§8 → Task 1+3+8；§9 影响面 → 全部任务；§10.1 单测 → Task 1–6；§10.3 设备核验 → Task 9 Step 6；§10.2 CI → 每任务末步。
 
 **Task 7 实现者指出的机制性错误**（控制器裁定，已记账）：我在 Task 7 Step 3 写的「位置顺序必须与构造参数顺序一致，否则编译报错」把机制说错了 —— Koin 的 `get()` 是 `inline fun <reified T : Any> get(): T`，`T` 由该位置**形参的声明类型**推断，因此每个 `get()` 的类型只取决于它的实参位置，与书写顺序无关（对调两个 `get()` 产生相同代码）；真正会编译报错的是实参个数与形参个数不符。结论（在 `keepAlive` 形参处插一个新 `get()`）不受影响。已把计划里那句改对，并记下「实现者纠正了控制器的裁定」这件事本身。
+
+**Task 8 任务审查发现的缺陷 · Critical（控制器裁定，已记账）**：投递的 ① **无条件**改动会话节点树（追加标记节点 + 改写工具结果），而它可能发生在**某个生成还在飞**的时候——只要该生成处于「请求已构建、首个 `GenerationChunk.Messages` 未到」的窗口（一次 provider 往返，很宽）。此时：`updateCurrentMessages` 按下标合并（`messages[index]` → `messageNodes[index]`，节点里没有该消息就追加并把 `selectIndex` 移过去），而生成用的是冻结快照，于是该生成的 assistant 消息会落进**标记节点** ⇒ 标记对 `currentMessages` 隐形 ⇒ `pendingTaskMarkers()` 找不到它 ⇒ `startTaskDelivery` 判 `stillPending = false` ⇒ **不触发那一轮、结果正文再也派发不出去**（正文只在标记 metadata 里）；同时工具结果的终态改写会被那一轮的旧版本按 id 覆盖回去。**设计前提本身是错的**：spec §7 断言「生成中的 assistant 位置在标记之前」，那**只在首个 chunk 落地之后**成立。旧机制没踩到，是因为 `handleSubAgentRecall` 只在空闲时才追加可见节点（`if (session?.getJob()?.isActive != true)`）——Task 8 去掉了这个前提。修法：`deliverTaskResult` 开头加「等会话空闲」闸门（`while` + 复查当前值，因为 `first {}` 按发射时的值判定，而生成结束回调排空队列时可能在我们恢复前又起一轮），闸门放在 `ensureLoaded` **之前**（对账也改节点树）；`reconcileInterruptedSubAgentTasks` 自身也加「有生成在飞则跳过」的守卫（`initializeConversation` 路径会走到）；① 落库前先同步写一次内存以消除并发投递的读-改-写竞争。**验收标准第一条**在这个窗口里会静默失效。
+
+**同轮附带两条 Minor**：① `handleMessageComplete` 的注入过滤用字面量 `"<task-notification>"` 而非 `TASK_NOTIFICATION_TAG`（既有代码）——该过滤是「通知绝不写回会话」那道边界的唯一守卫；② `applyTaskDelivery` 返回 null（= 已投递/工具结果已不存在）时没有任何日志，现场分辨不出「投递被跳过」。
 
 **Task 8 实现者发现的计划缺陷 · 严重（控制器裁定，已记账）**：Task 8 Step 2 的中断对账判据写的是 `registry.isLive(taskId)`，而 `isLive` =「registry 里那条是 IN_PROGRESS」。于是**本进程里刚刚完成、投递尚未落地**的任务会被误判为中断：那一刻工具结果仍是 `started`（① 终态入库在 `ensureLoaded` 返回之后才做），registry 里已是 COMPLETED ⇒ `isLive` 为假 ⇒ 判中断 ⇒ 写上一条**假的**「应用退出」回执并落库；随后真正的投递走到 `applyTaskDelivery` 时标记已存在、按幂等契约返回 `null` ⇒ **真投递被静默丢弃**（结果正文丢失、`enqueue` 永不执行、**不触发 AI 回复**）。触发条件只是 `session.loaded == false`，即**会话被 5 秒空闲回收**——正是验收标准第一条（「切屏走了之后仍能跑完并触发回复」）的主场景；spec §10.3 的第 1 条设备核验本会撞上它。spec 自身也自相矛盾：§8.3 写 `!isLive`，而它自己的测试表写「registry 里**不存在**」。修法：判据改为 `get(taskId) == null`（本进程完全不认识它），并把谓词参数由 `isLive` 改名为 `isTracked`（**缺陷的根因就是这个名**，留着它下一个人还会把 `isLive` 传回来）。`SubAgentDeliveryTest` 的四处调用都是尾随 lambda、无具名实参，故测试零改动。（发现方：Task 8 实现者，在审查前自行核出并完整给了可达性链与两个备选方案，未擅自改计划——这正是常设指令要求的做法。）
 
