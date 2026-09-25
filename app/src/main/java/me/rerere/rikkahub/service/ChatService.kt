@@ -389,6 +389,9 @@ class ChatService(
         // 用户打开那个会话时工具结果仍停在 started，正是这里把它补成终态。
         // 静默：只补标记不触发生成（决策 2），AI 下次在这个会话里发言时由派生通知看到。
         reconcileInterruptedSubAgentTasks(conversationId)
+        // 再补一次「结果已入库但没人回复」的拾遗：进程若死在终态入库与那一轮之间（崩溃/被杀），
+        // 这些标记会一直挂在那里。用户打开会话时把它们重新排队，AI 会把结果补讲出来。
+        requeueUnrepliedTaskMarkers(conversationId)
     }
 
     /**
@@ -421,6 +424,28 @@ class ChatService(
             updateConversation(conversationId, updated)
             saveConversation(conversationId, updated)
         }
+    }
+
+    /**
+     * 把「终态已入库、但还没有被回复过」的结果重新排进触发队列。
+     *
+     * 为什么需要：触发队列（`taskDeliveries`）只在内存里。进程若死在「终态已入库、那一轮还没开」
+     * 之间——被系统杀掉、或者前台服务契约失败导致崩溃（真机现场就是这个）——标记留在会话里，
+     * 却再也没人开那一轮，用户看到的就是几条「已完成」下面空空如也。
+     * 载入会话时补一次，让它自愈；判据与注入用的是同一个（标记之后没有带非空文本的 assistant 消息），
+     * 所以已经讲过的结果不会被重复开轮。
+     */
+    private fun requeueUnrepliedTaskMarkers(conversationId: Uuid) {
+        val session = sessions[conversationId] ?: return
+        val pending = session.state.value.currentMessages.pendingTaskMarkers()
+        if (pending.isEmpty()) return
+        pending.forEach { session.taskDeliveries.enqueue(it.taskId) }
+        Logging.log(
+            TAG,
+            "requeue: conv=$conversationId 有 ${pending.size} 条结果还没被回复（${pending.joinToString(",") { it.taskId }}）" +
+                "，已重新排队 ${ProcessInfo.describe()}",
+        )
+        advanceConversation(conversationId)
     }
 
     /**

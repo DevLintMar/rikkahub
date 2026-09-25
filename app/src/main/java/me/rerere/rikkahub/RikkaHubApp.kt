@@ -44,6 +44,7 @@ import me.rerere.rikkahub.data.sync.RestoreFailedException
 import me.rerere.rikkahub.utils.JsonInstant
 import me.rerere.rikkahub.service.WebServerService
 import me.rerere.rikkahub.utils.CrashHandler
+import me.rerere.rikkahub.utils.AppForegroundTracker
 import me.rerere.rikkahub.utils.ProcessInfo
 import me.rerere.rikkahub.utils.DatabaseUtil
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
@@ -72,6 +73,9 @@ class RikkaHubApp : Application() {
         // 这一行也是应用内「日志」页里最老的一行——它就是本进程的出生证明。
         ProcessInfo.markStart()
         Logging.log(TAG, "process start: ${ProcessInfo.describe()}")
+        // 前后台可见性：前台服务的启动方式要据此选择（见 AppForegroundTracker 的说明——
+        // 用错 API 会让系统在 5 秒后以 RemoteServiceException 杀掉进程）。
+        AppForegroundTracker.install(this)
         // Restore files and settings before eager Koin singletons or workers can access them.
         try {
             val restored = runBlocking(Dispatchers.IO) {

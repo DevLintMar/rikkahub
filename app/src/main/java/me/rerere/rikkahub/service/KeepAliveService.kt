@@ -14,6 +14,7 @@ import androidx.core.app.NotificationCompat
 import me.rerere.rikkahub.BuildConfig
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.RouteActivity
+import me.rerere.rikkahub.utils.AppForegroundTracker
 
 /**
  * 前台保活服务，用于提升 App 后台存活能力。
@@ -50,7 +51,11 @@ class KeepAliveService : Service() {
             }
             val intent = Intent(context, KeepAliveService::class.java)
             try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                if (AppForegroundTracker.isForeground) {
+                    // 前台用 startService：绕开「5 秒内必须 startForeground」的硬性契约
+                    // （理由与真机崩溃现场见 AppForegroundTracker）。
+                    context.startService(intent)
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     context.startForegroundService(intent)
                 } else {
                     context.startService(intent)

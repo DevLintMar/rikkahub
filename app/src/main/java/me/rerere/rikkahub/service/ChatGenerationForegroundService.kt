@@ -17,6 +17,7 @@ import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.RouteActivity
+import me.rerere.rikkahub.utils.AppForegroundTracker
 import me.rerere.rikkahub.utils.ProcessInfo
 import org.koin.android.ext.android.inject
 import kotlin.uuid.Uuid
@@ -63,7 +64,13 @@ class ChatGenerationForegroundService : Service() {
                 putExtra(EXTRA_BACKGROUND_TASK, backgroundTask)
             }
             return runCatching {
-                ContextCompat.startForegroundService(context, intent)
+                if (AppForegroundTracker.isForeground) {
+                    // 前台：`startService` 没有「5 秒内必须 startForeground」那条硬性契约，
+                    // 于是即便随后的 `startForeground` 被系统拒绝，也只是进不了前台，不会杀进程。
+                    context.startService(intent)
+                } else {
+                    ContextCompat.startForegroundService(context, intent)
+                }
                 true
             }.onFailure {
                 Log.e(TAG, "Unable to start chat generation foreground service", it)
