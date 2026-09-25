@@ -202,6 +202,9 @@ class SubAgentDeliveryTest {
         assertEquals(messages.size + 1, injected.size)
         assertEquals(messages, injected.dropLast(1))
         assertTrue(injected.last().parts.first().let { (it as UIMessagePart.Text).text }.contains(TASK_NOTIFICATION_TAG))
+        // 必须是 USER：SYSTEM 会被 ClaudeProvider / Responses API 整类丢弃，那样通知就送不到模型
+        assertEquals(MessageRole.USER, injected.last().role)
+        assertTrue(injected.last().isSynthetic)
     }
 
     @Test
@@ -293,15 +296,19 @@ class SubAgentDeliveryTest {
     }
 
     @Test
-    fun `找不到对应工具结果时返回 null`() {
+    fun `找不到对应工具结果时仍然追加标记（后台工作流步骤等无锚点路径）`() {
         val conversation = conversationOf(userText("起个子代理"), toolCallMessage(subAgentToolPart("sub_1")))
 
-        assertNull(
-            conversation.applyTaskDelivery(
-                TaskDelivery("sub_other", "completed", null, null, "x", null),
-                markerText = { _ -> "m" },
-            ),
+        val updated = conversation.applyTaskDelivery(
+            TaskDelivery("sub_other", "completed", null, "web 搜索", "三条新闻", null),
+            markerText = { description -> "Agent \"$description\" finished" },
         )
+
+        // 不再返回 null：无锚点时也要留住回执，否则整条投递（结果正文 + 触发）被丢弃
+        val marker = requireNotNull(updated).messageNodes.last().messages.single().subAgentTaskMarkerOrNull()
+        assertEquals("sub_other", marker?.taskId)
+        assertEquals("三条新闻", marker?.result)
+        assertEquals(3, updated.messageNodes.size)     // 用户 + 工具调用 + 标记
     }
 
     @Test

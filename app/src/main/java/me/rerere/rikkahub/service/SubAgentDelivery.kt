@@ -108,7 +108,14 @@ internal fun injectTaskNotifications(
     val markers = messages.pendingTaskMarkers()
     if (markers.isEmpty()) return messages
     val injected = markers.map { marker ->
-        UIMessage.system(prompt = taskNotificationXml(marker, pendingTaskCount))
+        // **必须是 USER，不能是 SYSTEM**：本仓 `ClaudeProvider.buildMessages` 会滤掉**全部** SYSTEM
+        // 消息（`ClaudeProvider.kt:555` 的 `it.role != MessageRole.SYSTEM`），Responses API 同样丢弃
+        // 除首条外的 SYSTEM。用 SYSTEM 会让这条通知在那些 provider 上**根本送不到模型**——而通知正是
+        // 结果正文唯一的去向（工具结果里已不正文），于是「AI 拿到子代理结果」这个核心承诺在 Claude 上
+        // 直接不成立，症状恰好是「切屏之后回复里没有子代理的结果」。
+        // `.copy(isSynthetic = true)` 让合成消息不过 messageTemplate（与 `TimeReminderTransformer.kt:77`
+        // 的既有做法一致：那处也是「机器注入、只给模型看」的内容）。
+        UIMessage.user(taskNotificationXml(marker, pendingTaskCount)).copy(isSynthetic = true)
     }
     return messages + injected
 }
@@ -145,7 +152,8 @@ private fun UIMessagePart.Tool.matchesTask(taskId: String): Boolean =
 /**
  * 把一次终态投递写进会话：改写工具结果（只留状态）+ 追加一条可见标记。
  *
- * 返回 `null` 表示无需变更——找不到对应工具结果，或者该任务的标记已经在会话里（幂等）。
+ * 返回 `null` 表示无需变更——唯一的判据是「该任务的标记已经在会话里」（幂等）。
+ * **找不到对应工具结果不返回 null**（理由见下方注释）。
  * 结果正文只进标记 metadata，**绝不进工具结果**（决策 5）。
  *
  * `markerText` 是**函数**而不是成品字符串：可见文案要过 `stringResource`（Android 资源在本文件里用不了），
@@ -160,7 +168,6 @@ internal fun Conversation.applyTaskDelivery(
         return null
     }
 
-    var matched = false
     val clipped = clipTaskResult(delivery.result)
     val clippedError = clipTaskResult(delivery.error)
     var description = delivery.description
@@ -169,7 +176,6 @@ internal fun Conversation.applyTaskDelivery(
         val newMessages = node.messages.map { message ->
             val newParts = message.parts.map { part ->
                 if (part !is UIMessagePart.Tool || !part.matchesTask(delivery.taskId)) return@map part
-                matched = true
                 val original = runCatching {
                     JsonInstant.parseToJsonElement(part.outputText()).jsonObject.toMutableMap()
                 }.getOrNull()
@@ -200,7 +206,13 @@ internal fun Conversation.applyTaskDelivery(
         if (newMessages == node.messages) node else node.copy(messages = newMessages)
     }
 
-    if (!matched) return null
+    // **找不到锚点不再返回 null**：`run_workflow` 的后台步骤走同一个 `runtime.executeAsync`
+    // （`WorkflowEngine.kt:108`），但它的工具结果是 `run_workflow` 的文本、不含 `sub_agent` 的任务锚点。
+    // 改造前的旧路径（`handleSubAgentRecall`）**不看工具结果**，直接从事件建通知并触发一轮，所以这类
+    // 任务原本**有**回执与回复——按「找不到就不投递」处理是回归（症状：后台工作流步骤的结果正文静默消失、
+    // 也不触发回复）。改写不到工具结果只是少了卡片上的状态 pill，而回执（标记）与触发必须照做。
+    // 顺带覆盖另一种情形：历史编辑（重新生成越过该点、切换分支、压缩、删消息）移除了锚点。
+    // 本函数剩余的唯一 null 返回是上面那条幂等守卫（该 taskId 的标记已存在）。
 
     val effectiveDescription = description ?: delivery.taskId
     val marker = UIMessage(

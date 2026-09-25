@@ -550,9 +550,10 @@ class ChatService(
             ),
             markerText = { description -> taskMarkerText(description, status, event.reason) },
         ) ?: run {
-            // 无变更 = 这条结果已被消化过（标记已存在，或工具结果已不在）。记一行日志：
+            // 无变更 = 这条结果已被消化过（该 taskId 的标记已经在会话里，幂等契约）。记一行日志：
             // 现场只有这一行能看出「投递被跳过」。
-            Log.w(TAG, "deliverTaskResult: ${event.taskId} 无需变更，跳过（已投递或工具结果已不存在）")
+            // 注意：无锚点**不再**算「无变更」——那种情形必须照常留回执，见 `applyTaskDelivery` 的注释。
+            Log.w(TAG, "deliverTaskResult: ${event.taskId} 无需变更，跳过（已投递）")
             return
         }
 
@@ -1088,11 +1089,10 @@ class ChatService(
                 when (chunk) {
                     is GenerationChunk.Messages -> {
                         // 过滤掉注入的子代理通知（用户不可见，仅提供给 AI 上下文）
+                        // 只看标签，不看角色：派生通知是 USER 消息（SYSTEM 在 Claude / Responses 上
+                        // 会被整类丢弃、根本送不到模型），再按角色判定就会把注入块当成真实用户消息写回会话。
                         val filteredMessages = chunk.messages.filter { msg ->
-                            msg.role != MessageRole.SYSTEM ||
-                                msg.parts.none { part ->
-                                    part is UIMessagePart.Text && part.text.contains(TASK_NOTIFICATION_TAG)
-                                }
+                            msg.parts.none { it is UIMessagePart.Text && it.text.contains(TASK_NOTIFICATION_TAG) }
                         }
                         val updatedConversation = getConversationFlow(conversationId).value
                             .updateCurrentMessages(filteredMessages)
