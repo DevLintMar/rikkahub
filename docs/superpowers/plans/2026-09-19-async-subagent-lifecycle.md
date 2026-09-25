@@ -1814,29 +1814,35 @@ Expected: `conclusion = "success"`。
             return
         }
         val conversation = conversationRepo.getConversationById(conversationId)
-        synchronized(session) {
-            // 库读是挂起调用，两条路径都可能在它那里让出；**复查 + 置位必须在同一个锁里**（与 ensureLoaded 同形）
+        // 库里没有这条会话时要现建一条；构建它所需的设置读是**挂起**调用，所以整段必须在临界区**外**：
+        // `synchronized` 里出现挂起点 Kotlin 直接报编译错误
+        // ("The 'first' suspension point is inside a critical section")——这也正是不能把它放回锁里的原因。
+        val resolvedConversation = conversation ?: run {
+            // 新建对话, 并添加预设消息
+            val currentSettings = settingsStore.settingsFlowRaw.first()
+            val assistant = currentSettings.getCurrentAssistant()
+            val baseConversation = Conversation.ofId(
+                id = conversationId,
+                assistantId = assistant.id,
+                newConversation = true
+            )
+            (if (folderId != null) baseConversation.copy(folderId = folderId) else baseConversation)
+                .updateCurrentMessages(assistant.presetMessages)
+        }
+        val effectiveAssistantId = synchronized(session) {
+            // 库读是挂起调用，两条路径都可能在它那里让出；**复查 + 置位 + 应用必须在同一个锁里**（与 ensureLoaded 同形）。
+            // 这个锁里只允许有**不挂起**的调用：`updateConversation` 与读 `state.value` 都是。
             if (!session.loaded) {
-                if (conversation != null) {
-                    updateConversation(conversationId, conversation)
-                } else {
-                    // 新建对话, 并添加预设消息
-                    val currentSettings = settingsStore.settingsFlowRaw.first()
-                    val assistant = currentSettings.getCurrentAssistant()
-                    val baseConversation = Conversation.ofId(
-                        id = conversationId,
-                        assistantId = assistant.id,
-                        newConversation = true
-                    )
-                    val newConversation = (if (folderId != null) baseConversation.copy(folderId = folderId) else baseConversation)
-                        .updateCurrentMessages(assistant.presetMessages)
-                    updateConversation(conversationId, newConversation)
-                }
+                updateConversation(conversationId, resolvedConversation)
                 session.loaded = true
             }
-            // 只有「用户打开了会话」才切全局助手；用**生效态**的 assistantId（可能是别人的载入结果）
-            settingsStore.updateAssistant(session.state.value.assistantId)
+            // 只有「用户打开了会话」才切全局助手；用**生效态**的 assistantId（可能是别人的载入结果）——
+            // 在锁内取值（不挂起），真正的切换是挂起调用，放到锁外。
+            session.state.value.assistantId
         }
+        // `updateAssistant` 是挂起调用（DataStore 写），同样必须在锁外；
+        // 值在锁内取好，语义与「在锁内调用」一致。
+        settingsStore.updateAssistant(effectiveAssistantId)
         // 这条路径是「软件退出 / 子代理中断」失败回执的**主要**来源——新进程里 registry 是空的，
         // 用户打开那个会话时工具结果仍停在 started，正是这里把它补成终态。
         // 静默：只补标记不触发生成（决策 2），AI 下次在这个会话里发言时由派生通知看到。
@@ -2532,6 +2538,12 @@ CI 绿之后装 debug 包，按 spec §10.3 的 8 条清单验。**其中第 1 �
 **Task 7 实现者指出的机制性错误**（控制器裁定，已记账）：我在 Task 7 Step 3 写的「位置顺序必须与构造参数顺序一致，否则编译报错」把机制说错了 —— Koin 的 `get()` 是 `inline fun <reified T : Any> get(): T`，`T` 由该位置**形参的声明类型**推断，因此每个 `get()` 的类型只取决于它的实参位置，与书写顺序无关（对调两个 `get()` 产生相同代码）；真正会编译报错的是实参个数与形参个数不符。结论（在 `keepAlive` 形参处插一个新 `get()`）不受影响。已把计划里那句改对，并记下「实现者纠正了控制器的裁定」这件事本身。
 
 **Task 8 任务审查发现的缺陷 · Critical（控制器裁定，已记账）**：投递的 ① **无条件**改动会话节点树（追加标记节点 + 改写工具结果），而它可能发生在**某个生成还在飞**的时候——只要该生成处于「请求已构建、首个 `GenerationChunk.Messages` 未到」的窗口（一次 provider 往返，很宽）。此时：`updateCurrentMessages` 按下标合并（`messages[index]` → `messageNodes[index]`，节点里没有该消息就追加并把 `selectIndex` 移过去），而生成用的是冻结快照，于是该生成的 assistant 消息会落进**标记节点** ⇒ 标记对 `currentMessages` 隐形 ⇒ `pendingTaskMarkers()` 找不到它 ⇒ `startTaskDelivery` 判 `stillPending = false` ⇒ **不触发那一轮、结果正文再也派发不出去**（正文只在标记 metadata 里）；同时工具结果的终态改写会被那一轮的旧版本按 id 覆盖回去。**设计前提本身是错的**：spec §7 断言「生成中的 assistant 位置在标记之前」，那**只在首个 chunk 落地之后**成立。旧机制没踩到，是因为 `handleSubAgentRecall` 只在空闲时才追加可见节点（`if (session?.getJob()?.isActive != true)`）——Task 8 去掉了这个前提。修法：`deliverTaskResult` 开头加「等会话空闲」闸门（`while` + 复查当前值，因为 `first {}` 按发射时的值判定，而生成结束回调排空队列时可能在我们恢复前又起一轮），闸门放在 `ensureLoaded` **之前**（对账也改节点树）；`reconcileInterruptedSubAgentTasks` 自身也加「有生成在飞则跳过」的守卫（`initializeConversation` 路径会走到）；① 落库前先同步写一次内存以消除并发投递的读-改-写竞争。**验收标准第一条**在这个窗口里会静默失效。
+
+**Fix 轮 4 实现者抓出的计划缺陷 · 编译不过（控制器裁定，已记账）**：我写进计划 ① 的那段 `initializeConversation` **编译不过**——`synchronized(session)` 块里放了两个**挂起**调用（新建会话分支的 `settingsFlowRaw.first()`、结尾的 `updateAssistant`），Kotlin 直接报 `The 'first' suspension point is inside a critical section`（CI 提交 `837e2b63` 因此红）。**而且它不只是编译问题**：即便能编译，从另一线程恢复后执行 MONITOREXIT 会泄漏那个被 `advanceConversation` / `sendMessage` 在 Main 上获取的会话监视器。实现者的修法正确：把需要挂起的「新建会话」构建提到临界区**外**（结果放 `resolvedConversation`），锁内只留**不挂起**的「复查 + 应用 + 置位」，`assistantId` 在锁内取、`updateAssistant` 放到锁外调用——原子性完整、与 `ensureLoaded` 同形。计划已按提交后的真实实现改回（提交 `fa90d606`，其 CI 首次尝试即绿）。
+
+> 教训：**在 `suspend` 函数里写 `synchronized` 时，必须逐个检查块内每个调用是否挂起。** 我在 `ensureLoaded` 里恰好写对了（块内只有 `updateConversation` 与读 `state.value`，都不挂起），于是把它当成模板套到 `initializeConversation`——而后者多了「新建会话要读设置」和「切全局助手」两个**天然挂起**的副作用。「照着自己写对的那处套模板」是最容易漏掉这种差异的做法。
+
+**（另：实现者报告了它第一版提交信息里的错字「栈读」（应为「库读」），因已推送而未改历史——留痕即可。它还澄清 `ChatService.kt` 的工作树行尾现在是纯 LF 而非派发文本说的纯 CRLF；在 `autocrlf=true` 下 LF 与 CRLF 提交为同一 blob，故 diff 干净、无副作用，不处理。）**
 
 **用户裁决：最终整支审查的 Important ③ 现在修（Fix 轮 4）**（控制器裁定，已记账）：`initializeConversation` / `generateTitle` / `generateSuggestion` 三处**无锁整对象写**可能吞掉投递刚写的标记（窗口 1–2 次 DB 往返），用户选择现在修。修法两层：
 1. **`initializeConversation` 加锁 + 「已载入则跳过重载」**——顺带**恢复了 spec §6.1 那条被违反的规则**（「已载入的会话绝不重新载入」）：原先这条路径每次都重载，用户打开一个正在后台生成的会话就会把在飞内容连同投递刚写的标记一起抹掉。这与 `ensureLoaded` 现在是同一条规则、同一个锁形态。
