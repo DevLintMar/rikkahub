@@ -1,7 +1,8 @@
 # 交接：异步子代理生命周期重做（2026-09-25）
 
 **状态**：九个任务全部完成、全部推送、CI 全绿；最终整支审查（opus）判「Safe to merge for the `sub_agent` path」，三条验收标准在代码上成立。
-**范围**：`9d2f1d47..7e8a8882`（47 个提交），代码改动面 22 文件 +1782/−309。
+**范围**：`9d2f1d47..31954a3c`（47 个提交），代码改动面 22 文件 +1782/−309。
+**本文件最后更新于** `31954a3c`；之后若又有改动，以 `git log` 为准。
 **权威文档**：设计 `docs/superpowers/specs/2026-09-19-async-subagent-lifecycle-design.md`；计划 `docs/superpowers/plans/2026-09-19-async-subagent-lifecycle.md`（含全部裁定与自检记录）。
 
 > 本文件是设计 §9 承诺的那份交接（最终审查指出它当时**没写**，此为一并补齐）。
@@ -112,3 +113,33 @@ d0316c51 卡片终态 + 取消入口（+eb6c185d error 守卫）
 - **引入「落库前先同步写内存」这条不变量后，只在眼前那两处应用了它，新写的第三个写者漏了**——新代码不会自动继承旧代码的教训，除非把它写成规则并逐处核对。
 - 在 `suspend` 函数里写 `synchronized` 时没有逐个检查块内调用是否挂起——照着自己写对的那处（`ensureLoaded`）套模板，而新函数多了两个天然挂起的副作用，代价是一轮编译失败。
 - 把「只看标签更稳」当取舍写进计划，而没先把两种失效模式的后果摆出来比较（漏过滤可恢复 vs 误过滤不可恢复）。
+
+---
+
+## 8. 下一步（给下一个会话）
+
+**这条线的工作已经结束**：九个任务与其修复全部在 `master` 上、CI 全绿、最终整支审查判可合并。下面三件事里只有第 1 件是待办。
+
+1. **设备核验**（用户执行，见 §4）。4 条真要上设备；7 条已由静态分析判定成立，不必再验。
+2. **可选改进**：§3.3 那条「① 的持久化被推迟最多一整轮生成」。不是缺陷，是权衡；若要做，方向写在那一节。
+3. **其余推迟项**：§3.2 已由最终审查分诊为「没有一条是 must-fix」。
+
+### 需要原文时去哪找
+
+| 要什么 | 去哪 |
+|---|---|
+| 全部裁定（约 65 条 `Ruling:`，含每条的理由与代价） | `.superpowers/sdd/2026-09-19-async-subagent-lifecycle/progress.md`（867 行，**git-ignored，按用户裁决保留**） |
+| 每个任务的需求原文 | 同目录 `task-N-brief.md`（由计划生成） |
+| 每轮实现者的自述与 CI 证据 | 同目录 `task-N-report.md` |
+| 各轮审查的输入 diff | 同目录 `review-<BASE>..<HEAD>.diff` |
+| 计划里的全部修正记录 | `docs/superpowers/plans/2026-09-19-async-subagent-lifecycle.md` 末尾的「自检记录」 |
+| 设计的权威表述 | `docs/superpowers/specs/2026-09-19-async-subagent-lifecycle-design.md` |
+
+### 恢复时的第一件事
+
+```bash
+cd X:/projects/rikkahub
+git log --oneline -3 && git rev-parse HEAD origin/master && git status --short
+```
+
+`HEAD` 应等于 `origin/master`、工作树应干净。若最后几条提交里有你没见过的，先读它们的提交信息（每条都写了「为什么」），再读上面那张表里对应的报告。
