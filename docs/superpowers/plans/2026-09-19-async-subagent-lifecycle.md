@@ -1215,7 +1215,8 @@ Expected: `conclusion = "success"`。
      * 会话真实内容是否已从库里载入。
      *
      * `getOrCreateSession` 建的是**空壳**（`Conversation.ofId()`），只有 `initializeConversation`
-     * 或 `ChatService.ensureLoaded` 才会把真实内容填进来。任何要改会话内容的背景路径
+     * 或 `ChatService.ensureLoaded` 才会把真实内容填进来（`mergeConversationState` 在会话未载入时
+     * 也会经 `saveConversation` 间接写入内存态，但它既不置位 `loaded`、也不该被当作载入）。任何要改会话内容的背景路径
      * （子代理投递、中断对账）都必须先看这个标志——否则会拿空壳去 `saveConversation`，
      * 而 `ConversationRepository.updateConversation` 是「删光节点再写」，等于抹掉历史。
      */
@@ -1800,7 +1801,7 @@ Expected: `conclusion = "success"`。
 
 - [ ] **Step 1: 加 `ensureLoaded`（**不**拆共用方法）**
 
-**① `initializeConversation`**（`ChatService.kt:360` 起）**保持原样，只在末尾补一行**：
+**① `initializeConversation`**：**已载入则跳过重载** + 载入部分加锁（与 `ensureLoaded` 同形，见下），末尾补一行对账：
 
 ```kotlin
     suspend fun initializeConversation(conversationId: Uuid, folderId: Uuid? = null) {
@@ -1877,7 +1878,15 @@ Expected: `conclusion = "success"`。
             } else {
                 conversationRepo.getConversationById(conversationId) ?: return@withContext
             }
-            saveConversation(conversationId, update(base))
+            val updated = update(base)
+            // **先在内存里落一次，再落库**：`saveConversation` 的第一句是挂起的 `existsConversationById`，
+            // 内存写入在它之后才发生。中间那段挂起里若有投递恢复执行（它的最后一个 await 刚结束）
+            // 并写入标记，本函数随后就会用「不含标记的 base + 新字段」整对象覆盖内存与库
+            // ⇒ `startTaskDelivery` 判 `stillPending=false` ⇒ 不触发回复、结果正文从库里消失。
+            // 同一条规则在 `deliverTaskResult` 与 `reconcileInterruptedSubAgentTasks` 里已各写一次——
+            // **每个写会话对象的路径都必须照做**（这是本计划第三次踩它：前两次写对了，这次漏了）。
+            updateConversation(conversationId, updated)
+            saveConversation(conversationId, updated)
         }
     }
 ```
@@ -1932,7 +1941,11 @@ Expected: `conclusion = "success"`。
     }
 ```
 
-> **为什么不按原计划「拆出 `loadConversation` 给两条路径共用」**：两者的不变量是**相反**的。`initializeConversation` 是「用户打开了会话」——必须**总是**重载、并且**总要**切全局助手；`ensureLoaded` 是背景路径——**已载入就绝不重载**（§6.1：内存态在生成期间领先于库，重载会把正在生成的内容冲掉），**绝不**切全局助手，而且还要在锁内复查 `loaded`。把这些藏进 `selectAssistant` / `createIfMissing` 两个布尔开关里，改一处就可能悄悄改掉另一条路径的语义。两处真正必须共有的只有末尾那一行对账，所以它在两边各写一次、各带一句为什么——重复 4 行，换来两条路径的不变量各自局部可见。
+> **为什么不按原计划「拆出 `loadConversation` 给两条路径共用」**：两条路径**确实各自有专属副作用**——`initializeConversation` 只它有的「新建会话（`createIfMissing`）」与「切全局助手（`selectAssistant`）」，`ensureLoaded` 只它有的「库里不存在就返回 false、不复活」。把这些藏进布尔开关里容易改坏另一条路径。
+>
+> **但「已载入的会话绝不重载」这条规则对两条路径是*相同*的**（§6.1：内存态在生成期间领先于库，重载会把正在生成的内容冲掉）。本节早先那版论证写的「两者的不变量**相反**、`initializeConversation` 必须**总是**重载」是**错的**，而且是它直接导致了 Fix 轮 4 那个缺陷（打开一个正在后台生成的会话会把在飞内容连同投递刚写的标记一起抹掉）。现在两条路径都是「已载入就跳过 + 锁内复查 `loaded`」。
+>
+> 两处真正必须共有的只有末尾那一行对账，所以它在两边各写一次、各带一句为什么——重复 4 行，换来两条路径的副作用各自局部可见。
 
 - [ ] **Step 2: 中断对账**
 
@@ -2544,6 +2557,12 @@ CI 绿之后装 debug 包，按 spec §10.3 的 8 条清单验。**其中第 1 �
 > 教训：**在 `suspend` 函数里写 `synchronized` 时，必须逐个检查块内每个调用是否挂起。** 我在 `ensureLoaded` 里恰好写对了（块内只有 `updateConversation` 与读 `state.value`，都不挂起），于是把它当成模板套到 `initializeConversation`——而后者多了「新建会话要读设置」和「切全局助手」两个**天然挂起**的副作用。「照着自己写对的那处套模板」是最容易漏掉这种差异的做法。
 
 **（另：实现者报告了它第一版提交信息里的错字「栈读」（应为「库读」），因已推送而未改历史——留痕即可。它还澄清 `ChatService.kt` 的工作树行尾现在是纯 LF 而非派发文本说的纯 CRLF；在 `autocrlf=true` 下 LF 与 CRLF 提交为同一 blob，故 diff 干净、无副作用，不处理。）**
+
+**Fix 轮 4 的 scoped re-review 结果**（控制器裁定，已记账）：A1/A2/A3 均判**正确**——①锁内确实只剩不挂起调用、复查使「检查→应用→置位」原子、`settingsFlowRaw.first()` 与 `updateAssistant` 移出锁不改变语义；②**「不再重载」不是回归**：本仓的恢复流程**不可能**在会话存在时改写活库（暂存恢复在 `startKoin` 之前于 `RikkaHubApp.kt:72` 应用、`PendingRestore` 在进程启动时装、WebDAV/S3 只 `stageRestore` 后重启），且 `ChatService.cleanup()`（唯一的批量失效器）**零调用者**，会话只靠 5 秒空闲自我失效；spec :151 本就要求跳过。③`mergeConversationState` 的 `loaded` 感知基与「未载入时读不到就 early return」正确，空壳**不可能**被持久化。
+> 但 **A4 判定缺陷未真正关闭**：`base` 的读取与内存写入之间隔着 `saveConversation` 的挂起 `existsConversationById`（`:1542`→`:1545`），于是同一交错仍可达（只是窗口从「一次读 + 一次写」缩到一次 DB 往返）。**修法就是我已在另外两处用过的「落库前先同步写内存」**——`deliverTaskResult` 与 `reconcileInterruptedSubAgentTasks` 都写了，写第三个写入者时漏了。已补（Fix 轮 5）。
+> A5 另指出四处陈旧文本（Step 1 标题仍写「保持原样」、本节那条「不变量相反、必须总是重载」的论证已被自己的修复推翻、载入者清单漏了新路径），均已改。
+
+> **教训（这是同一模式第三次踩）**：引入一条不变量之后，必须**立刻把它当成对**所有**同类写入者的规则去逐一遍历，而不是只应用到眼前那两处。我写了「落库前先同步写内存」并在 `deliverTaskResult`、`reconcileInterruptedSubAgentTasks` 各写一次，却在同一轮里新写 `mergeConversationState` 时漏掉——**新写的代码不会自动继承旧代码的教训，除非有人把它写成规则并逐处核对**。
 
 **用户裁决：最终整支审查的 Important ③ 现在修（Fix 轮 4）**（控制器裁定，已记账）：`initializeConversation` / `generateTitle` / `generateSuggestion` 三处**无锁整对象写**可能吞掉投递刚写的标记（窗口 1–2 次 DB 往返），用户选择现在修。修法两层：
 1. **`initializeConversation` 加锁 + 「已载入则跳过重载」**——顺带**恢复了 spec §6.1 那条被违反的规则**（「已载入的会话绝不重新载入」）：原先这条路径每次都重载，用户打开一个正在后台生成的会话就会把在飞内容连同投递刚写的标记一起抹掉。这与 `ensureLoaded` 现在是同一条规则、同一个锁形态。
