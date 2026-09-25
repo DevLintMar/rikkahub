@@ -353,29 +353,35 @@ class ChatService(
             return
         }
         val conversation = conversationRepo.getConversationById(conversationId)
-        synchronized(session) {
-            // 库读是挂起调用，两条路径都可能在它那里让出；**复查 + 置位必须在同一个锁里**（与 ensureLoaded 同形）
+        // 库里没有这条会话时要现建一条；构建它所需的设置读是**挂起**调用，所以整段必须在临界区**外**：
+        // `synchronized` 里出现挂起点 Kotlin 直接报编译错误
+        // ("The 'first' suspension point is inside a critical section")——这也正是不能把它放回锁里的原因。
+        val resolvedConversation = conversation ?: run {
+            // 新建对话, 并添加预设消息
+            val currentSettings = settingsStore.settingsFlowRaw.first()
+            val assistant = currentSettings.getCurrentAssistant()
+            val baseConversation = Conversation.ofId(
+                id = conversationId,
+                assistantId = assistant.id,
+                newConversation = true
+            )
+            (if (folderId != null) baseConversation.copy(folderId = folderId) else baseConversation)
+                .updateCurrentMessages(assistant.presetMessages)
+        }
+        val effectiveAssistantId = synchronized(session) {
+            // 库读是挂起调用，两条路径都可能在它那里让出；**复查 + 置位 + 应用必须在同一个锁里**（与 ensureLoaded 同形）。
+            // 这个锁里只允许有**不挂起**的调用：`updateConversation` 与读 `state.value` 都是。
             if (!session.loaded) {
-                if (conversation != null) {
-                    updateConversation(conversationId, conversation)
-                } else {
-                    // 新建对话, 并添加预设消息
-                    val currentSettings = settingsStore.settingsFlowRaw.first()
-                    val assistant = currentSettings.getCurrentAssistant()
-                    val baseConversation = Conversation.ofId(
-                        id = conversationId,
-                        assistantId = assistant.id,
-                        newConversation = true
-                    )
-                    val newConversation = (if (folderId != null) baseConversation.copy(folderId = folderId) else baseConversation)
-                        .updateCurrentMessages(assistant.presetMessages)
-                    updateConversation(conversationId, newConversation)
-                }
+                updateConversation(conversationId, resolvedConversation)
                 session.loaded = true
             }
-            // 只有「用户打开了会话」才切全局助手；用**生效态**的 assistantId（可能是别人的载入结果）
-            settingsStore.updateAssistant(session.state.value.assistantId)
+            // 只有「用户打开了会话」才切全局助手；用**生效态**的 assistantId（可能是别人的载入结果）——
+            // 在锁内取值（不挂起），真正的切换是挂起调用，放到锁外。
+            session.state.value.assistantId
         }
+        // `updateAssistant` 是挂起调用（DataStore 写），同样必须在锁外；
+        // 值在锁内取好，语义与「在锁内调用」一致。
+        settingsStore.updateAssistant(effectiveAssistantId)
         // 这条路径是「软件退出 / 子代理中断」失败回执的**主要**来源——新进程里 registry 是空的，
         // 用户打开那个会话时工具结果仍停在 started，正是这里把它补成终态。
         // 静默：只补标记不触发生成（决策 2），AI 下次在这个会话里发言时由派生通知看到。
