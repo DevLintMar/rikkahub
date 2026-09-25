@@ -449,6 +449,15 @@ class ChatService(
         }
         if (current !== conversation) {
             Log.i(TAG, "reconcileInterruptedSubAgentTasks: $conversationId (${interrupted.size} task(s))")
+            // 与 `deliverTaskResult` 同一个理由，这里也**先同步写内存**再落库：`saveConversation` 内部
+            // 的 `updateConversation` 在它自己的 `existsConversationById` **挂起之后**才执行。那段挂起里
+            // 若起了新一轮生成（生成结束回调排空队列、或另一条投递的 `saveConversation` 尾部），
+            // 该生成会快照到「未含本次对账标记」的状态；等我们恢复再把内存设成含标记的那份，
+            // 它在飞的 assistant 消息就会按 index 落进标记节点 —— 与 Critical 一模一样的机制链，
+            // 只是这次的后果是「中断通知永久派发不出去」而不是「结果正文丢失」。
+            // 守卫（本函数开头那个 `isActive` 检查）到这里的改写之间没有任何挂起点，
+            // 所以先写内存即可把它关掉。
+            updateConversation(conversationId, current)
             saveConversation(conversationId, current)
         }
     }
@@ -520,6 +529,14 @@ class ChatService(
         // 第二条投递落库后其 `saveConversation` 尾部排空队列，或用户队列消息被排空
         // （`removeQueuedMessage` / `finishEditQueuedMessage` 都会调 `advanceConversation`）。
         // 只等一次会把「闸门」与「改写」之间留下一段挂起，机制链就重新成立。
+        //
+        // **承重不变量：`awaitIdle` 返回到 `updateConversation` 之间不得有任何挂起点。**
+        // 因为 `isActive == false` 并不只意味着「没有生成」——`setJob` 会先把 LAZY 的 job 装进
+        // `_generationJob` 再 `start()`，那一瞬间 `isActive` 也是 false，而它的请求快照是稍后
+        // 在 `handleMessageComplete` 里才构建的。这段改写之所以安全，靠的正是「同一个不挂起
+        // 片段」：本协程在 Main 上，只要不挂起，任何新装的 job 的协程体都排在我们之后，
+        // 快照必然包含我们刚写的标记。**别在这两行之间插入任何 suspend 调用（包括日志之外的
+        // I/O、`yield`、`delay`）**——那会让整条机制链重新成立，且没有任何测试会报警。
         awaitIdle(session)
 
         val updated = session.state.value.applyTaskDelivery(
