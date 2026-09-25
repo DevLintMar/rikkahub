@@ -2321,8 +2321,16 @@ val LocalSubAgentTaskActions = staticCompositionLocalOf<SubAgentTaskActions?> { 
                 }
                 taskId?.takeIf { it.isNotBlank() }?.let { ToolPill(it) }
             }
-            // 失败时只显示分类短文案；原始 error 正文在标记 metadata 里，只给 AI（决策 5）
-            if (status == "failed") {
+            // 失败时只显示分类短文案；原始 error 正文在标记 metadata 里，只给 AI（决策 5）。
+            //
+            // **必须带 `error.isNullOrBlank()` 这个守卫**：同步路径也会写 `status:"failed"`，而且它
+            // 同时把**真实错误文本**放在 `error` 里（`SubAgentTool.kt:186-195`）。没有这个守卫，
+            // 同步失败会渲染三行——分类行（对 reason==null 一律猜「模型或网络错误」）+ 原有的真实
+            // error 行——而且那句猜测可能与真相矛盾（真实 error 可能是「No model available for
+            // sub-agent」或「Provider not found for model: X」）。
+            // 有守卫后：异步路径的投递改写**剔除**了 `result`/`error`（Task 3），故 `error` 为空
+            // ⇒ 分类行显示；同步路径 `error` 非空 ⇒ 分类行让位给真实 error。
+            if (status == "failed" && error.isNullOrBlank()) {
                 val reasonLabel = when (reason) {
                     "user_cancelled" -> stringResource(R.string.tool_ui_sub_agent_reason_user_cancelled)
                     "app_exit" -> stringResource(R.string.tool_ui_sub_agent_reason_app_exit)
@@ -2439,6 +2447,10 @@ CI 绿之后装 debug 包，按 spec §10.3 的 8 条清单验。**其中第 1 �
 > ① **对账的守卫不紧贴其写入**（`ChatService.kt:417` 守卫 → `:421` 读 → `:427` 在局部变量上改写 → `:443` `saveConversation` 内的 `existsConversationById` **挂起** → `:1507` 才写内存）：那段挂起里起的生成会快照到「未含对账标记」的状态，随后对账把内存设成含标记的那份 ⇒ 在飞 assistant 仍落进标记节点 ⇒ **中断通知永久派发不出去**。**修（Fix 轮 4）**：与 `deliverTaskResult` 同一修法——落库前先 `updateConversation` 同步写内存（守卫到改写之间无挂起点，故此举即关闭）。② **`generateSuggestion` 从 `Dispatchers.IO` 做无锁读-改-写**（`ChatService.kt:1270-1274`，由 `:1111` 在生成结束那一刻启动）：其读-改-写可吞掉投递刚写的标记 ⇒ `stillPending = false` ⇒ 不触发回复，且之后某次 `saveConversation` 会把无标记的内存态落库（正文丢失）。**判「记录而不修」**（理由见下方 Ruling）。
 
 `Ruling: Important ② 记录进最终审查清单、本轮不修 — 理由：它是**既有**的无锁写类别（generateSuggestion 与其它写者一直都这么竞争），不属于本计划引入；修它要改的是聊天建议这个**不相干功能**的语义（把它的两处状态更新串行化到 Main 或只更新自有字段），已超出计划声明的影响面；而实际窗口很窄——`generateSuggestion` 那处读-改-写是相邻两条语句、中间不挂起，且它由生成结束那一刻启动、在我们的闸门释放之前就已执行，只有「投递的写入恰好落在它的 read 与 write 之间」才丢（数条指令级的窗口）。带全部分析与触发条件交最终审查（opus）判断是否在合并前修 — 代价：若恰好命中，症状是「一轮回复没触发 + 结果正文从库里消失」，且不会有测试报警`
+
+**Task 9 审查发现的计划缺陷 · 既成回归（控制器裁定，已记账）**：Task 9 的失败分类行（计划与 brief 都明文要求）**没有 `error` 守卫**，而**同步路径今天就会写 `status:"failed"` 并把真实错误文本放在 `error` 里**（`SubAgentTool.kt:186-195`：`put("status", if (result.success) "completed" else "failed")` + `put("error", …)`，**没有 `reason`**）⇒ `reason == null` 走 `else`，于是同步失败渲染成**三行**：一句猜的「模型或网络错误」+ 原有的真实 error，且那句猜测可能与真相矛盾（真实 error 可能是「No model available for sub-agent」「Provider not found for model: X」）。**实现者把这个记成「将来才会发生」的小瑕**，而它现在就在发生、影响的是本计划明说要保住的那条路径（同步卡片的 `result`/`error` 仍要能读）。修法：条件加 `&& error.isNullOrBlank()`——异步投递改写**剔除**了 `error`（Task 3）故分类行照常显示，同步路径 `error` 非空故分类行让位给真实 error。
+
+> 教训：这条是**「计划自己写错的回归」**——不是实现者抄错，而是我在计划里指定的 UI 逻辑没考虑到另一条既有路径的载荷形状。写 UI 分支时，不能只看新路径的 JSON，必须把**同一字段在其它既有路径上的取值**一起对一遍（这里 `status` 就在同步路径上也是合法值）。
 
 **Task 9 派发前核出的两处计划缺陷**（控制器裁定，已记账）：① Step 5 又是 `git add -A`（与 Task 7/8 同类），换成显式 4 路径；② 「已知缺口」里那条转义说明**仍写着上轮已被判定为错的结论**（断言双引号要写 `&quot;`、别照抄 `\"`），而 Task 8 正是照 `\"` 写完并 CI 通过——**同一处错误在另一个位置留了副本**。已写实并附 5/0 实测计数。教训：更正一处错误结论时，要在**整个计划**里搜同一说法（而非只改被派发的那一段），否则副本会继续误导。
 
