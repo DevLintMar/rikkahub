@@ -195,7 +195,7 @@ UIMessage(
 | 载体 | 发给模型 | UI 渲染 | 持久化 |
 |---|---|---|---|
 | 工具结果（`Tool.output` 的 Text） | ✔ 就是 tool 消息正文 | ✔ 卡片 / 导出为图片 / 原始 JSON 开关 / prewarm 全读它 | ✔ |
-| `Text.text` | ✔（在历史里） | ✔ | ✔ |
+| `Text.text` | ⚠️ 在历史里，但**不是所有 provider 都收得到**：`ClaudeProvider.buildMessages` 滤掉全部 SYSTEM 消息（`ClaudeProvider.kt:555`），Responses API 丢弃除首条外的 SYSTEM ⇒ SYSTEM 角色的文本到不了模型 | ✔ | ✔ |
 | `Text.metadata` | ✖ 只发 `text` | ✖ 渲染器只读 `text` | ✔ |
 
 - 结果正文写入前过 `clipToolOutput`（`ToolOutputLimits.kt:17`，100KB 硬截断）。子代理的最终结果是模型写的总结，天然有界，所以**不引入 `/tool_outputs` 指针机制**（避免依赖助手是否有 shell 访问）。
@@ -210,7 +210,7 @@ UIMessage(
 
 今日的实现是「请求构建时把 `pendingNotifications` 注入进去」（`ChatService.kt:884-898`）且从不清理（缺陷④）。
 
-新做法：**通知不落库**。请求构建时按标记派生一条临时的 SYSTEM 消息（只存在于这一次请求里，沿用现有 `.collect` 过滤 `ChatService.kt:945` 保证它不会写回会话状态）：
+新做法：**通知不落库**。请求构建时按标记派生一条临时的 **USER** 消息（`UIMessage.user(...).copy(isSynthetic = true)`；**不能是 SYSTEM**——`ClaudeProvider` 与 Responses API 会把 SYSTEM 整类丢弃，那样通知就送不到模型，见第 199 行表格的更正），只存在于这一次请求里，靠 `.collect` 里那条「含 `TASK_NOTIFICATION_TAG` 即剔除」的过滤保证它不会写回会话状态（过滤只看标签、不看角色）：
 
 > 对 `currentMessages` 扫描带 `subAgentTask` metadata 的标记：若该标记**其后已经存在一条带非空文本的 assistant 消息**，视为已汇报，不再派生；否则为该 taskId 派生一条：
 >
@@ -346,6 +346,7 @@ UIMessage(
 | 依赖 `UIMessagePart.Text.metadata` 持久化 | 单测钉住往返（10.1）；这是选它替代「隐藏节点」的前提，**且结果正文只存在于这里**（决策 5）——若哪天 metadata 被改成 `@Transient`，结果会永久丢失，本设计必须重估 |
 | metadata 里可放最多 100KB 结果 → `nodes` blob 变大 | 这是「用户看不到结果」的代价；100KB 硬截断兜底（§6.3） |
 | **标记消息的 metadata 会被注入变换器抹掉——若它被回写进会话**（已核，当前不可达） | `PromptInjectionTransformer.applyInjections` 在配置了 BEFORE/AFTER_SYSTEM_PROMPT 时会把**第一条 SYSTEM 消息**的 parts 整体替换掉（`PromptInjectionTransformer.kt:128-160`），而标记正是 SYSTEM 消息。**当前不可达**：变换链的输出放在 `GenerationLoop.generateInternal` 的独立变量 `internalMessages`（`:393`）里，只作为命名参数喂给 provider（`:473`/`:510`）；回写状态用的是未变换的那份（`:481` 的 `attemptMessages`、`:515` 的 `messages`）。→ **别把 `generateInternal` 的 `var messages: List<UIMessage> = messages` 改成使用 `internalMessages`**：那会让这段注入改写回写进会话，metadata 一丢，幂等守卫与「标记之后是否已有 assistant 文本」的判据就同时静默失效（缺陷③④以无冲突、无测试失败的方式复活） |
+| **SYSTEM 消息在部分 provider 上被整类丢弃**（已核，本计划据此修正了通知的角色） | `ClaudeProvider.buildMessages` 用 `it.role != MessageRole.SYSTEM` 过滤（`ClaudeProvider.kt:555`），`ResponseAPI` 丢弃除首条外的 SYSTEM ⇒ 任何「靠 SYSTEM 消息把内容送给模型」的设计在 Claude / Responses 上都不成立。派生通知因此改用 USER + `isSynthetic`（本仓既有做法 `TimeReminderTransformer.kt:77`）。**若将来有人把通知改回 SYSTEM 以求「用户不可见」，这条会在 Claude 上静默失效**——而它恰好是结果正文唯一的去向 |
 | 通知注入块与生成回写的边界 | 派生的 `<task-notification>` 只存在于请求里；`handleMessageComplete` 的 `.collect` 按 `TASK_NOTIFICATION_TAG` 把它们剔除，不写回会话状态（§7）。这条边界一旦被删，注入块会被当成新消息写进历史 |
 | 标记节点混进对话历史（AI 会看到 `Agent "x" finished`） | 有意为之——它就是可见回执；内容短、无语义歧义 |
 | 卡片停在前台服务通知上时间长 | 复用生成通知的代价；卡死由用户取消（不做 watchdog） |

@@ -525,6 +525,9 @@ class SubAgentDeliveryTest {
         assertEquals(messages.size + 1, injected.size)
         assertEquals(messages, injected.dropLast(1))
         assertTrue(injected.last().parts.first().let { (it as UIMessagePart.Text).text }.contains(TASK_NOTIFICATION_TAG))
+        // 必须是 USER：SYSTEM 会被 ClaudeProvider / Responses API 整类丢弃，那样通知就送不到模型
+        assertEquals(MessageRole.USER, injected.last().role)
+        assertTrue(injected.last().isSynthetic)
     }
 
     @Test
@@ -648,7 +651,14 @@ internal fun injectTaskNotifications(
     val markers = messages.pendingTaskMarkers()
     if (markers.isEmpty()) return messages
     val injected = markers.map { marker ->
-        UIMessage.system(prompt = taskNotificationXml(marker, pendingTaskCount))
+        // **必须是 USER，不能是 SYSTEM**：本仓 `ClaudeProvider.buildMessages` 会滤掉**全部** SYSTEM
+        // 消息（`ClaudeProvider.kt:555` 的 `it.role != MessageRole.SYSTEM`），Responses API 同样丢弃
+        // 除首条外的 SYSTEM。用 SYSTEM 会让这条通知在那些 provider 上**根本送不到模型**——而通知正是
+        // 结果正文唯一的去向（工具结果里已不正文），于是「AI 拿到子代理结果」这个核心承诺在 Claude 上
+        // 直接不成立，症状恰好是「切屏之后回复里没有子代理的结果」。
+        // `.copy(isSynthetic = true)` 让合成消息不过 messageTemplate（与 `TimeReminderTransformer.kt:77`
+        // 的既有做法一致：那处也是「机器注入、只给模型看」的内容）。
+        UIMessage.user(taskNotificationXml(marker, pendingTaskCount)).copy(isSynthetic = true)
     }
     return messages + injected
 }
@@ -781,15 +791,19 @@ Expected: `conclusion = "success"`，`headSha` 对得上，`:app:testDebugUnitTe
     }
 
     @Test
-    fun `找不到对应工具结果时返回 null`() {
+    fun `找不到对应工具结果时仍然追加标记（后台工作流步骤等无锚点路径）`() {
         val conversation = conversationOf(userText("起个子代理"), toolCallMessage(subAgentToolPart("sub_1")))
 
-        assertNull(
-            conversation.applyTaskDelivery(
-                TaskDelivery("sub_other", "completed", null, null, "x", null),
-                markerText = { _ -> "m" },
-            ),
+        val updated = conversation.applyTaskDelivery(
+            TaskDelivery("sub_other", "completed", null, "web 搜索", "三条新闻", null),
+            markerText = { description -> "Agent \"$description\" finished" },
         )
+
+        // 不再返回 null：无锚点时也要留住回执，否则整条投递（结果正文 + 触发）被丢弃
+        val marker = requireNotNull(updated).messageNodes.last().messages.single().subAgentTaskMarkerOrNull()
+        assertEquals("sub_other", marker?.taskId)
+        assertEquals("三条新闻", marker?.result)
+        assertEquals(3, updated.messageNodes.size)     // 用户 + 工具调用 + 标记
     }
 
     @Test
@@ -898,7 +912,6 @@ internal fun Conversation.applyTaskDelivery(
         return null
     }
 
-    var matched = false
     val clipped = clipTaskResult(delivery.result)
     val clippedError = clipTaskResult(delivery.error)
     var description = delivery.description
@@ -907,7 +920,6 @@ internal fun Conversation.applyTaskDelivery(
         val newMessages = node.messages.map { message ->
             val newParts = message.parts.map { part ->
                 if (part !is UIMessagePart.Tool || !part.matchesTask(delivery.taskId)) return@map part
-                matched = true
                 val original = runCatching {
                     JsonInstant.parseToJsonElement(part.outputText()).jsonObject.toMutableMap()
                 }.getOrNull()
@@ -938,7 +950,13 @@ internal fun Conversation.applyTaskDelivery(
         if (newMessages == node.messages) node else node.copy(messages = newMessages)
     }
 
-    if (!matched) return null
+    // **找不到锚点不再返回 null**：`run_workflow` 的后台步骤走同一个 `runtime.executeAsync`
+    // （`WorkflowEngine.kt:108`），但它的工具结果是 `run_workflow` 的文本、不含 `sub_agent` 的任务锚点。
+    // 改造前的旧路径（`handleSubAgentRecall`）**不看工具结果**，直接从事件建通知并触发一轮，所以这类
+    // 任务原本**有**回执与回复——按「找不到就不投递」处理是回归（症状：后台工作流步骤的结果正文静默消失、
+    // 也不触发回复）。改写不到工具结果只是少了卡片上的状态 pill，而回执（标记）与触发必须照做。
+    // 顺带覆盖另一种情形：历史编辑（重新生成越过该点、切换分支、压缩、删消息）移除了锚点。
+    // 本函数剩余的唯一 null 返回是上面那条幂等守卫（该 taskId 的标记已存在）。
 
     val effectiveDescription = description ?: delivery.taskId
     val marker = UIMessage(
@@ -2165,6 +2183,20 @@ Expected: `conclusion = "success"`。
                 },
 ```
 
+**（Fix 轮 2 附带，控制器裁定）**：`handleMessageComplete` 的 `.collect` 里那句写回过滤目前是
+
+```kotlin
+msg.role != MessageRole.SYSTEM || msg.parts.none { it is UIMessagePart.Text && it.text.contains(TASK_NOTIFICATION_TAG) }
+```
+
+它靠「role == SYSTEM **且** 含标签」来剔除注入的通知。既然通知已改成 **USER + isSynthetic**（见 Task 2 的修正），这个 `role` 条件必须去掉，否则注入块会被当成真实用户消息**写回会话**。改成只看标签：
+
+```kotlin
+msg.parts.none { it is UIMessagePart.Text && it.text.contains(TASK_NOTIFICATION_TAG) }
+```
+
+只看标签其实更稳：它不再假设注入消息的角色，角色再变也不会漏过滤。
+
 - [ ] **Step 6: 删除旧机制**
 
 删除以下全部内容（`git grep -n "pendingNotifications\|pendingRecall\|handleSubAgentRecall\|fireRecall\|setSessionJob\|checkPendingRecall\|SubAgentNotification\|PendingRecall" -- app/src/main` 应清零）：
@@ -2447,6 +2479,14 @@ CI 绿之后装 debug 包，按 spec §10.3 的 8 条清单验。**其中第 1 �
 > ① **对账的守卫不紧贴其写入**（`ChatService.kt:417` 守卫 → `:421` 读 → `:427` 在局部变量上改写 → `:443` `saveConversation` 内的 `existsConversationById` **挂起** → `:1507` 才写内存）：那段挂起里起的生成会快照到「未含对账标记」的状态，随后对账把内存设成含标记的那份 ⇒ 在飞 assistant 仍落进标记节点 ⇒ **中断通知永久派发不出去**。**修（Fix 轮 4）**：与 `deliverTaskResult` 同一修法——落库前先 `updateConversation` 同步写内存（守卫到改写之间无挂起点，故此举即关闭）。② **`generateSuggestion` 从 `Dispatchers.IO` 做无锁读-改-写**（`ChatService.kt:1270-1274`，由 `:1111` 在生成结束那一刻启动）：其读-改-写可吞掉投递刚写的标记 ⇒ `stillPending = false` ⇒ 不触发回复，且之后某次 `saveConversation` 会把无标记的内存态落库（正文丢失）。**判「记录而不修」**（理由见下方 Ruling）。
 
 `Ruling: Important ② 记录进最终审查清单、本轮不修 — 理由：它是**既有**的无锁写类别（generateSuggestion 与其它写者一直都这么竞争），不属于本计划引入；修它要改的是聊天建议这个**不相干功能**的语义（把它的两处状态更新串行化到 Main 或只更新自有字段），已超出计划声明的影响面；而实际窗口很窄——`generateSuggestion` 那处读-改-写是相邻两条语句、中间不挂起，且它由生成结束那一刻启动、在我们的闸门释放之前就已执行，只有「投递的写入恰好落在它的 read 与 write 之间」才丢（数条指令级的窗口）。带全部分析与触发条件交最终审查（opus）判断是否在合并前修 — 代价：若恰好命中，症状是「一轮回复没触发 + 结果正文从库里消失」，且不会有测试报警`
+
+**最终整支审查发现的两处设计级缺陷（控制器裁定，已记账，Fix 轮 2）**：
+
+① **通知用 SYSTEM 导致它送不到模型（在 Claude / Responses 上）**：本仓 `ClaudeProvider.buildMessages` 把**全部** SYSTEM 消息滤掉（`ClaudeProvider.kt:555` 的 `it.role != MessageRole.SYSTEM`），`ResponseAPI` 同样丢弃除首条外的 SYSTEM。而派生通知正是 SYSTEM，标记文本也是 SYSTEM ⇒ **在 Claude 上 AI 既看不到标记、也看不到通知**，而通知是结果正文唯一的去向（工具结果里已不正文）⇒ 「AI 拿到子代理结果」这个核心承诺在 Claude 上**根本不成立**，症状恰好是用户最初抱怨的「切屏之后回复里没有子代理的结果」。spec 原第 199 行表格断言 `Text.text`「发给模型 ✔」、§7 要求派生「SYSTEM 消息」——都是错的（对 Claude/Responses 而言）。**这不是本计划引入的**（旧机制 `pendingNotifications` 也是 SYSTEM，同样被丢），但本计划把它当成了核心机制，所以必须修。修法：通知改用 `UIMessage.user(...).copy(isSynthetic = true)`（本仓既有做法见 `TimeReminderTransformer.kt:77`），并把写回过滤从「role==SYSTEM 且含标签」改成「只看标签」；spec 的表格与 §7 措辞一并更正。
+
+② **`applyTaskDelivery` 在找不到工具锚点时返回 null ⇒ 整条投递被丢弃（回归）**：`run_workflow` 的后台步骤走同一个 `runtime.executeAsync`（`WorkflowEngine.kt:108`），但它的工具结果是 `run_workflow` 的文本、不含 `sub_agent` 锚点 ⇒ `matched` 为假 ⇒ `if (!matched) return null` ⇒ 无标记、无通知、**不触发回复**、结果正文丢失（只留一行 `Log.w`）。而改造前的旧路径不看工具结果、直接从事件建通知并触发一轮 ⇒ 这类任务**原本有**回执与回复 ⇒ 回归。同一修法也覆盖「历史编辑移除了锚点」（重新生成越过该点、切换分支、压缩、删消息）。修法：只有「该 taskId 的标记已存在」才返回 null，其余一律追加标记。
+
+> 教训：这两条都是**只有整支读才能发现**的——① 需要把「通知是 SYSTEM」这个设计与 **provider 层的实现**对起来看（单任务审查只看本仓新代码，而 provider 在 `ai` 模块里、无人指派）；② 需要知道 `executeAsync` 还有第二个调用方（`run_workflow`）。**每任务审查的结构性盲区就在这里**：任务边界之外的真实调用方、以及被复用模块的既有约束。
 
 **Task 9 审查发现的计划缺陷 · 既成回归（控制器裁定，已记账）**：Task 9 的失败分类行（计划与 brief 都明文要求）**没有 `error` 守卫**，而**同步路径今天就会写 `status:"failed"` 并把真实错误文本放在 `error` 里**（`SubAgentTool.kt:186-195`：`put("status", if (result.success) "completed" else "failed")` + `put("error", …)`，**没有 `reason`**）⇒ `reason == null` 走 `else`，于是同步失败渲染成**三行**：一句猜的「模型或网络错误」+ 原有的真实 error，且那句猜测可能与真相矛盾（真实 error 可能是「No model available for sub-agent」「Provider not found for model: X」）。**实现者把这个记成「将来才会发生」的小瑕**，而它现在就在发生、影响的是本计划明说要保住的那条路径（同步卡片的 `result`/`error` 仍要能读）。修法：条件加 `&& error.isNullOrBlank()`——异步投递改写**剔除**了 `error`（Task 3）故分类行照常显示，同步路径 `error` 非空故分类行让位给真实 error。
 
