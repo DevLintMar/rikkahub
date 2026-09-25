@@ -1351,6 +1351,12 @@
   <string name="tool_ui_sub_agent_completed">Completed</string>
   <string name="tool_ui_sub_agent_failed">Failed</string>
   <string name="tool_ui_sub_agent_started">Started in background</string>
+  <string name="tool_ui_sub_agent_cancelled">Cancelled</string>
+  <string name="tool_ui_sub_agent_interrupted">Interrupted</string>
+  <string name="tool_ui_sub_agent_reason_user_cancelled">Cancelled by user</string>
+  <string name="tool_ui_sub_agent_reason_app_exit">App exited before the task finished</string>
+  <string name="tool_ui_sub_agent_reason_error">Model or network error</string>
+  <string name="tool_ui_sub_agent_cancel_action">Cancel task</string>
   <string name="notification_sub_agent_running">Background task running</string>
   <string name="sub_agent_task_marker_finished">Agent \"%1$s\" finished</string>
   <string name="sub_agent_task_marker_failed">Agent \"%1$s\" failed</string>

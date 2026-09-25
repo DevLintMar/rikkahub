@@ -1317,6 +1317,12 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="tool_ui_sub_agent_completed">已完成</string>
   <string name="tool_ui_sub_agent_failed">失败</string>
   <string name="tool_ui_sub_agent_started">已在后台启动</string>
+  <string name="tool_ui_sub_agent_cancelled">已取消</string>
+  <string name="tool_ui_sub_agent_interrupted">已中断</string>
+  <string name="tool_ui_sub_agent_reason_user_cancelled">用户取消</string>
+  <string name="tool_ui_sub_agent_reason_app_exit">应用退出，任务未完成</string>
+  <string name="tool_ui_sub_agent_reason_error">模型或网络错误</string>
+  <string name="tool_ui_sub_agent_cancel_action">取消任务</string>
   <string name="notification_sub_agent_running">后台任务运行中</string>
   <string name="sub_agent_task_marker_finished">Agent \"%1$s\" 已完成</string>
   <string name="sub_agent_task_marker_failed">Agent \"%1$s\" 失败</string>

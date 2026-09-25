@@ -30,6 +30,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -1806,6 +1807,13 @@ object ReadConversationToolUI : ToolUIRenderer {
     }
 }
 
+/** 子代理卡片的动作通道：由 ChatPage 提供，避免把回调一层层穿过 ChatList/ChatMessage。 */
+interface SubAgentTaskActions {
+    fun cancel(taskId: String)
+}
+
+val LocalSubAgentTaskActions = staticCompositionLocalOf<SubAgentTaskActions?> { null }
+
 /** 子代理: 标题=子代理, 详情=描述+状态+结果/错误 */
 object SubAgentToolUI : ToolUIRenderer {
     override val toolName: String = "sub_agent"
@@ -1849,13 +1857,42 @@ object SubAgentToolUI : ToolUIRenderer {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            val reason = content.getStringContent("reason")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 when (status) {
                     "started" -> ToolPill(stringResource(R.string.tool_ui_sub_agent_started))
                     "completed" -> ToolPill(stringResource(R.string.tool_ui_sub_agent_completed))
-                    "failed" -> ToolPill(stringResource(R.string.tool_ui_sub_agent_failed))
+                    "failed" -> ToolPill(
+                        when (reason) {
+                            "user_cancelled" -> stringResource(R.string.tool_ui_sub_agent_cancelled)
+                            "app_exit" -> stringResource(R.string.tool_ui_sub_agent_interrupted)
+                            else -> stringResource(R.string.tool_ui_sub_agent_failed)
+                        },
+                    )
                 }
                 taskId?.takeIf { it.isNotBlank() }?.let { ToolPill(it) }
+            }
+            // 失败时只显示分类短文案；原始 error 正文在标记 metadata 里，只给 AI（决策 5）
+            if (status == "failed") {
+                val reasonLabel = when (reason) {
+                    "user_cancelled" -> stringResource(R.string.tool_ui_sub_agent_reason_user_cancelled)
+                    "app_exit" -> stringResource(R.string.tool_ui_sub_agent_reason_app_exit)
+                    else -> stringResource(R.string.tool_ui_sub_agent_reason_error)
+                }
+                Text(
+                    text = reasonLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            val taskIdForCancel = taskId
+            if (status == "started") {
+                val actions = LocalSubAgentTaskActions.current
+                if (actions != null && !taskIdForCancel.isNullOrBlank()) {
+                    TextButton(onClick = { actions.cancel(taskIdForCancel) }) {
+                        Text(stringResource(R.string.tool_ui_sub_agent_cancel_action))
+                    }
+                }
             }
             if (!error.isNullOrBlank()) {
                 Text(
