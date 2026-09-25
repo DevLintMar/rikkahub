@@ -836,7 +836,26 @@ class ChatService(
         // 代价：用户中途说话了、而这条结果已被那轮回复顺带讲掉时，仍会多开一轮——按「每条结果
         // 都要有自己的回复」这是可接受的（多一轮而不是少一条）。
         val taskId = session.taskDeliveries.peek() ?: return null
+        // **同一会话同一时刻只允许一轮生成。** `advanceConversation` 已经查过 `getJob()`，这里再查一次
+        // 且查的是「有没有活跃 job」而不是「当前 job 引用」——两者在 job 被替换/清引用时会分叉，
+        // 而分叉的后果是**同一会话里两三轮流式回复叠在一起**（现场：三条回复叠成一条，停止要点三次）。
+        // 有在飞的就**推迟**：队首不动，等那一轮的完成回调再排空（这正是本设计要的串行）。
+        if (session.activeJobCount() > 0) {
+            Logging.log(
+                TAG,
+                "startTaskDelivery: 已有在飞生成（activeJobs=${session.activeJobCount()}，" +
+                    "generating=${session.generationJob.value?.isActive}），本轮推迟 task=$taskId " +
+                    ProcessInfo.describe(),
+            )
+            return null
+        }
         session.taskDeliveries.takeNext()
+        Logging.log(
+            TAG,
+            "startTaskDelivery: task=$taskId 开一轮 activeJobs=${session.activeJobCount()} " +
+                "pending=${session.state.value.currentMessages.pendingTaskMarkers().size} " +
+                "queueLeft=${session.taskDeliveries.size()} ${ProcessInfo.describe()}",
+        )
         val job = launchGenerationJob(
             conversationId = session.id,
             keepAliveInBackground = true,
@@ -1255,22 +1274,29 @@ class ChatService(
                         // 取舍的完整论证见 `UIMessage.isInjectedTaskNotification` 的 KDoc。
                         val filteredMessages = chunk.messages.filterNot { it.isInjectedTaskNotification() }
                         val currentConversation = getConversationFlow(conversationId).value
-                        if (notifyTaskIds != null && !gapLogged) {
+                        if (!gapLogged) {
                             gapLogged = true
-                            // 诊断：触发轮的快照长度与当前节点数对不上，就说明这一轮期间会话被追加过
-                            // 节点（下标错位的根因）。修好后这里应当恒等；一旦不等，把这行给我。
+                            // 诊断：**快照长度与当前节点数对不上，就说明这一轮期间会话被追加过节点**
+                            // ——那正是「回复塞进别人的节点 / 改掉前面那条回复」的根因。
+                            // 修好后这两个数应当恒等；一旦不等，这一行就是定案材料。
                             Logging.log(
                                 TAG,
-                                "writeback(trigger): snapshot=${filteredMessages.size} " +
+                                "writeback: round=${if (notifyTaskIds != null) "trigger" else "user"} " +
+                                    "snapshot=${filteredMessages.size} " +
                                     "nodes=${currentConversation.messageNodes.size} ${ProcessInfo.describe()}",
                             )
                         }
-                        val updatedConversation = if (notifyTaskIds != null) {
-                            // 触发轮：新消息落末尾。否则它可能被塞进「快照之后才追加进来的那份回执」
-                            // 所在的节点里，UI 上就是「合成一条 + 1/2 分支」。
-                            currentConversation.updateCurrentMessagesAppendingNew(filteredMessages)
-                        } else {
+                        // **整段对话的写回一律用「新消息落在末尾」**（`messageRange != null` 的
+                        // 重新生成/分支路径除外，见下）：
+                        // 快照构建之后只要有节点被追加进来——另一个子代理的回执、或并发的另一轮——
+                        // 按下标合并就会把这一轮的回复塞进**别人的节点**：轻则「合成一条 + 1/2 分支」，
+                        // 重则用户下一条消息的回复直接**改掉前面那条回复**（现场都出现过）。
+                        // 对「正常追加」的轮次，末尾追加与按下标合并的结果本就相同，所以这里没有语义变化。
+                        val updatedConversation = if (messageRange != null) {
+                            // 重新生成 / 分支：必须落回**指定的那个节点**（1/2 分支语义靠它）。
                             currentConversation.updateCurrentMessages(filteredMessages)
+                        } else {
+                            currentConversation.updateCurrentMessagesAppendingNew(filteredMessages)
                         }
                         updateConversation(conversationId, updatedConversation)
 

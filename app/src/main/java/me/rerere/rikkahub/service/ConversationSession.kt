@@ -120,6 +120,10 @@ class ConversationSession(
 
     fun getJob(): Job? = _generationJob.value
 
+    /** 此刻挂在会话上的生成 job 数（诊断用：正常应当恒 ≤ 1）。 */
+    @Synchronized
+    fun activeJobCount(): Int = activeJobs.size
+
     @Synchronized
     fun cancelJobs(): List<Job> = activeJobs.toList().also { jobs ->
         // Cancel waiters first so a predecessor finishing cannot start the next approval.
