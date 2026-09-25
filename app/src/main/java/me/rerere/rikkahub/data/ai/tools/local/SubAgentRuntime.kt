@@ -42,6 +42,18 @@ private const val TAG = "SubAgentRuntime"
  */
 private const val MAX_SUB_AGENT_STEPS = 32
 
+/** 同一个 (工具, 参数) 允许重复调用的次数，超过即判「打转」并中止。 */
+private const val MAX_IDENTICAL_TOOL_CALLS = 3
+
+/**
+ * 同一个工具名的**总**调用预算。
+ *
+ * 与上面那条互补：模型也可能每次换一个措辞去搜同一个东西（参数不同，重复判据抓不到）。
+ * 现场反馈是「后台一直在报子代理调工具，从 step 1 到这会一直」——查一份情报没有道理调十几次搜索，
+ * 所以给每个工具一个总预算，超了即中止并如实报失败，别让用户干等十几分钟。
+ */
+private const val MAX_CALLS_PER_TOOL = 10
+
 /**
  * 子代理的墙钟期限（8 分钟）。
  *
@@ -64,6 +76,12 @@ data class AsyncSubAgentHandle(
     val job: Job,
 )
 
+
+/** 诊断用：日志里只留开头一小段（工具参数里的查询串、工具输出的开头）。 */
+private fun previewForLog(text: String, limit: Int = 120): String {
+    val flat = text.replace(Regex("\\s+"), " ").trim()
+    return if (flat.length <= limit) flat else flat.take(limit) + "…"
+}
 
 /**
  * 把本轮工具结果写回**承载那次调用的 Tool part**。
@@ -186,6 +204,12 @@ class SubAgentRuntime(
 
         var currentMessages: List<UIMessage> = messages
         var textResponse = ""
+        // 同一 (工具, 参数) 的调用计数：模型「打转」的典型形态是反复发起同一个调用，
+        // 而每一轮都在烧一次 provider 往返——现场表现为「后台一直在报子代理调工具」，
+        // 从 step 1 一路涨到几十轮、最后由轮数上限或期限兜底（用户白等十几分钟）。
+        // 这里直接掐掉：同一个调用重复超过 MAX_IDENTICAL_TOOL_CALLS 次即中止，如实报失败。
+        val callCounts = mutableMapOf<String, Int>()
+        val toolCounts = mutableMapOf<String, Int>()
         for (step in 1..MAX_SUB_AGENT_STEPS) {
             val resultFlow = provider.streamText(
                 providerSetting = providerSetting,
@@ -212,9 +236,35 @@ class SubAgentRuntime(
             // 同一个工具（打转、空烧 token 与 CPU）。
             val outputs = mutableMapOf<String, List<UIMessagePart>>()
             toolParts.forEach { toolPart ->
+                val key = "${toolPart.toolName}|${toolPart.input}"
+                val callCount = (callCounts[key] ?: 0) + 1
+                callCounts[key] = callCount
+                if (callCount > MAX_IDENTICAL_TOOL_CALLS) {
+                    Logging.log(TAG, "step $step: 同一调用第 $callCount 次，中止")
+                    return SubAgentResult(
+                        success = false,
+                        text = "",
+                        error = "子代理反复调用同一个工具（${toolPart.toolName} 同一参数已第 $callCount 次），已中止",
+                    )
+                }
+                val toolCount = (toolCounts[toolPart.toolName] ?: 0) + 1
+                toolCounts[toolPart.toolName] = toolCount
+                if (toolCount > MAX_CALLS_PER_TOOL) {
+                    Logging.log(TAG, "step $step: ${toolPart.toolName} 已调 $toolCount 次，中止")
+                    return SubAgentResult(
+                        success = false,
+                        text = "",
+                        error = "子代理反复调用 ${toolPart.toolName}（已 $toolCount 次），已中止",
+                    )
+                }
                 val output = executeSubAgentTool(toolPart, tools)
                 outputs[toolPart.toolCallId] = output
-                Logging.log(TAG, "step $step: ${toolPart.toolName} -> ${output.size} part(s)")
+                // 参数与输出都留一小段：判断「为什么打转」（同一查询重试？工具在报错？）只看这一行。
+                Logging.log(
+                    TAG,
+                    "step $step: ${toolPart.toolName}(${previewForLog(toolPart.input)}) x$callCount -> " +
+                        "${output.size} part(s): ${previewForLog(output.filterIsInstance<UIMessagePart.Text>().joinToString("") { it.text })}",
+                )
             }
             currentMessages = currentMessages.withToolOutputs(toolCallMessageId = lastMsg.id, outputs = outputs)
         }
