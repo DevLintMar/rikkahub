@@ -343,32 +343,67 @@ class ChatService(
     // ---- 初始化对话 ----
 
     suspend fun initializeConversation(conversationId: Uuid, folderId: Uuid? = null) {
-        getOrCreateSession(conversationId) // 确保 session 存在
-        val conversation = conversationRepo.getConversationById(conversationId)
-        if (conversation != null) {
-            updateConversation(conversationId, conversation)
-            settingsStore.updateAssistant(conversation.assistantId)
-        } else {
-            // 新建对话, 并添加预设消息
-            val currentSettings = settingsStore.settingsFlowRaw.first()
-            val assistant = currentSettings.getCurrentAssistant()
-            val baseConversation = Conversation.ofId(
-                id = conversationId,
-                assistantId = assistant.id,
-                newConversation = true
-            )
-            val newConversation = (if (folderId != null) baseConversation.copy(folderId = folderId) else baseConversation)
-                .updateCurrentMessages(assistant.presetMessages)
-            updateConversation(conversationId, newConversation)
+        val session = getOrCreateSession(conversationId) // 确保 session 存在
+        // **已载入的会话绝不重载**——§6.1 的规则对这条路径同样成立。内存态可能领先于库（生成期间只在
+        // 结束时落盘），重载会把正在生成的内容冲掉；而且一次库读整对象替换内存还会抹掉**投递刚写的标记**
+        // ⇒ `startTaskDelivery` 判 `stillPending = false` ⇒ 不触发那一轮回复，随后某次 save 再把无标记态
+        // 落库（结果正文永久丢失）。用户打开一个正在后台生成的会话就会撞上。
+        if (session.loaded) {
+            settingsStore.updateAssistant(session.state.value.assistantId)
+            return
         }
-        // 必须置位：§6.1 明写「initializeConversation 完成后置 true」。漏了这行的后果不是「慢一点」，
-        // 而是 `ensureLoaded` 之后每次都会以为会话没载入过，于是**每条投递都重新读库 + updateConversation
-        // 整段替换内存态**——用户正在生成时会把还没落盘的流式内容冲掉（正是 §6.1 警告的那件事）。
-        getOrCreateSession(conversationId).loaded = true
-        // 补这一行：这条路径是「软件退出 / 子代理中断」失败回执的**主要**来源——新进程里 registry
-        // 是空的，用户打开那个会话时工具结果仍停在 started，正是这里把它补成终态。
+        val conversation = conversationRepo.getConversationById(conversationId)
+        synchronized(session) {
+            // 库读是挂起调用，两条路径都可能在它那里让出；**复查 + 置位必须在同一个锁里**（与 ensureLoaded 同形）
+            if (!session.loaded) {
+                if (conversation != null) {
+                    updateConversation(conversationId, conversation)
+                } else {
+                    // 新建对话, 并添加预设消息
+                    val currentSettings = settingsStore.settingsFlowRaw.first()
+                    val assistant = currentSettings.getCurrentAssistant()
+                    val baseConversation = Conversation.ofId(
+                        id = conversationId,
+                        assistantId = assistant.id,
+                        newConversation = true
+                    )
+                    val newConversation = (if (folderId != null) baseConversation.copy(folderId = folderId) else baseConversation)
+                        .updateCurrentMessages(assistant.presetMessages)
+                    updateConversation(conversationId, newConversation)
+                }
+                session.loaded = true
+            }
+            // 只有「用户打开了会话」才切全局助手；用**生效态**的 assistantId（可能是别人的载入结果）
+            settingsStore.updateAssistant(session.state.value.assistantId)
+        }
+        // 这条路径是「软件退出 / 子代理中断」失败回执的**主要**来源——新进程里 registry 是空的，
+        // 用户打开那个会话时工具结果仍停在 started，正是这里把它补成终态。
         // 静默：只补标记不触发生成（决策 2），AI 下次在这个会话里发言时由派生通知看到。
         reconcileInterruptedSubAgentTasks(conversationId)
+    }
+
+    /**
+     * 背景生成（标题 / 建议）写回状态的**唯一**安全方式：在 Main 上、以「已载入会话的实时内存态」为基
+     * 合并一次再落库。
+     *
+     * 不能沿用「从库读整对象 → 改字段 → 整对象写回」：库读可能早于投递的内存写，整对象写回会把投递
+     * 刚写的标记连内存带库一起抹掉（`startTaskDelivery` 随后判 `stillPending = false`，不触发回复，
+     * 结果正文永久丢失）。会话**未载入**时退回库读——**绝不能**用 `state.value` 兜底：那可能是
+     * `Conversation.ofId` 建的空壳，写它等于把会话清空。
+     */
+    private suspend fun mergeConversationState(
+        conversationId: Uuid,
+        update: (Conversation) -> Conversation,
+    ) {
+        withContext(Dispatchers.Main) {
+            val session = getOrCreateSession(conversationId)
+            val base = if (session.loaded) {
+                session.state.value
+            } else {
+                conversationRepo.getConversationById(conversationId) ?: return@withContext
+            }
+            saveConversation(conversationId, update(base))
+        }
     }
 
     /**
@@ -1253,13 +1288,9 @@ class ChatService(
                 params = backgroundTextGenerationParams(model, settings.fastModelReasoningLevel),
             )
 
-            // 生成完，conversation可能不是最新了，因此需要重新获取
-            conversationRepo.getConversationById(conversation.id)?.let {
-                saveConversation(
-                    conversationId,
-                    it.copy(title = result.message.toText().trim())
-                )
-            }
+            // 生成完，conversation 可能不是最新了：交给合入口，以已载入会话的实时内存态为基（避免整对象写回
+            // 把投递刚写的标记抹掉）。
+            mergeConversationState(conversationId) { it.copy(title = result.message.toText().trim()) }
         }.onFailure {
             it.printStackTrace()
             addError(
@@ -1284,12 +1315,8 @@ class ChatService(
                 ?: return@runCatching
             val provider = model.findProvider(settings.providers) ?: return@runCatching
 
-            sessions[conversationId]?.let { session ->
-                updateConversation(
-                    conversationId,
-                    session.state.value.copy(chatSuggestions = emptyList())
-                )
-            }
+            // 清空旧建议：走合入口（未载入时退回库读，绝不拿空壳 state 兜底）。
+            mergeConversationState(conversationId) { it.copy(chatSuggestions = emptyList()) }
 
             val providerHandler = providerManager.getProviderByType(provider)
             val result = providerHandler.generateText(
@@ -1308,17 +1335,8 @@ class ChatService(
                 result.message.toText().split("\n").map { it.trim() }
                     .filter { it.isNotBlank() }
 
-            val latestConversation = conversationRepo.getConversationById(conversationId)
-                ?: sessions[conversationId]?.state?.value
-                ?: conversation
-            saveConversation(
-                conversationId,
-                latestConversation.copy(
-                    chatSuggestions = suggestions.take(
-                        10
-                    )
-                )
-            )
+            // 写入新建议：以实时内存态为基（库读可能早于投递的内存写）。
+            mergeConversationState(conversationId) { it.copy(chatSuggestions = suggestions.take(10)) }
         }.onFailure {
             it.printStackTrace()
         }
