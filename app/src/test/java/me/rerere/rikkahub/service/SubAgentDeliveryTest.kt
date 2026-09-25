@@ -513,4 +513,48 @@ class SubAgentDeliveryTest {
             messages.interruptedSubAgentTaskCandidates(known).map { it.taskId },
         )
     }
+    @Test
+    fun `触发轮只注入自己那条通知——三条结果要三条回复`() {
+        val messages = listOf(
+            userText("起三个子代理"),
+            marker(taskId = "sub_a", description = "原神"),
+            marker(taskId = "sub_b", description = "星铁"),
+            marker(taskId = "sub_c", description = "绝区零"),
+        )
+
+        val injected = injectTaskNotifications(messages, pendingTaskCount = 3, onlyTaskIds = setOf("sub_b"))
+
+        val added = injected.drop(messages.size)
+        // 承重断言：本轮只为 sub_b 开，就**只**带 sub_b 的通知。旧实现会一次带上三条
+        // ⇒ 模型一轮把三条都答了，于是另外两条再也不会各自得到回复（现场：三条结果一条回复）。
+        assertEquals(1, added.size)
+        assertTrue(added.single().toText().contains("sub_b"))
+        assertFalse(added.single().toText().contains("sub_a"))
+        assertFalse(added.single().toText().contains("sub_c"))
+    }
+
+    @Test
+    fun `用户自己发起的轮次仍注入全部还没汇报的结果`() {
+        val messages = listOf(
+            userText("怎么还没好"),
+            marker(taskId = "sub_a", description = "原神"),
+            marker(taskId = "sub_b", description = "星铁"),
+        )
+
+        val injected = injectTaskNotifications(messages, pendingTaskCount = 2)
+
+        assertEquals(2, injected.size - messages.size)
+    }
+
+    @Test
+    fun `subAgentTaskMarkers 返回全部标记，pendingTaskMarkers 只返回还没被回复的`() {
+        val messages = listOf(
+            marker(taskId = "sub_a", description = "原神"),
+            assistantText("原神那边回来了……"),
+            marker(taskId = "sub_b", description = "星铁"),
+        )
+
+        assertEquals(listOf("sub_a", "sub_b"), messages.subAgentTaskMarkers().map { it.taskId })
+        assertEquals(listOf("sub_b"), messages.pendingTaskMarkers().map { it.taskId })
+    }
 }

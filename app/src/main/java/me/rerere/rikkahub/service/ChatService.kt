@@ -605,12 +605,6 @@ class ChatService(
             return
         }
         val status = if (event.status == TaskStatus.COMPLETED) "completed" else "failed"
-        Logging.log(
-            TAG,
-            "deliver proceed: task=${event.taskId} status=$status loaded=${session.loaded} " +
-                "generating=${session.generationJob.value?.isActive} queue=${session.taskDeliveries.size()} " +
-                ProcessInfo.describe(),
-        )
 
         // 再等一次，而且是**紧贴改写**的一次：上面 `ensureLoaded` 里有挂起点（会话未载入时要读库；
         // 中断对账若命中还要落库），而这段时间里别的路径可能已经起了新一轮生成——例如同一会话的
@@ -626,6 +620,16 @@ class ChatService(
         // 快照必然包含我们刚写的标记。**别在这两行之间插入任何 suspend 调用（包括日志之外的
         // I/O、`yield`、`delay`）**——那会让整条机制链重新成立，且没有任何测试会报警。
         awaitIdle(session)
+
+        // 紧贴改写的这行诊断：`generating` 必须为 false —— 它若为 true，说明闸门漏了，而
+        // 生成期间改节点树会让在飞的回复按下标落进标记节点（见上方那段长注释）。
+        // `Logging.log` 不挂起，放在这里不破坏「awaitIdle 到 updateConversation 之间不挂起」这条不变量。
+        Logging.log(
+            TAG,
+            "deliver proceed: task=${event.taskId} status=$status loaded=${session.loaded} " +
+                "generating=${session.generationJob.value?.isActive} queue=${session.taskDeliveries.size()} " +
+                ProcessInfo.describe(),
+        )
 
         val updated = session.state.value.applyTaskDelivery(
             delivery = TaskDelivery(
@@ -798,18 +802,21 @@ class ChatService(
      * `setJob(job)`，默认会取消前一个，存在把用户刚发起的生成掐掉的窗口）。
      */
     private fun startTaskDelivery(session: ConversationSession): Job? {
+        // **一条结果一条回复**：从队列取队首、只为它开一轮，且这一轮只把**它**的通知交给模型。
+        //
+        // 这里原先还有一道「标记之后是否已有 assistant 文本」的跳过判据，三道结果几乎同时回来时
+        // 它会退化：第一条结果的回复落在**所有**标记之后，于是后两条被判成「已被回复」直接跳过
+        // ⇒ 三条结果只得到一条回复（现场日志：`开一轮 … pending=3 queueLeft=2`，此后不再开轮）。
+        // 队列本身就是「谁还没被回复」的账本（取队首即销账），不需要再用启发式猜。
+        // 代价：用户中途说话了、而这条结果已被那轮回复顺带讲掉时，仍会多开一轮——按「每条结果
+        // 都要有自己的回复」这是可接受的（多一轮而不是少一条）。
         val taskId = session.taskDeliveries.peek() ?: return null
-        val stillPending = session.state.value.currentMessages.pendingTaskMarkers().any { it.taskId == taskId }
         session.taskDeliveries.takeNext()
-        if (!stillPending) {
-            // 这条结果已经被后续回复消化掉了（例如用户中途说了话），不必再开一轮。
-            return startTaskDelivery(session)
-        }
         val job = launchGenerationJob(
             conversationId = session.id,
             keepAliveInBackground = true,
         ) {
-            handleMessageComplete(session.id)
+            handleMessageComplete(session.id, notifyTaskIds = setOf(taskId))
         }
         session.setJob(job, cancelPrevious = false)
         Logging.log(
@@ -1051,7 +1058,9 @@ class ChatService(
 
     private suspend fun handleMessageComplete(
         conversationId: Uuid,
-        messageRange: ClosedRange<Int>? = null
+        messageRange: ClosedRange<Int>? = null,
+        /** 非空 = 本轮只为这些 taskId 开（见 `startTaskDelivery`）：只注入它们的通知。 */
+        notifyTaskIds: Set<String>? = null,
     ) {
         val settings = settingsStore.settingsFlow.first()
         val initialConversation = getConversationFlow(conversationId).value
@@ -1135,8 +1144,13 @@ class ChatService(
                     } else {
                         raw
                     }
-                    // 按标记派生待汇报的子代理任务通知（不落库，只存在于这一次请求）
-                    injectTaskNotifications(base, localTools.subAgentTaskRegistry.liveCount())
+                    // 按标记派生待汇报的子代理任务通知（不落库，只存在于这一次请求）。
+                    // `notifyTaskIds` 非空时只注入这一条结果的通知（触发轮），否则注入全部未汇报的（用户轮）。
+                    injectTaskNotifications(
+                        messages = base,
+                        pendingTaskCount = localTools.subAgentTaskRegistry.liveCount(),
+                        onlyTaskIds = notifyTaskIds,
+                    )
                 },
                 assistant = assistant,
                 conversationId = conversationId,

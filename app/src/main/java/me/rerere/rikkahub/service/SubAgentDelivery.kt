@@ -75,6 +75,17 @@ internal fun UIMessage.subAgentTaskMarkerOrNull(): SubAgentTaskMarker? {
  * 所以任何排在它之后的 assistant 回复，其请求必然在标记已存在之后构建——也就必然已经派生过通知。
  * 于是这条规则不会漏发，同时天然做到「只通知一次」（缺陷④的结构性根因消失）。
  */
+/** 会话里的**全部**投递标记，按出现顺序（不做「是否已被回复」的筛除）。 */
+internal fun List<UIMessage>.subAgentTaskMarkers(): List<SubAgentTaskMarker> =
+    mapNotNull { it.subAgentTaskMarkerOrNull() }
+
+/**
+ * 「还没汇报给 AI」的标记：标记之后没有带非空文本的 assistant 消息。
+ *
+ * 只用于**用户自己发起的轮次**（那时把攒下来的结果一起告诉模型是对的）。触发轮不走这条判据——
+ * 它按会话的待触发队列逐条开轮、每条只带自己，否则会退化成「三条结果一条回复」：
+ * 第一条结果的回复会落在所有标记之后，于是后两条标记全都变成「已被回复」而被跳过。
+ */
 internal fun List<UIMessage>.pendingTaskMarkers(): List<SubAgentTaskMarker> {
     val found = mutableListOf<SubAgentTaskMarker>()
     var hasAssistantTextAfter = false
@@ -120,8 +131,17 @@ internal fun taskNotificationXml(marker: SubAgentTaskMarker, pendingTaskCount: I
 internal fun injectTaskNotifications(
     messages: List<UIMessage>,
     pendingTaskCount: Int,
+    onlyTaskIds: Set<String>? = null,
 ): List<UIMessage> {
-    val markers = messages.pendingTaskMarkers()
+    // `onlyTaskIds` 非空 = 这一轮是**为某一条结果专门开的轮次**：只把这条结果的通知给模型。
+    // 这是「一条结果一条回复」的关键——触发轮由 `startTaskDelivery` 按队列逐条开，每条只带自己，
+    // 于是三条结果就是三条回复，而不是把它们并进同一轮里让模型一起答。
+    // 为空 = 用户自己发起的轮次：把还没汇报过的结果一起给模型（保持既有行为）。
+    val markers = if (onlyTaskIds == null) {
+        messages.pendingTaskMarkers()
+    } else {
+        messages.subAgentTaskMarkers().filter { it.taskId in onlyTaskIds }
+    }
     if (markers.isEmpty()) return messages
     val injected = markers.map { marker ->
         // **必须是 USER，不能是 SYSTEM**：本仓 `ClaudeProvider.buildMessages` 会滤掉**全部** SYSTEM
