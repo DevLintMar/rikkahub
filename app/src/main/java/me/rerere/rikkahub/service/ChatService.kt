@@ -1075,6 +1075,8 @@ class ChatService(
             model.displayName
         }
         val useExternalWebSearch = shouldUseExternalWebSearch(assistant, model)
+        // 只为触发轮记一次「快照长度 vs 节点数」的落差（见下方写回处的诊断）。
+        var gapLogged = false
 
         runCatching {
 
@@ -1139,11 +1141,16 @@ class ChatService(
                 model = model,
                 processingStatus = session.processingStatus,
                 messages = conversation.currentMessages.let { raw ->
-                    val base = if (messageRange != null) {
+                    val base = (if (messageRange != null) {
                         raw.subList(messageRange.start, messageRange.endInclusive + 1)
                     } else {
                         raw
-                    }
+                    })
+                        // **标记是给用户看的回执，不能进 prompt。** 它的正文在 metadata 里，唯一
+                        // 到模型手上的通道是下面注入的通知。此前标记随历史一起发给模型，于是模型
+                        // 看到「Agent X 已完成」却看不到内容——现场就是主代理说「另一个也跑完了，
+                        // 不过结果还没送到我手上」，既多余又误导。
+                        .filterNot { it.subAgentTaskMarkerOrNull() != null }
                     // 按标记派生待汇报的子代理任务通知（不落库，只存在于这一次请求）。
                     // `notifyTaskIds` 非空时只注入这一条结果的通知（触发轮），否则注入全部未汇报的（用户轮）。
                     injectTaskNotifications(
@@ -1204,8 +1211,24 @@ class ChatService(
                         // 不可恢复（回复静默不写回 + 下标合并错位），漏过滤只是多一条可疑气泡。
                         // 取舍的完整论证见 `UIMessage.isInjectedTaskNotification` 的 KDoc。
                         val filteredMessages = chunk.messages.filterNot { it.isInjectedTaskNotification() }
-                        val updatedConversation = getConversationFlow(conversationId).value
-                            .updateCurrentMessages(filteredMessages)
+                        val currentConversation = getConversationFlow(conversationId).value
+                        if (notifyTaskIds != null && !gapLogged) {
+                            gapLogged = true
+                            // 诊断：触发轮的快照长度与当前节点数对不上，就说明这一轮期间会话被追加过
+                            // 节点（下标错位的根因）。修好后这里应当恒等；一旦不等，把这行给我。
+                            Logging.log(
+                                TAG,
+                                "writeback(trigger): snapshot=${filteredMessages.size} " +
+                                    "nodes=${currentConversation.messageNodes.size} ${ProcessInfo.describe()}",
+                            )
+                        }
+                        val updatedConversation = if (notifyTaskIds != null) {
+                            // 触发轮：新消息落末尾。否则它可能被塞进「快照之后才追加进来的那份回执」
+                            // 所在的节点里，UI 上就是「合成一条 + 1/2 分支」。
+                            currentConversation.updateCurrentMessagesAppendingNew(filteredMessages)
+                        } else {
+                            currentConversation.updateCurrentMessages(filteredMessages)
+                        }
                         updateConversation(conversationId, updatedConversation)
 
                         // 通知等边缘副作用由 ChatNotificationManager 消费；

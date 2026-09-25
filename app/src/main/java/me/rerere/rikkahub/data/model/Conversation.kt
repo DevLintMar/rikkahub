@@ -116,6 +116,35 @@ data class Conversation(
         )
     }
 
+    /**
+     * 写回一轮生成的结果，**新消息一律成为末尾的新节点**。
+     *
+     * 与 [updateCurrentMessages] 只差「新消息怎么安置」：后者把它放进 `messageNodes[index]`，
+     * 而 `index` 是**这一轮请求构建时那份快照**里的下标。快照之后若会话又追加了节点——典型就是
+     * 另一个子代理的完成回执——下标就会错位，于是这一轮的回复被塞进**那份回执所在的节点**里，
+     * UI 上表现为「两个消息合成一条、右上角出现 1/2 分支切换」（现场截图就是这样）。
+     *
+     * 触发轮用这个变体：它要的语义是「我的回复出现在末尾」，不是「占据快照里的第几个下标」。
+     * 已存在的消息（流式更新）仍按 **id 就地替换**，所以逐 chunk 写回不会产生新节点。
+     */
+    fun updateCurrentMessagesAppendingNew(messages: List<UIMessage>): Conversation {
+        val newNodes = messageNodes.toMutableList()
+        messages.forEach { message ->
+            val nodeIndex = newNodes.indexOfFirst { node -> node.messages.any { it.id == message.id } }
+            if (nodeIndex >= 0) {
+                val node = newNodes[nodeIndex]
+                val indexInNode = node.messages.indexOfFirst { it.id == message.id }
+                val newMessages = node.messages.toMutableList().also { it[indexInNode] = message }
+                // 不移动 `selectIndex`：与 [updateCurrentMessages] 的「就地替换」分支保持一致，
+                // 免得改动分支选择的既有语义。
+                newNodes[nodeIndex] = node.copy(messages = newMessages)
+            } else {
+                newNodes.add(message.toMessageNode())
+            }
+        }
+        return copy(messageNodes = newNodes)
+    }
+
     companion object {
         fun ofId(
             id: Uuid,
