@@ -263,10 +263,11 @@ class SubAgentRuntime(
         // `while (true)` 只有 `break`（消息列表为空）能走到这里。
         Logging.log(TAG, "子代理循环意外退出（消息列表为空）")
         return SubAgentResult(success = false, text = "", error = "子代理循环意外退出")
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        return SubAgentResult(success = false, text = "", error = e.message ?: "Unknown error")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return SubAgentResult(success = false, text = "", error = e.message ?: "Unknown error")
+        }
     }
 
     /** 执行一个工具调用并返回它的输出。异常与「工具不存在」都变成**工具结果**（不再是一条 user 消息）。 */
