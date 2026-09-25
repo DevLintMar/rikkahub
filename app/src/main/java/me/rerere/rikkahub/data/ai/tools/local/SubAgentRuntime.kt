@@ -78,7 +78,7 @@ data class AsyncSubAgentHandle(
 
 
 /** 诊断用：日志里只留开头一小段（工具参数里的查询串、工具输出的开头）。 */
-private fun previewForLog(text: String, limit: Int = 120): String {
+internal fun previewForLog(text: String, limit: Int = 120): String {
     val flat = text.replace(Regex("\\s+"), " ").trim()
     return if (flat.length <= limit) flat else flat.take(limit) + "…"
 }
