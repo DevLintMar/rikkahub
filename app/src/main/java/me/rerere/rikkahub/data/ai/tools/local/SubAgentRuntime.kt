@@ -6,6 +6,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import me.rerere.ai.core.ReasoningLevel
@@ -39,7 +40,18 @@ private const val TAG = "SubAgentRuntime"
  * 曾经是空的（见 `withToolOutputs`），模型会以为工具没返回东西、于是反复重调同一个工具——打转。
  * 现场表现是三个后台子代理一起跑时 CPU 打到 97%。给一个有界的轮数，用尽就如实报失败。
  */
-private const val MAX_SUB_AGENT_STEPS = 64
+private const val MAX_SUB_AGENT_STEPS = 32
+
+/**
+ * 子代理的墙钟期限（8 分钟）。
+ *
+ * 为什么除了轮数上限还需要它：一轮 = 一次 provider 往返，而单次往返的耗时不受我们控制——
+ * 网络卡住、上游排队、息屏后被系统限流，都会让「32 轮」这个上限在时间维度上失效。
+ * 现场反馈是「发出去十来分钟都没回来」，而用户侧看到的是卡片一直停在「运行中」、
+ * 既没有结果也没有失败回执——这违反验收标准里那条「意外中断也要有失败信息正常返回」。
+ * 到点即取消并如实报失败，至少让用户立刻拿到回执、知道该重试。
+ */
+private const val SUB_AGENT_DEADLINE_MS = 8L * 60 * 1000
 
 data class SubAgentResult(
     val success: Boolean,
@@ -271,11 +283,19 @@ class SubAgentRuntime(
             // 子代理的网络流必须自己持有前台服务：父生成一结束就会释放它，而任务可能还要跑很久。
             val token = keepAlive.hold(conversationId, backgroundTask = true)
             try {
-                val result = executeSync(
-                    prompt = prompt,
-                    modelOverride = modelOverride,
-                    tools = tools,
-                    systemPrompt = systemPrompt,
+                // 期限到点即取消（`withTimeoutOrNull` 吞掉自己的 CancellationException 并返回 null），
+                // 于是任务照常走到终态、留下失败回执并触发那一轮——而不是永远停在「运行中」。
+                val result = withTimeoutOrNull(SUB_AGENT_DEADLINE_MS) {
+                    executeSync(
+                        prompt = prompt,
+                        modelOverride = modelOverride,
+                        tools = tools,
+                        systemPrompt = systemPrompt,
+                    )
+                } ?: SubAgentResult(
+                    success = false,
+                    text = "",
+                    error = "子代理超过 ${SUB_AGENT_DEADLINE_MS / 60_000} 分钟仍未完成（已取消）",
                 )
                 finish(
                     taskId = taskId,
