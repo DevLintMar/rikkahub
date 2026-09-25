@@ -157,6 +157,8 @@ git log --oneline -3 && git rev-parse HEAD origin/master && git status --short
 
 **修法**：把极性从代码里删掉——参数由布尔谓词 `isTracked: (String) -> Boolean` 改为 `knownTaskIds: Set<String>`，判据 `taskId in knownTaskIds`，调用点传 `registry.all().map { it.taskId }.toSet()`（判定与诊断日志用**同一份**集合）。补双向回归测试。
 
+- **子代理自身循环的既有缺陷（2026-09-25，多代理并行时暴露，已修）**：`SubAgentRuntime.executeSync` 把工具结果追加成 **user 消息**，`UIMessagePart.Tool.output` 始终为空；provider 只把 `output` 序列化成 `role:"tool"` 消息 ⇒ 模型以为工具没返回东西，于是把开场白当结论交回来（白卷）或反复重调工具（打转 ⇒ 三代理并行时 CPU 97%）。修法：就地写回 `Tool part`（与 `GenerationLoop` 同形）、空回复判失败、`MAX_SUB_AGENT_STEPS = 64`。**与本轮异步改造无关，但它说明这条链路此前只被「能否送达」检验过，没被「送回来的对不对」检验过。**
+
 **同时留下的一套取证设施**（`04c49baf..` 之后的 4 个提交，均为纯诊断，判定语义不变）：
 - 每条日志带 `pid=… procStart=<毫秒>(HH:mm:ss)`；
 - 子代理卡片自带 `launched_at` / `process_started_at`（随卡片落库，重启后仍可核「这张卡片是哪个进程写的」）；
