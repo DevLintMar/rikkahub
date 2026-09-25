@@ -1804,34 +1804,92 @@ Expected: `conclusion = "success"`。
 
 ```kotlin
     suspend fun initializeConversation(conversationId: Uuid, folderId: Uuid? = null) {
-        getOrCreateSession(conversationId) // 确保 session 存在
-        val conversation = conversationRepo.getConversationById(conversationId)
-        if (conversation != null) {
-            updateConversation(conversationId, conversation)
-            settingsStore.updateAssistant(conversation.assistantId)
-        } else {
-            // 新建对话, 并添加预设消息
-            val currentSettings = settingsStore.settingsFlowRaw.first()
-            val assistant = currentSettings.getCurrentAssistant()
-            val baseConversation = Conversation.ofId(
-                id = conversationId,
-                assistantId = assistant.id,
-                newConversation = true
-            )
-            val newConversation = (if (folderId != null) baseConversation.copy(folderId = folderId) else baseConversation)
-                .updateCurrentMessages(assistant.presetMessages)
-            updateConversation(conversationId, newConversation)
+        val session = getOrCreateSession(conversationId) // 确保 session 存在
+        // **已载入的会话绝不重载**——§6.1 的规则对这条路径同样成立。内存态可能领先于库（生成期间只在
+        // 结束时落盘），重载会把正在生成的内容冲掉；而且一次库读整对象替换内存还会抹掉**投递刚写的标记**
+        // ⇒ `startTaskDelivery` 判 `stillPending = false` ⇒ 不触发那一轮回复，随后某次 save 再把无标记态
+        // 落库（结果正文永久丢失）。用户打开一个正在后台生成的会话就会撞上。
+        if (session.loaded) {
+            settingsStore.updateAssistant(session.state.value.assistantId)
+            return
         }
-        // 必须置位：§6.1 明写「initializeConversation 完成后置 true」。漏了这行的后果不是「慢一点」，
-        // 而是 `ensureLoaded` 之后每次都会以为会话没载入过，于是**每条投递都重新读库 + updateConversation
-        // 整段替换内存态**——用户正在生成时会把还没落盘的流式内容冲掉（正是 §6.1 警告的那件事）。
-        getOrCreateSession(conversationId).loaded = true
-        // 补这一行：这条路径是「软件退出 / 子代理中断」失败回执的**主要**来源——新进程里 registry
-        // 是空的，用户打开那个会话时工具结果仍停在 started，正是这里把它补成终态。
+        val conversation = conversationRepo.getConversationById(conversationId)
+        synchronized(session) {
+            // 库读是挂起调用，两条路径都可能在它那里让出；**复查 + 置位必须在同一个锁里**（与 ensureLoaded 同形）
+            if (!session.loaded) {
+                if (conversation != null) {
+                    updateConversation(conversationId, conversation)
+                } else {
+                    // 新建对话, 并添加预设消息
+                    val currentSettings = settingsStore.settingsFlowRaw.first()
+                    val assistant = currentSettings.getCurrentAssistant()
+                    val baseConversation = Conversation.ofId(
+                        id = conversationId,
+                        assistantId = assistant.id,
+                        newConversation = true
+                    )
+                    val newConversation = (if (folderId != null) baseConversation.copy(folderId = folderId) else baseConversation)
+                        .updateCurrentMessages(assistant.presetMessages)
+                    updateConversation(conversationId, newConversation)
+                }
+                session.loaded = true
+            }
+            // 只有「用户打开了会话」才切全局助手；用**生效态**的 assistantId（可能是别人的载入结果）
+            settingsStore.updateAssistant(session.state.value.assistantId)
+        }
+        // 这条路径是「软件退出 / 子代理中断」失败回执的**主要**来源——新进程里 registry 是空的，
+        // 用户打开那个会话时工具结果仍停在 started，正是这里把它补成终态。
         // 静默：只补标记不触发生成（决策 2），AI 下次在这个会话里发言时由派生通知看到。
         reconcileInterruptedSubAgentTasks(conversationId)
     }
 ```
+
+**③ 新增 `mergeConversationState`，并改掉两处**既有**的背景写回**（Task 8 修复轮补入）：
+
+`generateTitle` 与 `generateSuggestion`（后者两处）都是「从库读一份整对象 → 改一个字段 → 整对象写回」，而且**优先读库**。`getConversationById` 是挂起调用，它读到的可能是**投递写入标记之前**的库态（投递先写内存、后落库），于是整对象写回会把标记从内存和库里一起抹掉 ⇒ `startTaskDelivery` 判 `stillPending = false` ⇒ 不触发回复、结果正文丢失。它们由生成结束那一刻启动，与投递的闸门释放**对齐**，所以窗口是真的。
+
+加一个统一的合入口：
+
+```kotlin
+    /**
+     * 背景生成（标题 / 建议）写回状态的**唯一**安全方式：在 Main 上、以「已载入会话的实时内存态」为基
+     * 合并一次再落库。
+     *
+     * 不能沿用「从库读整对象 → 改字段 → 整对象写回」：库读可能早于投递的内存写，整对象写回会把投递
+     * 刚写的标记连内存带库一起抹掉（`startTaskDelivery` 随后判 `stillPending = false`，不触发回复，
+     * 结果正文永久丢失）。会话**未载入**时退回库读——**绝不能**用 `state.value` 兜底：那可能是
+     * `Conversation.ofId` 建的空壳，写它等于把会话清空。
+     */
+    private suspend fun mergeConversationState(
+        conversationId: Uuid,
+        update: (Conversation) -> Conversation,
+    ) {
+        withContext(Dispatchers.Main) {
+            val session = getOrCreateSession(conversationId)
+            val base = if (session.loaded) {
+                session.state.value
+            } else {
+                conversationRepo.getConversationById(conversationId) ?: return@withContext
+            }
+            saveConversation(conversationId, update(base))
+        }
+    }
+```
+
+三处调用点改成：
+
+```kotlin
+        // generateTitle 尾部（原来那段「生成完，conversation可能不是最新了」的库读 + saveConversation 整段替换）
+        mergeConversationState(conversationId) { it.copy(title = result.message.toText().trim()) }
+
+        // generateSuggestion 开头（清空旧建议）
+        mergeConversationState(conversationId) { it.copy(chatSuggestions = emptyList()) }
+
+        // generateSuggestion 尾部（写入新建议；原来优先用库读，现在以实时内存态为基）
+        mergeConversationState(conversationId) { it.copy(chatSuggestions = suggestions.take(10)) }
+```
+
+（`Dispatchers` 与 `withContext` 本文件已 import。）
 
 **② 新增 `ensureLoaded`**：
 
@@ -2474,6 +2532,12 @@ CI 绿之后装 debug 包，按 spec §10.3 的 8 条清单验。**其中第 1 �
 **Task 7 实现者指出的机制性错误**（控制器裁定，已记账）：我在 Task 7 Step 3 写的「位置顺序必须与构造参数顺序一致，否则编译报错」把机制说错了 —— Koin 的 `get()` 是 `inline fun <reified T : Any> get(): T`，`T` 由该位置**形参的声明类型**推断，因此每个 `get()` 的类型只取决于它的实参位置，与书写顺序无关（对调两个 `get()` 产生相同代码）；真正会编译报错的是实参个数与形参个数不符。结论（在 `keepAlive` 形参处插一个新 `get()`）不受影响。已把计划里那句改对，并记下「实现者纠正了控制器的裁定」这件事本身。
 
 **Task 8 任务审查发现的缺陷 · Critical（控制器裁定，已记账）**：投递的 ① **无条件**改动会话节点树（追加标记节点 + 改写工具结果），而它可能发生在**某个生成还在飞**的时候——只要该生成处于「请求已构建、首个 `GenerationChunk.Messages` 未到」的窗口（一次 provider 往返，很宽）。此时：`updateCurrentMessages` 按下标合并（`messages[index]` → `messageNodes[index]`，节点里没有该消息就追加并把 `selectIndex` 移过去），而生成用的是冻结快照，于是该生成的 assistant 消息会落进**标记节点** ⇒ 标记对 `currentMessages` 隐形 ⇒ `pendingTaskMarkers()` 找不到它 ⇒ `startTaskDelivery` 判 `stillPending = false` ⇒ **不触发那一轮、结果正文再也派发不出去**（正文只在标记 metadata 里）；同时工具结果的终态改写会被那一轮的旧版本按 id 覆盖回去。**设计前提本身是错的**：spec §7 断言「生成中的 assistant 位置在标记之前」，那**只在首个 chunk 落地之后**成立。旧机制没踩到，是因为 `handleSubAgentRecall` 只在空闲时才追加可见节点（`if (session?.getJob()?.isActive != true)`）——Task 8 去掉了这个前提。修法：`deliverTaskResult` 开头加「等会话空闲」闸门（`while` + 复查当前值，因为 `first {}` 按发射时的值判定，而生成结束回调排空队列时可能在我们恢复前又起一轮），闸门放在 `ensureLoaded` **之前**（对账也改节点树）；`reconcileInterruptedSubAgentTasks` 自身也加「有生成在飞则跳过」的守卫（`initializeConversation` 路径会走到）；① 落库前先同步写一次内存以消除并发投递的读-改-写竞争。**验收标准第一条**在这个窗口里会静默失效。
+
+**用户裁决：最终整支审查的 Important ③ 现在修（Fix 轮 4）**（控制器裁定，已记账）：`initializeConversation` / `generateTitle` / `generateSuggestion` 三处**无锁整对象写**可能吞掉投递刚写的标记（窗口 1–2 次 DB 往返），用户选择现在修。修法两层：
+1. **`initializeConversation` 加锁 + 「已载入则跳过重载」**——顺带**恢复了 spec §6.1 那条被违反的规则**（「已载入的会话绝不重新载入」）：原先这条路径每次都重载，用户打开一个正在后台生成的会话就会把在飞内容连同投递刚写的标记一起抹掉。这与 `ensureLoaded` 现在是同一条规则、同一个锁形态。
+2. **新增 `mergeConversationState`**，把 `generateTitle` / `generateSuggestion`（两处）从「优先读库的整对象写回」改成「在 Main 上以已载入会话的实时内存态为基合并」——未载入时退回库读，且**绝不能**用 `state.value` 兜底（那是 `Conversation.ofId` 的空壳，写它等于清空会话）。
+
+> 这处修正也解释了为什么原计划的**共享载入方法**设计其实更接近正确：我在早期修正里把 `ensureLoaded` 与 `initializeConversation` 拆开、并论证「两条路径的不变量相反」，但 §6.1 的规则对两者其实**相同**（都不许重载已载入的会话）。拆开本身没错（用户路径确实多了切助手/新建两个副作用），错的是我在拆分时把「不重载」这条规则只留在了背景路径。
 
 **Fix 轮 3 的制品同步（控制器记账）**：Fix 轮 3 的指令要求实现者删掉 `deliverTaskResult` 里那句已经不再成立的「等到之后…不会有别的协程插进来」，而**我忘了同步删掉计划里同样的两行**——实现者照指令改了代码、并明确报告「brief 文件本身仍带着它们，我没有改你的制品」。这是**两份材料不一致**：审查者若拿 brief 对代码会比出两行差异。已把计划那两行删掉并重新生成 brief，使计划与提交后的代码逐字一致。
 
