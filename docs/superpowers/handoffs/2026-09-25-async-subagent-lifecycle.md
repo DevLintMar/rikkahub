@@ -1,7 +1,7 @@
 # 交接：异步子代理生命周期重做（2026-09-25）
 
 **状态**：九个任务全部完成、全部推送、CI 全绿；最终整支审查（opus）判「Safe to merge for the `sub_agent` path」，三条验收标准在代码上成立。
-**范围**：`9d2f1d47..9bd2ccda`（44 个提交），代码改动面 22 文件 +1660/−272。
+**范围**：`9d2f1d47..7e8a8882`（47 个提交），代码改动面 22 文件 +1782/−309。
 **权威文档**：设计 `docs/superpowers/specs/2026-09-19-async-subagent-lifecycle-design.md`；计划 `docs/superpowers/plans/2026-09-19-async-subagent-lifecycle.md`（含全部裁定与自检记录）。
 
 > 本文件是设计 §9 承诺的那份交接（最终审查指出它当时**没写**，此为一并补齐）。
@@ -34,28 +34,31 @@ e12a122b GenerationKeepAlive + FGS 文案（+cba6cb58 哨兵断言）
 d0316c51 卡片终态 + 取消入口（+eb6c185d error 守卫）
 5b7ed7d8 通知改 USER（Claude 上 SYSTEM 送不到模型）+ 无锚点也留回执
 9bd2ccda 写回过滤收窄为 USER+isSynthetic+含标签
+837e2b63/fa90d606/7e8a8882 会话重载与背景写回不再抹掉标记（最终审查的 Important ③，含一轮编译错误修正 + 一行 memory-first 收尾）
 ```
 
 计划/spec 的修正提交（纯文档）：`9d2f1d47` 起共 12 个 docs 提交，全部记在计划的「自检记录」里。
 
 ---
 
-## 2. 必须知道的四条承重约束（改了就会静默失效）
+## 2. 必须知道的五条承重约束（改了就会静默失效）
 
 1. **投递只许在「无在飞生成」时改动会话节点树。** `Conversation.updateCurrentMessages` 按**下标**合并，而 `GenerationLoop` 用请求时的**冻结快照**；生成期间追加节点会让该生成的 assistant 消息按 index 落进标记节点，标记对 `currentMessages` 隐形 ⇒ 不触发回复、正文派发不出去。守护：`ChatService.deliverTaskResult` 里两处 `awaitIdle(session)`（进函数时 + **紧贴 `applyTaskDelivery` 之前**）+ `reconcileInterruptedSubAgentTasks` 的跳过守卫。**没有任何测试覆盖这条不变量**——只有注释。
 2. **`awaitIdle` 返回到 `updateConversation` 之间不得有任何挂起点。** `isActive == false` 也可能是「LAZY job 已装未 start」，靠的正是「同一不挂起片段」这个性质。
 3. **通知必须是 USER（+ `isSynthetic`）而不是 SYSTEM。** `ClaudeProvider.buildMessages` 滤掉**全部** SYSTEM 消息（`ClaudeProvider.kt:558`），Responses API 丢去除首条外的 ⇒ 用 SYSTEM 会让通知在那些 provider 上根本送不到模型，而通知是结果正文唯一的去向。写回过滤的判据是 **USER + isSynthetic + 含标签三者同时满足**（只看标签会**误剔**真实消息 ⇒ 回复静默丢失 + 下标错位）。
-4. **`TASK_NOTIFICATION_TAG` 那道过滤是「通知绝不写回会话」的唯一守卫**，且它同时保持 assistant 的节点下标对齐。
+4. **`TASK_NOTIFICATION_TAG` 那道过滤是「通知绝不写回会话」的唯一守卫**，且它同时保持 assistant 的节点下标对齐。判据是 **USER + `isSynthetic` + 含标签三者同时满足**——只看标签会**误剔**真实消息（含模型复述），后果是回复静默丢失 + 下标错位，不可恢复。
+5. **每个「写整个会话对象」的路径，都必须先 `updateConversation` 同步写内存、再 `saveConversation` 落库。** `saveConversation` 的第一句是挂起的 `existsConversationById`，内存写入在它之后才发生；中间那段挂起里若有投递恢复执行并写入标记，整对象写回就会用「不含标记的」快照覆盖内存与库 ⇒ 不触发回复 + 正文从库里消失。目前三处都照做了：`deliverTaskResult`、`reconcileInterruptedSubAgentTasks`、`mergeConversationState`。**这是本计划第三次踩同一条规则**（前两次写对了，第三次新写函数时漏了）——新写的写者不会自动继承旧写者的教训。
 
 ---
 
 ## 3. 未决与推迟项（交后续裁决）
 
-### 3.1 待你裁决的一条（最终审查的 Important ③）
+### 3.1 已修：三处无锁整对象写（最终审查的 Important ③，用户裁决「现在修」）
 
-`initializeConversation` / `generateTitle` / `generateSuggestion` 三处**无锁整对象写**（`ChatService.kt` 约 `:355-372`/`:1257-1262`/`:1290-1298`）可能吞掉投递刚写的标记 ⇒ `stillPending = false` ⇒ 不触发回复，且**要落库的写者**会把无标记的内存态持久化（正文丢失）。窗口 1–2 次 DB 往返（毫秒级）。
-- **未修**：属既有无锁写类别、修法是让那三处合并进实时 state 而非用陈旧快照整对象替换，但它们是「用户打开会话」「生成标题」「生成建议」三个与子代理不相干的功能，改其状态更新语义超出本计划声明的影响面。
-- **建议**：作为独立小任务做（`updateConversationState` 式合并 + `initializeConversation` 取 `ensureLoaded` 的同一把锁）。
+`initializeConversation` / `generateTitle` / `generateSuggestion` 三处曾可能吞掉投递刚写的标记。**已修**（`837e2b63`→`fa90d606`→`7e8a8882`）：
+- `initializeConversation` **已载入则跳过重载** + 载入部分加锁并在锁内复查 `loaded`——顺带**恢复了 spec §6.1 那条被违反的规则**（「已载入的会话绝不重新载入」）。**行为变化已被复核判定安全**：本仓恢复流程不可能在会话存在时改写活库（暂存恢复在 `startKoin` 之前应用、WebDAV/S3 只 `stageRestore` 后重启、`ChatService.cleanup()` 零调用者）。
+- 新增 `mergeConversationState`：`generateTitle` / `generateSuggestion`（两处）改为在 Main 上以**已载入会话的实时内存态**为基合并（未载入时退回库读；**绝不能**用 `state.value` 兜底——那是 `Conversation.ofId` 的空壳，写它等于清空会话）。
+- 过程留痕：计划里那版**编译不过**（`synchronized` 块内放了两个挂起调用，Kotlin 报 `The 'first' suspension point is inside a critical section`；即便能编译也会因挂起后 MONITOREXIT 泄漏会话监视器），且第一版 `mergeConversationState` **漏了 memory-first**、由复核抓出后补上（见 §2.5）。
 
 ### 3.2 其余推迟项（最终审查已分诊：**没有一条是 must-fix**）
 
@@ -106,3 +109,6 @@ d0316c51 卡片终态 + 取消入口（+eb6c185d error 守卫）
 - 把写回过滤的取舍判断写反了一次（「只看标签更稳」——错，它把可恢复的漏过滤换成了不可恢复的误过滤）。
 - 行号引用（`ClaudeProvider.kt:555`）没在写下时核对，被复制到六处。
 - 一条派发指令要求删注释，却忘了同步删计划里的同一句（两份材料分叉）。
+- **引入「落库前先同步写内存」这条不变量后，只在眼前那两处应用了它，新写的第三个写者漏了**——新代码不会自动继承旧代码的教训，除非把它写成规则并逐处核对。
+- 在 `suspend` 函数里写 `synchronized` 时没有逐个检查块内调用是否挂起——照着自己写对的那处（`ensureLoaded`）套模板，而新函数多了两个天然挂起的副作用，代价是一轮编译失败。
+- 把「只看标签更稳」当取舍写进计划，而没先把两种失效模式的后果摆出来比较（漏过滤可恢复 vs 误过滤不可恢复）。
