@@ -91,6 +91,7 @@ import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.data.repository.lostUploadUrlsAfterDelete
 import me.rerere.rikkahub.web.BadRequestException
 import me.rerere.rikkahub.web.NotFoundException
+import kotlinx.datetime.toJavaLocalDateTime
 import me.rerere.rikkahub.utils.ProcessInfo
 import me.rerere.rikkahub.utils.applyPlaceholders
 import me.rerere.rikkahub.utils.toMessageTimeString
@@ -492,7 +493,7 @@ class ChatService(
                 append(" judged=")
                 append(
                     candidates.joinToString(",") { candidate ->
-                        "${candidate.taskId}(card=${candidate.cardCreatedAt.toMessageTimeString()}" +
+                        "${candidate.taskId}(card=${candidate.cardCreatedAt.toJavaLocalDateTime().toMessageTimeString()}" +
                             ",cardProcStart=${candidate.cardProcessStartedAt})"
                     },
                 )
