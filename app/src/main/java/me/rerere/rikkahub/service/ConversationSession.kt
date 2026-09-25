@@ -33,7 +33,8 @@ class ConversationSession(
      * 会话真实内容是否已从库里载入。
      *
      * `getOrCreateSession` 建的是**空壳**（`Conversation.ofId()`），只有 `initializeConversation`
-     * 或 `ChatService.ensureLoaded` 才会把真实内容填进来。任何要改会话内容的背景路径
+     * 或 `ChatService.ensureLoaded` 才会把真实内容填进来（`mergeConversationState` 在会话未载入时
+     * 也会经 `saveConversation` 间接写入内存态，但它既不置位 `loaded`、也不该被当作载入）。任何要改会话内容的背景路径
      * （子代理投递、中断对账）都必须先看这个标志——否则会拿空壳去 `saveConversation`，
      * 而 `ConversationRepository.updateConversation` 是「删光节点再写」，等于抹掉历史。
      */

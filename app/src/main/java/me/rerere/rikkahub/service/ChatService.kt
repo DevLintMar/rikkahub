@@ -408,7 +408,15 @@ class ChatService(
             } else {
                 conversationRepo.getConversationById(conversationId) ?: return@withContext
             }
-            saveConversation(conversationId, update(base))
+            val updated = update(base)
+            // **先在内存里落一次，再落库**：`saveConversation` 的第一句是挂起的 `existsConversationById`，
+            // 内存写入在它之后才发生。中间那段挂起里若有投递恢复执行（它的最后一个 await 刚结束）
+            // 并写入标记，本函数随后就会用「不含标记的 base + 新字段」整对象覆盖内存与库
+            // ⇒ `startTaskDelivery` 判 `stillPending=false` ⇒ 不触发回复、结果正文从库里消失。
+            // 同一条规则在 `deliverTaskResult` 与 `reconcileInterruptedSubAgentTasks` 里已各写一次——
+            // **每个写会话对象的路径都必须照做**（这是本计划第三次踩它：前两次写对了，这次漏了）。
+            updateConversation(conversationId, updated)
+            saveConversation(conversationId, updated)
         }
     }
 
