@@ -652,7 +652,7 @@ internal fun injectTaskNotifications(
     if (markers.isEmpty()) return messages
     val injected = markers.map { marker ->
         // **必须是 USER，不能是 SYSTEM**：本仓 `ClaudeProvider.buildMessages` 会滤掉**全部** SYSTEM
-        // 消息（`ClaudeProvider.kt:555` 的 `it.role != MessageRole.SYSTEM`），Responses API 同样丢弃
+        // 消息（`ClaudeProvider.kt:558` 的 `it.role != MessageRole.SYSTEM`），Responses API 同样丢弃
         // 除首条外的 SYSTEM。用 SYSTEM 会让这条通知在那些 provider 上**根本送不到模型**——而通知正是
         // 结果正文唯一的去向（工具结果里已不正文），于是「AI 拿到子代理结果」这个核心承诺在 Claude 上
         // 直接不成立，症状恰好是「切屏之后回复里没有子代理的结果」。
@@ -897,7 +897,7 @@ private fun UIMessagePart.Tool.matchesTask(taskId: String): Boolean =
 /**
  * 把一次终态投递写进会话：改写工具结果（只留状态）+ 追加一条可见标记。
  *
- * 返回 `null` 表示无需变更——找不到对应工具结果，或者该任务的标记已经在会话里（幂等）。
+ * 返回 `null` 表示无需变更——唯一的判据是「该任务的标记已经在会话里」（幂等）。
  * 结果正文只进标记 metadata，**绝不进工具结果**（决策 5）。
  *
  * `markerText` 是**函数**而不是成品字符串：可见文案要过 `stringResource`（Android 资源在本文件里用不了），
@@ -2039,7 +2039,8 @@ Expected: `conclusion = "success"`。
         ) ?: run {
             // 无变更 = 这条结果已被消化过（标记已存在，或工具结果已不在）。记一行日志：
             // 现场只有这一行能看出「投递被跳过」。
-            Log.w(TAG, "deliverTaskResult: ${event.taskId} 无需变更，跳过（已投递或工具结果已不存在）")
+            // 注意：无锚点**不再**算「无变更」——那种情形必须照常留回执，见 `applyTaskDelivery` 的注释。
+            Log.w(TAG, "deliverTaskResult: ${event.taskId} 无需变更，跳过（已投递）")
             return
         }
 
@@ -2189,13 +2190,24 @@ Expected: `conclusion = "success"`。
 msg.role != MessageRole.SYSTEM || msg.parts.none { it is UIMessagePart.Text && it.text.contains(TASK_NOTIFICATION_TAG) }
 ```
 
-它靠「role == SYSTEM **且** 含标签」来剔除注入的通知。既然通知已改成 **USER + isSynthetic**（见 Task 2 的修正），这个 `role` 条件必须去掉，否则注入块会被当成真实用户消息**写回会话**。改成只看标签：
+它靠「role == SYSTEM **且** 含标签」来剔除注入的通知。既然通知已改成 **USER + isSynthetic**（见 Task 2 的修正），`role` 这个具体取值要跟着改，否则注入块会被当成真实用户消息**写回会话**。但**不能简单地「只看标签」**——那会把漏过滤的风险换成**误过滤**的风险，而后者更糟：
 
 ```kotlin
-msg.parts.none { it is UIMessagePart.Text && it.text.contains(TASK_NOTIFICATION_TAG) }
+                        val filteredMessages = chunk.messages.filter { msg ->
+                            // 剔除注入的子代理通知（用户不可见，仅提供给 AI 上下文）。
+                            // 判据必须是**三者同时满足**：USER 角色 + isSynthetic + 文本含标签。
+                            // **不能只看标签**：真实消息（用户写的、或模型复述的）里若出现字面量
+                            // `<task-notification>`，只看标签会把它们一起剔掉——若命中的是最后一条
+                            // assistant，这轮回复会**静默不写回**（UI 读的是会话状态）且标记仍是 pending
+                            // ⇒ 下一轮再注入 ⇒ 反复；若命中的在中间，`updateCurrentMessages` 的下标合并
+                            // 会把其后每条消息都塞进前一个节点（正是 `deliverTaskResult` 上方注释警示的机制）。
+                            !(msg.role == MessageRole.USER &&
+                                msg.isSynthetic &&
+                                msg.parts.any { it is UIMessagePart.Text && it.text.contains(TASK_NOTIFICATION_TAG) })
+                        }
 ```
 
-只看标签其实更稳：它不再假设注入消息的角色，角色再变也不会漏过滤。
+> 取舍写清楚：**漏过滤**（注入块被写回会话）的后果是「会话里多一条可疑的 XML 气泡」，可恢复；**误过滤**（真实消息被剔掉）的后果是「模型回复静默丢失 + 下标错位」。所以判据宁可窄、不可宽。
 
 - [ ] **Step 6: 删除旧机制**
 
@@ -2480,9 +2492,18 @@ CI 绿之后装 debug 包，按 spec §10.3 的 8 条清单验。**其中第 1 �
 
 `Ruling: Important ② 记录进最终审查清单、本轮不修 — 理由：它是**既有**的无锁写类别（generateSuggestion 与其它写者一直都这么竞争），不属于本计划引入；修它要改的是聊天建议这个**不相干功能**的语义（把它的两处状态更新串行化到 Main 或只更新自有字段），已超出计划声明的影响面；而实际窗口很窄——`generateSuggestion` 那处读-改-写是相邻两条语句、中间不挂起，且它由生成结束那一刻启动、在我们的闸门释放之前就已执行，只有「投递的写入恰好落在它的 read 与 write 之间」才丢（数条指令级的窗口）。带全部分析与触发条件交最终审查（opus）判断是否在合并前修 — 代价：若恰好命中，症状是「一轮回复没触发 + 结果正文从库里消失」，且不会有测试报警`
 
+**Fix 轮 2 的 scoped re-review 结果**（控制器裁定，已记账）：**A1 CLOSED**（逐个 provider 读代码：USER 在 Claude/Responses/Google/Chat-Completions 四条路径上都存活；`limitContext` 保留尾部故通知必然存活；Append 在末尾故缓存前缀未破，只是 `ClaudeProvider.insertMessagesCacheControl` 的断点选择深了一回合＝缓存更大而非失效；`isSynthetic` 的唯一副作用是 `TemplateTransformer` 跳过它＝本意）、**A3 CLOSED**（无重复/孤儿标记；并确认修复前的静默丢弃是**必然**发生——工作流步骤的工具部件永远不会叫 `sub_agent`）。但报出 **2 条新 Important**，两条都已处理：
+
+① **我上轮把写回过滤改成「只看标签」开了个洞（已修）**：真实消息（用户写的、或模型复述的）里若出现字面量 `<task-notification>`，只看标签会把它们一起剔掉——若命中的是最后一条 assistant，**这轮回复静默不写回**且标记仍是 pending ⇒ 下一轮再注入 ⇒ 反复；若命中的在中间，`updateCurrentMessages` 的下标合并会把其后每条消息都塞进前一个节点（正是机制链那一环）。修法：判据收窄为 **USER + isSynthetic + 含标签三者同时满足**。我在上一轮写的「只看标签其实更稳」是**错的**——它把「漏过滤」（注入块被写回，可恢复）换成了「误过滤」（回复静默丢失 + 下标错位），后者更糟。取舍已写进计划。
+
+② **计划/brief 里还留着被证伪的旧契约（已修）**：Task 3 代码块里的 KDoc「返回 `null`…找不到对应工具结果」与 Task 8 的 `Log.w`「（已投递或工具结果已不存在）」——*在同一个代码块里*，函数体已按新契约更新、而这两句还是旧的。**从这份 brief 重新派发会把旧契约抄回去**，这正是我反复抓到的那类分叉。已改。
+③ **`ClaudeProvider.kt:555` 这个行号是错的，真实在 558**（我核过：555 是 `promptCacheTtl` 那几行，558 才是 `.filter { … it.role != MessageRole.SYSTEM }`；460 行把首条 SYSTEM 提取为 system prompt，机制自洽）。它是整个修复的承重引用，却出现在修复注释、spec 两处、计划两处、以及已提交的提交信息里。**可改的都已改**（代码注释、spec、计划）；**提交信息改不了**（不改写历史），故在 ledger 里留痕说明 `5b7ed7d8` 的提交信息里那个行号是错的。
+
+> 教训（这一轮的两次都是**我**引入的）：①「只看标签更稳」是**未经证伪就写下的取舍判断**——正确做法是把「漏过滤」与「误过滤」两种失效模式各写出来、比较后果，再选；②行号引用必须在写下时就核对，因为它会被复制到六处并在数轮之后仍被当作证据。
+
 **最终整支审查发现的两处设计级缺陷（控制器裁定，已记账，Fix 轮 2）**：
 
-① **通知用 SYSTEM 导致它送不到模型（在 Claude / Responses 上）**：本仓 `ClaudeProvider.buildMessages` 把**全部** SYSTEM 消息滤掉（`ClaudeProvider.kt:555` 的 `it.role != MessageRole.SYSTEM`），`ResponseAPI` 同样丢弃除首条外的 SYSTEM。而派生通知正是 SYSTEM，标记文本也是 SYSTEM ⇒ **在 Claude 上 AI 既看不到标记、也看不到通知**，而通知是结果正文唯一的去向（工具结果里已不正文）⇒ 「AI 拿到子代理结果」这个核心承诺在 Claude 上**根本不成立**，症状恰好是用户最初抱怨的「切屏之后回复里没有子代理的结果」。spec 原第 199 行表格断言 `Text.text`「发给模型 ✔」、§7 要求派生「SYSTEM 消息」——都是错的（对 Claude/Responses 而言）。**这不是本计划引入的**（旧机制 `pendingNotifications` 也是 SYSTEM，同样被丢），但本计划把它当成了核心机制，所以必须修。修法：通知改用 `UIMessage.user(...).copy(isSynthetic = true)`（本仓既有做法见 `TimeReminderTransformer.kt:77`），并把写回过滤从「role==SYSTEM 且含标签」改成「只看标签」；spec 的表格与 §7 措辞一并更正。
+① **通知用 SYSTEM 导致它送不到模型（在 Claude / Responses 上）**：本仓 `ClaudeProvider.buildMessages` 把**全部** SYSTEM 消息滤掉（`ClaudeProvider.kt:558` 的 `it.role != MessageRole.SYSTEM`），`ResponseAPI` 同样丢弃除首条外的 SYSTEM。而派生通知正是 SYSTEM，标记文本也是 SYSTEM ⇒ **在 Claude 上 AI 既看不到标记、也看不到通知**，而通知是结果正文唯一的去向（工具结果里已不正文）⇒ 「AI 拿到子代理结果」这个核心承诺在 Claude 上**根本不成立**，症状恰好是用户最初抱怨的「切屏之后回复里没有子代理的结果」。spec 原第 199 行表格断言 `Text.text`「发给模型 ✔」、§7 要求派生「SYSTEM 消息」——都是错的（对 Claude/Responses 而言）。**这不是本计划引入的**（旧机制 `pendingNotifications` 也是 SYSTEM，同样被丢），但本计划把它当成了核心机制，所以必须修。修法：通知改用 `UIMessage.user(...).copy(isSynthetic = true)`（本仓既有做法见 `TimeReminderTransformer.kt:77`），并把写回过滤从「role==SYSTEM 且含标签」改成「只看标签」；spec 的表格与 §7 措辞一并更正。
 
 ② **`applyTaskDelivery` 在找不到工具锚点时返回 null ⇒ 整条投递被丢弃（回归）**：`run_workflow` 的后台步骤走同一个 `runtime.executeAsync`（`WorkflowEngine.kt:108`），但它的工具结果是 `run_workflow` 的文本、不含 `sub_agent` 锚点 ⇒ `matched` 为假 ⇒ `if (!matched) return null` ⇒ 无标记、无通知、**不触发回复**、结果正文丢失（只留一行 `Log.w`）。而改造前的旧路径不看工具结果、直接从事件建通知并触发一轮 ⇒ 这类任务**原本有**回执与回复 ⇒ 回归。同一修法也覆盖「历史编辑移除了锚点」（重新生成越过该点、切换分支、压缩、删消息）。修法：只有「该 taskId 的标记已存在」才返回 null，其余一律追加标记。
 
