@@ -1,8 +1,9 @@
 # 交接：异步子代理生命周期重做（2026-09-25）
 
-**状态**：九个任务全部完成、全部推送、CI 全绿；最终整支审查（opus）判「Safe to merge for the `sub_agent` path」，三条验收标准在代码上成立。
-**范围**：`9d2f1d47..31954a3c`（47 个提交），代码改动面 22 文件 +1782/−309。
-**本文件最后更新于** `31954a3c`；之后若又有改动，以 `git log` 为准。
+**状态**：设计期九个任务 + **设备核验期的 20 个修复提交**全部入库、CI 全绿；最终整支审查（opus）判「Safe to merge for the `sub_agent` path」，三条验收标准已**在真机上逐条验过**（2026-09-25 晚）。
+**范围**：`9d2f1d47..343ff283`（69 个提交 = 设计期 49 + 设备核验期 20），累计 34 文件 +3384/−450。
+**本文件最后更新于** `343ff283`；之后若又有改动，以 `git log` 为准。
+**怎么读**：§1–§8 是设计期的记录（仍然有效）；**§10 起是设备核验期的记录**——真机上暴露的问题、根因、修法与教训，以及新增的承重约束与诊断设施。**接手时先读 §2 + §10 + §12。**
 **权威文档**：设计 `docs/superpowers/specs/2026-09-19-async-subagent-lifecycle-design.md`；计划 `docs/superpowers/plans/2026-09-19-async-subagent-lifecycle.md`（含全部裁定与自检记录）。
 
 > 本文件是设计 §9 承诺的那份交接（最终审查指出它当时**没写**，此为一并补齐）。
@@ -42,13 +43,24 @@ d0316c51 卡片终态 + 取消入口（+eb6c185d error 守卫）
 
 ---
 
-## 2. 必须知道的五条承重约束（改了就会静默失效）
+## 2. 必须知道的承重约束（改了就会静默失效）
+
+> 1–5 条来自设计期与最终审查；6–13 条是设备核验期用真机现场换来的，**每一条背后都有一个具体的失效现场**（见 §10）。
 
 1. **投递只许在「无在飞生成」时改动会话节点树。** `Conversation.updateCurrentMessages` 按**下标**合并，而 `GenerationLoop` 用请求时的**冻结快照**；生成期间追加节点会让该生成的 assistant 消息按 index 落进标记节点，标记对 `currentMessages` 隐形 ⇒ 不触发回复、正文派发不出去。守护：`ChatService.deliverTaskResult` 里两处 `awaitIdle(session)`（进函数时 + **紧贴 `applyTaskDelivery` 之前**）+ `reconcileInterruptedSubAgentTasks` 的跳过守卫。**没有任何测试覆盖这条不变量**——只有注释。
 2. **`awaitIdle` 返回到 `updateConversation` 之间不得有任何挂起点。** `isActive == false` 也可能是「LAZY job 已装未 start」，靠的正是「同一不挂起片段」这个性质。
 3. **通知必须是 USER（+ `isSynthetic`）而不是 SYSTEM。** `ClaudeProvider.buildMessages` 滤掉**全部** SYSTEM 消息（`ClaudeProvider.kt:558`），Responses API 丢去除首条外的 ⇒ 用 SYSTEM 会让通知在那些 provider 上根本送不到模型，而通知是结果正文唯一的去向。写回过滤的判据是 **USER + isSynthetic + 含标签三者同时满足**（只看标签会**误剔**真实消息 ⇒ 回复静默丢失 + 下标错位）。
 4. **`TASK_NOTIFICATION_TAG` 那道过滤是「通知绝不写回会话」的唯一守卫**，且它同时保持 assistant 的节点下标对齐。判据是 **USER + `isSynthetic` + 含标签三者同时满足**——只看标签会**误剔**真实消息（含模型复述），后果是回复静默丢失 + 下标错位，不可恢复。
 5. **每个「写整个会话对象」的路径，都必须先 `updateConversation` 同步写内存、再 `saveConversation` 落库。** `saveConversation` 的第一句是挂起的 `existsConversationById`，内存写入在它之后才发生；中间那段挂起里若有投递恢复执行并写入标记，整对象写回就会用「不含标记的」快照覆盖内存与库 ⇒ 不触发回复 + 正文从库里消失。目前三处都照做了：`deliverTaskResult`、`reconcileInterruptedSubAgentTasks`、`mergeConversationState`。**这是本计划第三次踩同一条规则**（前两次写对了，第三次新写函数时漏了）——新写的写者不会自动继承旧写者的教训。
+
+6. **写回不得依赖「快照下标」。** `Conversation.updateCurrentMessages` 是 `messages[index] → messageNodes[index]`，而会话可能在生成期间长大（另一个子代理的回执、并发的另一轮）⇒ 回复会落进**别人的节点**：先是「合成一条 + 1/2 分支」，再是「下一条消息的回复改掉前面那条」。除 `messageRange != null` 的重新生成/分支路径（它的 1/2 语义必须落回指定节点），**所有写回一律用 `updateCurrentMessagesAppendingNew`**（已存在按 id 就地替换，新消息成为末尾新节点）。**这条语义已被咬过三次**，见 §10.7。
+7. **标记绝不进 prompt；注入必须从「还带标记的列表」派生。** 标记是给用户看的回执（正文在 metadata 里），到模型手上的唯一通道是注入的通知。把标记提前滤掉再注入 ⇒ 通知一条都派生不出来（模型只能看着 `completed` 猜）。见 §10.6。
+8. **一条结果一条回复。** 触发轮按队列逐条开（取队首即销账）、且只注入自己那条的通知；只有用户自己发起的轮次注入全部未汇报的结果。旧的「标记之后是否已有 assistant 文本」判据在三结果同时到达时必然退化，见 §10.5。
+9. **同一会话同一时刻只允许一轮生成。** 开轮前硬查 `activeJobCount() > 0`（**不能只查 `generationJob` 的引用**：`setJob` 会无条件替换它）。见 §10.9。
+10. **用户按停止要连投递队列一起清**（`taskDeliveries.clear()`），否则当前轮停下后队列立刻再开一轮——「停止要点三次」。见 §10.8。
+11. **前台服务的启动 API 取决于前后台**：前台用 `startService`（**不附带「5 秒内必须 startForeground」的契约**），后台才用 `startForegroundService`。用错 ⇒ `startForeground` 一旦失败（catch 里 `stopSelf`）契约永不满足 ⇒ 系统在主线程抛 `RemoteServiceException` **杀掉进程**。见 §10.1。
+12. **子代理的工具结果必须写回 `Tool part.output`**（`isExecuted = output.isNotEmpty()`；provider 只把 `isExecuted` 的 Tool part 发成 `role:"tool"` 消息），**且只执行没执行过的调用**（`unexecutedToolCalls()`，否则死循环）。空输出要写占位文本——留空会让这条调用被整条丢掉。见 §10.2/§10.3。
+13. **子代理的次数/时长上限已按用户要求全部移除**（轮数 / 同一调用重复 / 单工具预算 / 8 分钟墙钟期限）。真因修掉之后它们只会砍掉合法长任务；代价是「真卡住时没有任何回执」，判定看日志页最后一行 `step N:` 是否推进。见 §10.10。
 
 ---
 
@@ -79,7 +91,11 @@ d0316c51 卡片终态 + 取消入口（+eb6c185d error 守卫）
 
 **已由静态分析判定成立的 7 条**（不必再上设备）：对账不误判且不自动触发生成；`stopGeneration` 不会取消子代理任务（`cancelPrevious=false`，且 `session.activeJobs` 从不含子代理 job）；单槽位状态已不存在；结果正文 100k 硬截断且通知里的正文来自裁剪后的 metadata；标记文案是资源字符串且注入的 XML 在写回前被过滤（不会有裸 XML 落库）；「历史完整」那一半已有 JVM 断言（5→6 节点 + 未动节点的 `assertSame`）；取消按钮的组合局部**能**到达详情面板（`ToolDetailSheet` 的 `Dialog` 经 `setParentCompositionContext` 继承，provider 是它的祖先）。
 
-**真正要上设备的 4 项**：
+**2026-09-25 晚已在真机上逐条验过并全部通过**（期间暴露的问题见 §10；用户结论：「没问题了」）：
+切屏后子代理仍跑完并触发回复 ✔、三条并行结果各得一条回复 ✔、退出应用回来后不崩 ✔、
+停止按钮一次即可停 ✔、不再出现「已中断（应用退出）」的误报 ✔。
+
+**原清单（保留备查）——真正要上设备的 4 项**：
 1. **切屏后子代理仍跑完并触发回复**（本轮的验收核心）——特别留意 **Claude / Responses 模型**：通知的角色已改进（见 §2.3），但需在设备上确认回复里**确实带上了子代理的结果正文**。
 2. Doze / OEM 杀进程下长时间任务是否存活（前台服务 + 保活）。
 3. 卡片上的取消按钮**点击**真的能取消（静态只能到「按钮可见且通道接通」）。
@@ -119,9 +135,9 @@ d0316c51 卡片终态 + 取消入口（+eb6c185d error 守卫）
 
 ## 8. 下一步（给下一个会话）
 
-**这条线的工作已经结束**：九个任务与其修复全部在 `master` 上、CI 全绿、最终整支审查判可合并。下面三件事里只有第 1 件是待办。
+**这条线的工作已经结束**：九个任务 + 设备核验期的 20 个修复全部在 `master` 上、CI 全绿、最终整支审查判可合并；设备核验 §4 **已全部通过**（2026-09-25 晚）。
 
-1. **设备核验**（用户执行，见 §4）。4 条真要上设备；7 条已由静态分析判定成立，不必再验。
+1. ~~设备核验~~ **已完成**（见 §4 顶部与 §10：期间暴露并修掉了 10 类问题，其中 3 类是我在修前几类时引入的回归）。
 2. **可选改进**：§3.3 那条「① 的持久化被推迟最多一整轮生成」。不是缺陷，是权衡；若要做，方向写在那一节。
 3. **其余推迟项**：§3.2 已由最终审查分诊为「没有一条是 must-fix」。
 
@@ -168,3 +184,150 @@ git log --oneline -3 && git rev-parse HEAD origin/master && git status --short
 - `register`/`finish` 带 **registry 实例指纹**；对账行带判了哪些 taskId、卡片自带的两条时间、registry 指纹、已知集合；
 - 投递进入/放行/跳过/完成各一行；前台服务的 `acquire 失败` / `进前台成功` / `进前台失败（已清空全部持有者）` / `停服务` 全部进应用内「日志」页。
 - 教训：**这套日志第一次派上用场，抓的就是我自己**——此前它被设计成「给下一个人的取证工具」。设备核验清单 §4 的 4 条仍然有效，其中「切屏后跑完并触发回复」现在有了逐条可核的日志依据。
+
+---
+
+## 10. 设备核验期间（2026-09-25 晚）暴露的问题与修复
+
+**范围**：`04c49baf..343ff283`（20 个提交，17 文件 +971/−70）。CI 全绿，包挂在 `nightly-debug`。
+下按发现顺序记「现场 → 根因 → 修法」。**§2 的承重约束里，凡本节新增的都标了 ⑨⑩… 编号。**
+
+### 10.1 「应用退出」回执是真的：前台服务契约把进程杀了（最要紧的一条）
+
+- **现场**：真机崩溃栈
+  `android.app.RemoteServiceException: Context.startForegroundService() did not then call Service.startForeground(): ServiceRecord{… ChatGenerationForegroundService}`；
+  以及此前反复出现的「应用退出/后台进程被回收」回执。
+- **根因**：`acquire` 用 `startForegroundService` 起服务 ⇒ 系统开 5 秒硬计时器；服务里
+  `startForeground` 有真实失败面（那一瞬间退到后台的 FGS 限制、配额耗尽…），我们的 catch 里
+  `activeGenerations.clear() + stopSelf()` ⇒ **契约永不满足** ⇒ 5 秒后系统在主线程抛异常杀进程。
+- **修法**（`85b6b3fe`）：前台用 `startService`（**不附带那条契约**），后台才用
+  `startForegroundService`；新增 `AppForegroundTracker`（ActivityLifecycleCallbacks 计数）。
+  `KeepAliveService` 里同形问题一并改。
+- **教训**：此前我把「应用退出」归给厂商省电/Doze——**方向错了，凶手是我们自己**。
+
+### 10.2 子代理看不到自己的工具结果（既有缺陷，与本轮异步改造无关）
+
+- **现场**：子代理「已完成」但正文是一句「让我去看看最近的消息」（白卷）；或反复重调同一工具
+  （三个并行时 CPU 97%）。
+- **根因**：`executeSync` 把工具结果**追加成 `UIMessage.user(...)`**，而承载调用的
+  `UIMessagePart.Tool.output` 始终为空。provider 只把 `output` 序列化成紧跟 `tool_calls` 的
+  `role:"tool"` 消息（`ChatCompletionsAPI` 的 `PartGroup.Tools`，content 取自 `toolResultText()`）
+  ⇒ 模型看到「tool_call(content="") + 一条 user 消息」。
+- **修法**（`b8d01f10`）：结果就地写回 `Tool part`（`withToolOutputs`，与 `GenerationLoop` 同形）；
+  工具不存在/抛异常也一律变成工具结果；**空回复判失败而非成功**（`subAgentCompletion`）。
+- **附带的坑**：工具没有输出时必须写占位文本（`TOOL_NO_OUTPUT_NOTE`）——`isExecuted` 就是
+  `output.isNotEmpty()`，留空会让这条调用被 provider **整条丢掉**，下一轮还会被当成「没执行」重跑。
+
+### 10.3 任何工具调用都死循环（**我引入的**）
+
+- **现场**：`step 37: search_web -> 1 part(s)` 一行一秒地涨到几十轮；「连 eval_javascript 算 1+1 也循环」。
+- **根因**：`StreamChunkHandler` 只在「列表末尾不是助手消息」时才新建助手消息，否则**合并进末尾那条**
+  （主循环因此每轮都用 `filter { !it.isExecuted }` 挑调用）。10.2 的就地写回之后，末尾那条助手消息
+  会一直带着上一轮那个**已执行**的 Tool part ⇒ 每轮重跑它一次。
+- **修法**（`c914c38a`）：`unexecutedToolCalls()` 只执行没执行过的；每轮补一条空的助手消息作为
+  **轮次边界**（与主循环 `responseBaseMessages` 同形）。
+
+### 10.4 中断对账判据的极性被我写反（**我引入的**）
+
+- **现场**：卡片刻着 `reason: app_exit`、但同一毫秒的日志里 `judged=sub_X` 与 `known=sub_X` 同时出现。
+- **根因**：原函数收 `isTracked: (String) -> Boolean`，而调用点传的 lambda 是 `get(taskId) == null`
+  （**意思是「没登记」**）——名字与语义相反，靠函数体 `if (!isTracked(...))` 的双重否定救着用；
+  我重写时**照着名字抄**成 `if (isTracked(...)) return`，判据整个反转。
+- **修法**（`dcb2f4e1`）：**把极性从代码里删掉** —— 参数改为 `knownTaskIds: Set<String>`，
+  判据 `taskId in knownTaskIds`；调用点传 `registry.all().map { it.taskId }.toSet()`，
+  **判定与诊断日志用同一份集合**。补双向回归测试。
+- **教训**：名字与语义不一致的参数，重写时**不能信名字**；凡是「布尔参数的语义可被反向解释」的地方，
+  都换成只有一个读法的表示（集合/枚举）。
+
+### 10.5 三条结果只得到一条回复
+
+- **现场**：`startTaskDelivery … pending=3 queueLeft=2`，此后不再开轮（三条结果一条回复）。
+- **根因**：跳轮判据「标记之后是否已有带非空文本的 assistant 消息」在三结果几乎同时到达时必然退化：
+  第一条结果的回复落在**所有**标记之后 ⇒ 后两条被判「已被回复」直接丢掉。
+- **修法**（`3dafbc98`）：队列就是账本（取队首即销账），触发轮只开自己那条、且
+  `injectTaskNotifications(onlyTaskIds = setOf(taskId))` 只注入自己那条通知。
+
+### 10.6 标记进了 prompt / 注入顺序反了（**我引入的**）
+
+- **现场**：主代理说「另一个也跑完了，不过结果还没送到我手上」——它看得见「已完成」却拿不到正文。
+- **根因（两层）**：① 标记是 SYSTEM 消息，Chat Completions 类 provider 会把 SYSTEM 原文发给模型
+  （Claude 那类整类滤掉，所以只在部分 provider 上暴露）；② 我为了「标记不进 prompt」把过滤放在
+  注入**之前**，而通知的正文正是从标记 metadata 里读的 ⇒ **通知一条都派生不出来**。
+- **修法**（`ba8c4cfa` + `753abc0f`）：**从还带标记的列表派生通知，再滤掉标记**（只作用于最终发给
+  provider 的那份）；加 `inject: round=… → N 条通知` 作为可核证据。
+
+### 10.7 回复堆在同一条消息 / 改掉前面那条回复 / 三条回复叠在一起（同一个根因，**咬过三次**）
+
+- **现场**：① 完成回执与主代理回复「合成一条」并出现 1/2 分支；② 之后发消息，回复**直接改掉前面那条**；
+  ③ 三条回复视觉上叠成一团。
+- **根因**：`updateCurrentMessages` 是 `messages[index] → messageNodes[index]`。**本轮请求构建之后
+  只要有节点被追加**（另一个子代理的回执、或并发的另一轮），回复就落进**别人的节点**；节点里对
+  「没有的新 id」是「追加 + 移动 selectIndex」⇒ UI 上先是分支 1/2，再就是「前面那条被改写」。
+- **修法**（`ba8c4cfa` → `da0a135a`）：新增 **`updateCurrentMessagesAppendingNew`**
+  （已存在按 id 就地替换、新消息一律成为末尾新节点）；**除 `messageRange != null` 的重新生成/分支
+  路径（它的 1/2 语义必须落回指定节点）之外，所有写回都用它**。对正常追加的轮次两者等价。
+- **教训**：**在一个可能在生成期间长大的会话上使用「快照下标」**——这条规则已被咬三次
+  （标记被吃掉的 Critical、1/2 分支、改掉前面那条回复）。别再用下标语义做写回。
+
+### 10.8 停止要点三次
+
+- **现场**：三条结果排队待开轮时按停止，只停住当前那轮，队列立刻再开下一轮。
+- **根因**：`stopGeneration` 取消该会话的全部生成 job，但 `taskDeliveries` 没清；完成回调与
+  `saveConversation` 尾部立刻把下一条排空。
+- **修法**（`343ff283`）：停止时 `session.taskDeliveries.clear()`。
+- **已知取舍**：被停掉的那几条结果**下次打开会话时仍会被重新排队**（它们确实还没被汇报过）。
+  若要「停过就不再提」，需给标记加一条「用户已放弃」的印记——**这是个明确的设计选择，尚未裁定**。
+
+### 10.9 同会话并发开轮（硬闸）
+
+- **风险**：`setJob` 会无条件替换 `_generationJob.value`（`cancelPrevious=false` 时不取消旧的），
+  而 `advanceConversation` 只查「当前 job 引用是否为空」——引用被清/替换时判据与实际活跃 job 分叉，
+  后果就是同会话多轮流式回复并存（10.7-③ 与 10.8 的现场都与此相符）。
+- **修法**（`da0a135a`）：`startTaskDelivery` 开轮前硬查 `activeJobCount() > 0`，有在飞的就**推迟**
+  （队首不动，等那一轮的完成回调再排空）。
+
+### 10.10 子代理不设上限（用户裁定）
+
+`7e260273` 加的 8 分钟墙钟期限与 `90173bbe` 加的重复判据/单工具预算、以及轮数上限，
+在 `753abc0f` **全部移除**（用户要求）。它们是给 10.3 那个「打转」装的护栏，而真因已修。
+**代价**：任务真卡住时不再有任何回执（卡片停在「运行中」，前台服务一直被持有）；
+判定看日志页最后一行 `step N:` 是否还在推进。要加回来只需恢复那四个常量与判断。
+
+---
+
+## 11. 诊断设施：应用内「日志」页该怎么读
+
+日志页是**内存环形缓冲（100 条，最早的行先被挤出）**，每条都带
+`pid=<pid> procStart=<epoch 毫秒>(HH:mm:ss)` —— **procStart 是判断「这是不是一个新进程」的稳定证据**
+（不要依赖「最老的一行」，它会被挤掉）。关键行：
+
+| 日志行 | 该怎么读 |
+|---|---|
+| `process start: …` | 进程出生（可能已被挤出） |
+| `register <taskId> conv=… registry=@<hash>` | 子代理登记。**registry 指纹**与下面 reconcile 行不一致 ⇒ 两个 registry 实例（DI 问题） |
+| `finish … attempted=<s>/<r> stored=<s>/<r>` | 终态。两者不同 = 「先到者胜」契约生效（取消与完成撞车） |
+| `startTaskDelivery: task=… 开一轮 activeJobs=N …` | **N 必须为 0**；出现「已有在飞生成…本轮推迟」说明硬闸挡住了并发开轮 |
+| `inject: round=trigger\|user task=… → N 条通知` | 触发轮 **N 必须为 1**；N=0 说明通知没派生出来（标记被提前滤掉那类回归） |
+| `deliver entry/proceed/done/skip: … generating=…` | `proceed` 那行紧贴写回，**`generating` 必须为 false**（为 true = 闸门漏了） |
+| `writeback: round=… snapshot=N nodes=M` | **N 必须等于 M**；不等 = 本轮期间会话被追加过节点（下标错位根因） |
+| `reconcile: judged=… known=… registry=@…` | 判据命中的 taskId 与它自带的证据（卡片创建时刻/发起进程启动时刻） |
+| `进前台成功/失败 …`、`停服务 holders=…` | 前台服务有没有真的生效（10.1 的现场证据） |
+| `step N: <tool>(<参数前缀>) -> K part(s): <输出前缀>` | 子代理的每一轮：查「为什么打转/白卷」只看这一行 |
+
+---
+
+## 12. 本轮追加的失误清单（接 §7）
+
+1. **重写带布尔参数的函数时照名字抄极性** ⇒ 判据反转（10.4）。名字本身是错的（`isTracked` 收「没登记」），
+   而我**没去看调用点**。
+2. **「把标记挤出 prompt」时把过滤放在了注入之前** ⇒ 通知一条都派生不出来（10.6）。顺序敏感的地方改一处要看全链。
+3. **又一次拿「快照下标」写回会话** ⇒ 回复落进别人的节点（10.7）。这已是同一处语义第三次咬人。
+4. **给「打转」装护栏时先解释后取证**：把打转归给「模型贪多/上游限流」，被用户一句
+   「连 1+1 也循环」直接推翻——**先问机制、再装护栏**。
+5. **把「应用退出」归给厂商省电**（10.1）；**把用户「进程不可能死」当成需要反驳的误解**——
+   事实是进程真的被系统杀了，而原因在我们自己的前台服务用法里。
+6. **两次把构建搞红**（重复 import、`List.size()` 当函数、`executeSync` 改块体漏闭括号）：
+   本机无编译器 ⇒ 改完必须靠 CI 收口，别把「读起来对」当「编得过」。
+7. **诊断行放错位置导致自己误判**：`deliver proceed` 最初记在闸门**之前**，`generating=true` 其实正常，
+   我差点据此误报「闸门漏了」。诊断行必须放在它要断言的那一刻。
+
