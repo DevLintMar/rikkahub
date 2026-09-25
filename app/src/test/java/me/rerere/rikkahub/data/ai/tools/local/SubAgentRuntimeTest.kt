@@ -48,14 +48,29 @@ class SubAgentRuntimeTest {
     }
 
     @Test
-    fun `没有对应输出时写回空输出而不是抛异常`() {
+    fun `没有输出时写入占位文本，保证 isExecuted 为真`() {
         val assistant = assistantWithTool(toolPart())
         val messages = listOf(assistant)
 
         val updated = messages.withToolOutputs(toolCallMessageId = assistant.id, outputs = emptyMap())
 
         assertEquals(1, updated.size)
-        assertEquals("", outputTextOf(updated.single()))
+        assertEquals("[tool returned no output]", outputTextOf(updated.single()))
+        // `isExecuted` 就是 `output.isNotEmpty()`：留空的话 provider 的分组会把这条工具调用
+        // **整条丢掉**（模型看不到自己调过工具），而且下一轮还会被当成「没执行过」重跑。
+        assertTrue(updated.single().parts.filterIsInstance<UIMessagePart.Tool>().single().isExecuted)
+    }
+
+    @Test
+    fun `已执行过的工具调用不再被当作待执行`() {
+        // 这条是死循环的承重断言：模型下一轮的回复会合并进同一条助手消息（StreamChunkHandler
+        // 只在末尾不是助手消息时才新建），所以上一轮那个已带 output 的 Tool part 会一直留在末尾；
+        // 不筛掉它，每轮都会把同一个调用重跑一次——现场就是「任何工具调用都陷入循环」。
+        val executed = toolPart(toolCallId = "call_old").copy(output = listOf(UIMessagePart.Text("结果")))
+        val fresh = toolPart(toolCallId = "call_new")
+        val parts: List<UIMessagePart> = listOf(UIMessagePart.Text("先看看"), executed, fresh)
+
+        assertEquals(listOf("call_new"), parts.unexecutedToolCalls().map { it.toolCallId })
     }
 
     @Test

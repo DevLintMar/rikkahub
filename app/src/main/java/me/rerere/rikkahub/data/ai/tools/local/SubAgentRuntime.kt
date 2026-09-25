@@ -9,6 +9,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
+import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.core.Tool
 import me.rerere.ai.provider.ProviderManager
@@ -41,6 +42,9 @@ private const val TAG = "SubAgentRuntime"
  * 现场表现是三个后台子代理一起跑时 CPU 打到 97%。给一个有界的轮数，用尽就如实报失败。
  */
 private const val MAX_SUB_AGENT_STEPS = 32
+
+/** 工具没有任何输出时写进 Tool part 的占位文本（见 `withToolOutputs`）。 */
+private const val TOOL_NO_OUTPUT_NOTE = "[tool returned no output]"
 
 /** 同一个 (工具, 参数) 允许重复调用的次数，超过即判「打转」并中止。 */
 private const val MAX_IDENTICAL_TOOL_CALLS = 3
@@ -77,6 +81,20 @@ data class AsyncSubAgentHandle(
 )
 
 
+/**
+ * 这一轮**还没执行过**的工具调用。
+ *
+ * 判据用 `UIMessagePart.Tool.isExecuted`（即 `output.isNotEmpty()`），与主循环一致
+ * （`GenerationLoop` 里是 `messages.last().getTools().filter { !it.isExecuted }`）。
+ *
+ * 为什么必须筛：模型下一轮的回复会**合并进同一条助手消息**（`StreamChunkHandler` 只在「列表末尾
+ * 不是助手消息」时才新建一条），所以本轮已经带上 output 的 Tool part 会一直留在末尾消息里。
+ * 不筛的话它每轮都会被重新执行一次——**任何工具调用都会陷入无限循环**（现场：让子代理用
+ * eval_javascript 算 1+1 也循环），而且每轮的请求都多一份重复的 tool 消息。
+ */
+internal fun List<UIMessagePart>.unexecutedToolCalls(): List<UIMessagePart.Tool> =
+    filterIsInstance<UIMessagePart.Tool>().filterNot { it.isExecuted }
+
 /** 诊断用：日志里只留开头一小段（工具参数里的查询串、工具输出的开头）。 */
 internal fun previewForLog(text: String, limit: Int = 120): String {
     val flat = text.replace(Regex("\\s+"), " ").trim()
@@ -108,7 +126,15 @@ internal fun List<UIMessage>.withToolOutputs(
         message.copy(
             parts = message.parts.map { part ->
                 if (part is UIMessagePart.Tool) {
-                    part.copy(output = clipToolOutput(outputs[part.toolCallId] ?: emptyList()))
+                    // **绝不能留空 output**：`isExecuted` 就是 `output.isNotEmpty()`，而 provider 的
+                    // 分组（`groupPartsByToolBoundary`）只把 `isExecuted` 的 Tool part 当成
+                    // 「工具调用 + 结果」发出去。留空的话这条调用会被**整条丢掉**（模型看不到自己
+                    // 调过工具 ⇒ 于是把开场白当结论、白卷），而且下一轮还会被当成「还没执行」重跑。
+                    val out = outputs[part.toolCallId]
+                    val resolved = if (out == null) emptyList() else clipToolOutput(out)
+                    part.copy(
+                        output = resolved.ifEmpty { listOf(UIMessagePart.Text(TOOL_NO_OUTPUT_NOTE)) },
+                    )
                 } else {
                     part
                 }
@@ -204,10 +230,8 @@ class SubAgentRuntime(
 
         var currentMessages: List<UIMessage> = messages
         var textResponse = ""
-        // 同一 (工具, 参数) 的调用计数：模型「打转」的典型形态是反复发起同一个调用，
-        // 而每一轮都在烧一次 provider 往返——现场表现为「后台一直在报子代理调工具」，
-        // 从 step 1 一路涨到几十轮、最后由轮数上限或期限兜底（用户白等十几分钟）。
-        // 这里直接掐掉：同一个调用重复超过 MAX_IDENTICAL_TOOL_CALLS 次即中止，如实报失败。
+        // 同一 (工具, 参数) 与同一工具名的调用计数：模型「打转」的典型形态是反复发起同一件事，
+        // 每一轮都在烧一次 provider 往返。现场表现为「后台一直在报子代理调工具」。
         val callCounts = mutableMapOf<String, Int>()
         val toolCounts = mutableMapOf<String, Int>()
         for (step in 1..MAX_SUB_AGENT_STEPS) {
@@ -223,19 +247,24 @@ class SubAgentRuntime(
             }
 
             val lastMsg = currentMessages.lastOrNull() ?: break
-            val toolParts = lastMsg.parts.filterIsInstance<UIMessagePart.Tool>()
             val textParts = lastMsg.parts.filterIsInstance<UIMessagePart.Text>()
 
             textResponse = textParts.joinToString("") { it.text }
 
-            if (toolParts.isEmpty()) return subAgentCompletion(textResponse)
+            // **只执行还没执行过的工具调用。** 这与主循环同形（`GenerationLoop` 也是
+            // `messages.last().getTools().filter { !it.isExecuted }`），而且**不加这一条就会死循环**：
+            // 下一轮的回复会**合并进同一条助手消息**（`StreamChunkHandler` 只在「末尾不是助手消息」时
+            // 才新建一条），于是本轮那个已经带上 output 的 Tool part 会一直留在末尾消息里；若照旧
+            // 全部重跑，就会每轮把同一个调用再执行一次——现场就是「任何工具调用都陷入循环」，
+            // 连让子代理用 eval_javascript 算 1+1 也一样。
+            val freshTools = lastMsg.parts.unexecutedToolCalls()
+            if (freshTools.isEmpty()) return subAgentCompletion(textResponse)
 
             // 执行本轮的每一个工具调用，结果**写回那次调用所在的 Tool part**（不是追加一条 user
             // 消息）。机制与理由见 `withToolOutputs` 的 KDoc——这一步错了，模型看到的就是
-            // 「工具返回空 + 用户又说了一句话」，于是把开场白当结论交回来（白卷），或者反复重调
-            // 同一个工具（打转、空烧 token 与 CPU）。
+            // 「工具返回空 + 用户又说了一句话」，于是把开场白当结论交回来（白卷）。
             val outputs = mutableMapOf<String, List<UIMessagePart>>()
-            toolParts.forEach { toolPart ->
+            freshTools.forEach { toolPart ->
                 val key = "${toolPart.toolName}|${toolPart.input}"
                 val callCount = (callCounts[key] ?: 0) + 1
                 callCounts[key] = callCount
@@ -266,7 +295,13 @@ class SubAgentRuntime(
                         "${output.size} part(s): ${previewForLog(output.filterIsInstance<UIMessagePart.Text>().joinToString("") { it.text })}",
                 )
             }
-            currentMessages = currentMessages.withToolOutputs(toolCallMessageId = lastMsg.id, outputs = outputs)
+            currentMessages = currentMessages
+                .withToolOutputs(toolCallMessageId = lastMsg.id, outputs = outputs)
+                // 再补一条**空的助手消息作为轮次边界**：下一轮的回复会落进它，而不是与上一轮合并。
+                // 不补的话 `textResponse` 会把上一轮的开场白一起拼进来（「让我去看看最近的消息」+ 正文），
+                // 而 `freshTools` 也可能因为旧 Tool part 仍在末尾而判不出「这一轮没有新调用」。
+                // 这与主循环 `responseBaseMessages` 的做法相同。
+                .let { it + UIMessage(role = MessageRole.ASSISTANT, parts = emptyList(), modelId = model.id) }
         }
 
         Logging.log(TAG, "子代理达到 $MAX_SUB_AGENT_STEPS 轮仍未给出结论")
