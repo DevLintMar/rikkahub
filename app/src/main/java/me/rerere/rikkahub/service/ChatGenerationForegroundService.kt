@@ -12,10 +12,12 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
+import me.rerere.common.android.Logging
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.RouteActivity
+import me.rerere.rikkahub.utils.ProcessInfo
 import org.koin.android.ext.android.inject
 import kotlin.uuid.Uuid
 
@@ -65,6 +67,7 @@ class ChatGenerationForegroundService : Service() {
                 true
             }.onFailure {
                 Log.e(TAG, "Unable to start chat generation foreground service", it)
+                Logging.log(TAG, "acquire 失败（startForegroundService 抛异常）backgroundTask=$backgroundTask ${ProcessInfo.describe()}: $it")
             }.getOrDefault(false)
         }
 
@@ -155,6 +158,9 @@ class ChatGenerationForegroundService : Service() {
                 startForeground(NOTIFICATION_ID, notification)
             }
             isForeground = true
+            // 诊断：前台服务真的进前台了没有——「切屏后子代理还能不能跑完」全靠这一条。
+            // 应用内「日志」页里能看到它；若整段测试里没有这一行，说明保护从来没生效过。
+            Logging.log(TAG, "进前台成功 labelRes=$labelRes holders=${activeGenerations.size} ${ProcessInfo.describe()}")
         } catch (e: Exception) {
             // 进前台失败时把**所有**持有者一起清掉并停服务，是有意的：Android 要求
             // startForegroundService 之后必须在几秒内真的 startForeground，否则系统直接
@@ -162,12 +168,16 @@ class ChatGenerationForegroundService : Service() {
             // 代价是持有者对此毫不知情（聊天生成、以及 Task 7 起的子代理网络流），它们会继续跑
             // 但失去前台保护；它们无法自救，所以这里只记日志、不做通知。
             Log.e(TAG, "Failed to enter foreground", e)
+            // 这条失败是**静默**的：所有持有者（聊天生成 + 后台子代理）都会失去前台保护，
+            // 系统随后可以随时回收本进程。写进应用内日志页，让它不再静默。
+            Logging.log(TAG, "进前台失败，已清空全部持有者（进程失去前台保护）${ProcessInfo.describe()}: $e")
             activeGenerations.clear()
             stopSelf()
         }
     }
 
     private fun stopService() {
+        Logging.log(TAG, "停服务 holders=${activeGenerations.size} ${ProcessInfo.describe()}")
         if (isForeground) {
             stopForeground(STOP_FOREGROUND_REMOVE)
             isForeground = false
