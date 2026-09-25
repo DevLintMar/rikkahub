@@ -1990,6 +1990,9 @@ class ChatService(
         val session = sessions[conversationId] ?: return
         val jobs = synchronized(session) {
             session.messageQueue.pause()
+            // 用户按了停止：**待触发的子代理投递也一并作废**。否则当前这一轮停下之后，队列会立刻
+            // 再开一轮——现场就是「停止要点三次，三次分别对应队列里的三条结果」，看起来像按了没反应。
+            session.taskDeliveries.clear()
             session.cancelJobs()
         }
         if (jobs.isEmpty()) return
