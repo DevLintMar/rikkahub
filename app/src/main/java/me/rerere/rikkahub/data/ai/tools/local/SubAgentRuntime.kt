@@ -15,6 +15,7 @@ import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.StreamChunkHandler
+import me.rerere.common.android.Logging
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.data.ai.tools.clipToolOutput
 import me.rerere.rikkahub.data.datastore.Settings
@@ -24,9 +25,12 @@ import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
+import me.rerere.rikkahub.utils.ProcessInfo
 import me.rerere.rikkahub.service.GenerationKeepAlive
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.uuid.Uuid
+
+private const val TAG = "SubAgentRuntime"
 
 data class SubAgentResult(
     val success: Boolean,
@@ -183,6 +187,14 @@ class SubAgentRuntime(
             description = description,
             prompt = prompt,
         )
+        // 诊断：登记必须发生在这张卡片被写出来**之前**，所以「卡片是 started 但本进程 registry
+        // 里没有它」在同一个进程内**不可能**成立。这行把 registry 的身份与登记时刻钉下来，
+        // 供日后与对账那行（`ChatService.reconcile`）逐条比对。
+        Logging.log(
+            TAG,
+            "register $taskId conv=$conversationId registry=@${System.identityHashCode(registry)} " +
+                ProcessInfo.describe(),
+        )
         val job = appScope.launch {
             // 子代理的网络流必须自己持有前台服务：父生成一结束就会释放它，而任务可能还要跑很久。
             val token = keepAlive.hold(conversationId, backgroundTask = true)
@@ -238,7 +250,14 @@ class SubAgentRuntime(
         // 以 registry 返回的那条为准，而不是本次调用的实参：`SubAgentTaskRegistry.finish` 的契约是
         // 「先到者胜」，写入被拒时 `info` 是已存在的终态条目——若这里仍用实参发事件，事件就会报告
         // 输家想要的 status/reason/result，却带着赢家的 conversationId/description（两者被拆开）。
-        val info = registry.finish(taskId, status, reason, result, error) ?: return
+        val info = registry.finish(taskId, status, reason, result, error)
+        Logging.log(
+            TAG,
+            "finish $taskId attempted=${status}/${reason?.wire} registry=@${System.identityHashCode(registry)} " +
+                "stored=${info?.status}/${info?.reason?.wire} " + ProcessInfo.describe(),
+        )
+        // registry 返回 null = 它压根没有这条登记（正常路径走不到，出现即症状）。
+        if (info == null) return
         eventBus.emit(
             AppEvent.SubAgentTaskFinished(
                 conversationId = info.conversationId,

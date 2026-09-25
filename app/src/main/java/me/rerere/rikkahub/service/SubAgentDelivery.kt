@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.service
 
+import kotlinx.datetime.LocalDateTime
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -7,6 +8,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
@@ -252,6 +254,22 @@ internal fun Conversation.applyTaskDelivery(
 }
 
 /**
+ * 一条「看起来像中断」的候选，连同它自带的证据。
+ *
+ * 证据为什么必须带出来：这条判据的产出是「应用退出（进程被回收）」回执，而**判据本身无法自证**——
+ * 一张本进程刚写下的卡片，和一张上一个进程留下的卡片，在库里长得一模一样。所以把两侧可核的东西
+ * 一起交出去：卡片自身的创建时刻，以及卡片 JSON 里记的「写它的那个进程的启动时刻」
+ * （`SubAgentTool` 在发起时写入；比对表里没有这个键的老卡片为 null）。
+ */
+internal data class InterruptedTaskCandidate(
+    val taskId: String,
+    /** 承载这张卡片的消息的创建时刻。 */
+    val cardCreatedAt: LocalDateTime,
+    /** 卡片 JSON 里的 `process_started_at`；老卡片（或同步路径）没有这个键，为 null。 */
+    val cardProcessStartedAt: Long?,
+)
+
+/**
  * 中断对账的判据：工具结果仍是 `started` **且 registry 里没有这个 taskId**（`get(taskId) == null`），
  * 即「本进程完全不认识它」——只有这一种情形才等于「它随上一个进程一起死了」。
  *
@@ -261,16 +279,27 @@ internal fun Conversation.applyTaskDelivery(
  *
  * 改写后 `status` 变终态，所以这条判据天然幂等。
  */
-internal fun List<UIMessage>.interruptedSubAgentTaskIds(isTracked: (String) -> Boolean): List<String> {
-    val ids = mutableListOf<String>()
+internal fun List<UIMessage>.interruptedSubAgentTaskCandidates(
+    isTracked: (String) -> Boolean,
+): List<InterruptedTaskCandidate> {
+    val found = mutableListOf<InterruptedTaskCandidate>()
     forEach { message ->
         message.parts.filterIsInstance<UIMessagePart.Tool>().forEach { part ->
             if (part.toolName != SUB_AGENT_TOOL_NAME) return@forEach
             val json = runCatching { JsonInstant.parseToJsonElement(part.outputText()).jsonObject }.getOrNull() ?: return@forEach
             if (json["status"]?.jsonPrimitive?.contentOrNull != "started") return@forEach
             val taskId = json["task_id"]?.jsonPrimitive?.contentOrNull ?: return@forEach
-            if (!isTracked(taskId)) ids += taskId
+            if (isTracked(taskId)) return@forEach
+            found += InterruptedTaskCandidate(
+                taskId = taskId,
+                cardCreatedAt = message.createdAt,
+                cardProcessStartedAt = json["process_started_at"]?.jsonPrimitive?.longOrNull,
+            )
         }
     }
-    return ids
+    return found
 }
+
+/** 只要 taskId 的简版（[interruptedSubAgentTaskCandidates] 的投影）。 */
+internal fun List<UIMessage>.interruptedSubAgentTaskIds(isTracked: (String) -> Boolean): List<String> =
+    interruptedSubAgentTaskCandidates(isTracked).map { it.taskId }

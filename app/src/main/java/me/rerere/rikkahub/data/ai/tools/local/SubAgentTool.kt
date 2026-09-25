@@ -15,6 +15,7 @@ import me.rerere.rikkahub.data.ai.agents.AgentManager
 import me.rerere.rikkahub.data.ai.tools.createSkillTools
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.files.SkillManager
+import me.rerere.rikkahub.utils.ProcessInfo
 import kotlin.uuid.Uuid
 
 internal fun buildSubAgentTool(
@@ -174,6 +175,12 @@ internal fun buildSubAgentTool(
                 put("task_id", JsonPrimitive(handle.taskId))
                 put("description", JsonPrimitive(description))
                 put("mode", JsonPrimitive("background"))
+                // 诊断：这张卡片由**哪个进程**写下。中断对账只有在「卡片比本进程更老」时才有
+                // 资格判「应用退出（进程被回收）」，这两条就是事后核这条判断的依据。
+                // 它们随卡片一起落库——`applyTaskDelivery` 的改写只覆盖 status/reason/task_id/
+                // result/error，未知键原样保留——所以重启之后仍然查得到。
+                put("launched_at", JsonPrimitive(System.currentTimeMillis()))
+                put("process_started_at", JsonPrimitive(ProcessInfo.startedAt))
             }
             listOf(UIMessagePart.Text(payload.toString()))
         } else {

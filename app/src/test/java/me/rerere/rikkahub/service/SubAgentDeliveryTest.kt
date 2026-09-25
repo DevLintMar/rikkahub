@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.service
 
+import kotlinx.datetime.LocalDateTime
 import kotlin.uuid.Uuid
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.buildJsonObject
@@ -441,5 +442,58 @@ class SubAgentDeliveryTest {
         )!!
 
         assertTrue(updated.currentMessages.interruptedSubAgentTaskIds { false }.isEmpty())
+    }
+
+    @Test
+    fun `中断候选带回卡片自身的进程与时间证据`() {
+        val cardTime = LocalDateTime(2026, 9, 25, 16, 26, 30)
+        val card = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                UIMessagePart.Tool(
+                    toolCallId = "call_p",
+                    toolName = "sub_agent",
+                    input = "{}",
+                    output = listOf(
+                        UIMessagePart.Text(
+                            buildJsonObject {
+                                put("type", "sub_agent")
+                                put("status", "started")
+                                put("task_id", "sub_self")
+                                put("description", "自证")
+                                put("mode", "background")
+                                put("launched_at", 1_700_000_000_000L)
+                                put("process_started_at", 1_699_999_000_000L)
+                            }.toString(),
+                        ),
+                    ),
+                ),
+            ),
+            createdAt = cardTime,
+        )
+
+        val candidates = listOf(card).interruptedSubAgentTaskCandidates { false }
+
+        assertEquals(1, candidates.size)
+        assertEquals("sub_self", candidates.single().taskId)
+        assertEquals(cardTime, candidates.single().cardCreatedAt)
+        assertEquals(1_699_999_000_000L, candidates.single().cardProcessStartedAt ?: -1L)
+    }
+
+    @Test
+    fun `没有进程字段的老卡片仍是候选，只是证据为 null`() {
+        val messages = listOf(toolCallMessage(subAgentToolPart("sub_old")))
+
+        val candidates = messages.interruptedSubAgentTaskCandidates { false }
+
+        assertEquals(listOf("sub_old"), candidates.map { it.taskId })
+        assertNull(candidates.single().cardProcessStartedAt)
+    }
+
+    @Test
+    fun `本进程认识的任务不出现在候选里`() {
+        val messages = listOf(toolCallMessage(subAgentToolPart("sub_live")))
+
+        assertTrue(messages.interruptedSubAgentTaskCandidates { it == "sub_live" }.isEmpty())
     }
 }

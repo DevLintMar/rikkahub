@@ -91,7 +91,9 @@ import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.data.repository.lostUploadUrlsAfterDelete
 import me.rerere.rikkahub.web.BadRequestException
 import me.rerere.rikkahub.web.NotFoundException
+import me.rerere.rikkahub.utils.ProcessInfo
 import me.rerere.rikkahub.utils.applyPlaceholders
+import me.rerere.rikkahub.utils.toMessageTimeString
 import java.time.Instant
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -475,10 +477,33 @@ class ChatService(
         // 时标记已存在、按幂等契约返回 null ⇒ **真投递被静默丢弃**：结果正文丢失、且不触发 AI 回复。
         // 这正是验收标准第一条要保证的场景（用户切屏离开 → 会话被 5 秒空闲回收 → 子代理完成 →
         // 投递的 ensureLoaded 先跑对账）。「本进程不认识它」才等于「它随上一个进程一起死了」。
-        val interrupted = conversation.currentMessages.interruptedSubAgentTaskIds { taskId ->
+        val candidates = conversation.currentMessages.interruptedSubAgentTaskCandidates { taskId ->
             localTools.subAgentTaskRegistry.get(taskId) == null
         }
-        if (interrupted.isEmpty()) return
+        if (candidates.isEmpty()) return
+        // 诊断（本判定的唯一产出就是「应用退出」回执，而判据本身无法自证，所以两侧证据都钉下来）：
+        // 本进程身份（pid/procStart）、本进程 registry 的身份与它登记过的全部 taskId、以及每张被
+        // 判中断的卡片自带的两条时间（卡片创建时刻、卡片里记的发起进程启动时刻）。
+        // 「卡片是本进程写的却被判中断」只要发生过一次，这里就会留下定案材料。
+        Logging.log(
+            TAG,
+            buildString {
+                append("reconcile: conv=").append(conversationId)
+                append(" judged=")
+                append(
+                    candidates.joinToString(",") { candidate ->
+                        "${candidate.taskId}(card=${candidate.cardCreatedAt.toMessageTimeString()}" +
+                            ",cardProcStart=${candidate.cardProcessStartedAt})"
+                    },
+                )
+                append(" registry=@").append(System.identityHashCode(localTools.subAgentTaskRegistry))
+                append(" tracked=")
+                append(localTools.subAgentTaskRegistry.all().joinToString(",") { it.taskId })
+                append(' ')
+                append(ProcessInfo.describe())
+            },
+        )
+        val interrupted = candidates.map { it.taskId }
 
         var current = conversation
         interrupted.forEach { taskId ->
@@ -548,6 +573,12 @@ class ChatService(
     private suspend fun deliverTaskResult(event: AppEvent.SubAgentTaskFinished) {
         // 闸门放在 `ensureLoaded` **之前**：`ensureLoaded` 内部会调中断对账，而它同样会改动节点树。
         val session = getOrCreateSession(event.conversationId)
+        Logging.log(
+            TAG,
+            "deliver entry: task=${event.taskId} status=${event.status} reason=${event.reason?.wire} " +
+                "loaded=${session.loaded} generating=${session.generationJob.value?.isActive} " +
+                ProcessInfo.describe(),
+        )
 
         // ① 与「载入时的中断对账」都会改动会话的节点树（追加标记节点、改写工具结果），
         //    而**生成在飞时绝不能动**。机制（本任务最难发现的坑）：
@@ -572,6 +603,11 @@ class ChatService(
             return
         }
         val status = if (event.status == TaskStatus.COMPLETED) "completed" else "failed"
+        Logging.log(
+            TAG,
+            "deliver proceed: task=${event.taskId} status=$status loaded=${session.loaded} " +
+                ProcessInfo.describe(),
+        )
 
         // 再等一次，而且是**紧贴改写**的一次：上面 `ensureLoaded` 里有挂起点（会话未载入时要读库；
         // 中断对账若命中还要落库），而这段时间里别的路径可能已经起了新一轮生成——例如同一会话的
@@ -603,6 +639,7 @@ class ChatService(
             // 现场只有这一行能看出「投递被跳过」。
             // 注意：无锚点**不再**算「无变更」——那种情形必须照常留回执，见 `applyTaskDelivery` 的注释。
             Log.w(TAG, "deliverTaskResult: ${event.taskId} 无需变更，跳过（已投递）")
+            Logging.log(TAG, "deliver skip: task=${event.taskId}（标记已存在，幂等） ${ProcessInfo.describe()}")
             return
         }
 
@@ -614,6 +651,7 @@ class ChatService(
         // 只有来自「实时完成」的投递才触发新的一轮；中断对账走的不是这条入口。
         session.taskDeliveries.enqueue(event.taskId)
         saveConversation(event.conversationId, updated)
+        Logging.log(TAG, "deliver done: task=${event.taskId} 已入库并排队触发 ${ProcessInfo.describe()}")
     }
 
     /**

@@ -44,6 +44,8 @@ import me.rerere.rikkahub.data.sync.RestoreFailedException
 import me.rerere.rikkahub.utils.JsonInstant
 import me.rerere.rikkahub.service.WebServerService
 import me.rerere.rikkahub.utils.CrashHandler
+import me.rerere.rikkahub.utils.ProcessInfo
+import me.rerere.rikkahub.utils.ProcessInfo
 import me.rerere.rikkahub.utils.DatabaseUtil
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.workspace.WorkspaceManager
@@ -66,6 +68,11 @@ const val WEB_SERVER_NOTIFICATION_CHANNEL_ID = "web_server"
 class RikkaHubApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        // 进程身份最先固定：子代理的中断对账靠「本进程认不认识这个 taskId」判定，而这条判定
+        // 只有在知道「本进程从什么时候开始」时才可自证（见 ProcessInfo 的说明）。
+        // 这一行也是应用内「日志」页里最老的一行——它就是本进程的出生证明。
+        ProcessInfo.markStart()
+        Logging.log(TAG, "process start: ${ProcessInfo.describe()}")
         // Restore files and settings before eager Koin singletons or workers can access them.
         try {
             val restored = runBlocking(Dispatchers.IO) {
