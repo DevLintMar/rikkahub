@@ -32,6 +32,15 @@ import kotlin.uuid.Uuid
 
 private const val TAG = "SubAgentRuntime"
 
+/**
+ * 子代理自身的轮数上限（一轮 = 一次 provider 往返）。
+ *
+ * 此处原先没有上限：`while (true)` 唯一的出口是「模型这一轮不再调工具」。而子代理看到的工具结果
+ * 曾经是空的（见 `withToolOutputs`），模型会以为工具没返回东西、于是反复重调同一个工具——打转。
+ * 现场表现是三个后台子代理一起跑时 CPU 打到 97%。给一个有界的轮数，用尽就如实报失败。
+ */
+private const val MAX_SUB_AGENT_STEPS = 64
+
 data class SubAgentResult(
     val success: Boolean,
     val text: String,
@@ -43,6 +52,57 @@ data class AsyncSubAgentHandle(
     val job: Job,
 )
 
+
+/**
+ * 把本轮工具结果写回**承载那次调用的 Tool part**。
+ *
+ * 这是本文件原先最容易看漏的一处错误：工具结果被追加成一条 `UIMessage.user(...)`，而 Tool part 的
+ * `output` 始终是空的。provider 正是把 Tool part 的 `output` 序列化成紧跟其 `tool_calls` 的
+ * `role: "tool"` 消息（见 `ChatCompletionsAPI` 里的 `PartGroup.Tools`），于是子代理发出的请求长这样：
+ *
+ *     assistant: text「让我去看看最近的消息」 + tool_calls(search_web)
+ *     tool:      name=search_web, tool_call_id=…, content=""   ← 空的
+ *     user:      <真正的检索结果>                                ← 被当成「用户又说了句话」
+ *
+ * ⇒ 模型以为工具什么都没返回，于是把那句开场白当成结论交回来（现场表现：子代理报「已完成」而正文
+ * 是一句「让我去看看最近的消息」），或者反复重调同一个工具。就地写回后请求与主循环同形——
+ * `GenerationLoop` 也是 `tool.copy(output = clipToolOutput(…))`。
+ */
+internal fun List<UIMessage>.withToolOutputs(
+    toolCallMessageId: Uuid,
+    outputs: Map<String, List<UIMessagePart>>,
+): List<UIMessage> = map { message ->
+    if (message.id != toolCallMessageId) {
+        message
+    } else {
+        message.copy(
+            parts = message.parts.map { part ->
+                if (part is UIMessagePart.Tool) {
+                    part.copy(output = clipToolOutput(outputs[part.toolCallId] ?: emptyList()))
+                } else {
+                    part
+                }
+            },
+        )
+    }
+}
+
+/**
+ * 子代理的收尾判定：**空回复不算成功**。
+ *
+ * 此前空回复会被当成 `success = true`、正文为空 ⇒ 投递写出的是一条「已完成」但 `<result>` 为空的
+ * 通知（现场表现就是「白卷」），AI 与用户都看不出这其实是一次失败。如实报失败，让两边都能看见。
+ */
+internal fun subAgentCompletion(text: String): SubAgentResult =
+    if (text.isBlank()) {
+        SubAgentResult(
+            success = false,
+            text = "",
+            error = "子代理没有产出任何正文（模型返回了空回复）",
+        )
+    } else {
+        SubAgentResult(success = true, text = text)
+    }
 
 class SubAgentRuntime(
     private val providerManager: ProviderManager,
@@ -114,7 +174,7 @@ class SubAgentRuntime(
 
         var currentMessages: List<UIMessage> = messages
         var textResponse = ""
-        while (true) {
+        for (step in 1..MAX_SUB_AGENT_STEPS) {
             val resultFlow = provider.streamText(
                 providerSetting = providerSetting,
                 messages = currentMessages,
@@ -132,44 +192,56 @@ class SubAgentRuntime(
 
             textResponse = textParts.joinToString("") { it.text }
 
-            if (toolParts.isEmpty()) break
+            if (toolParts.isEmpty()) return subAgentCompletion(textResponse)
 
-            for (toolPart in toolParts) {
-                val toolDef = tools.find { it.name == toolPart.toolName }
-                if (toolDef == null) {
-                    currentMessages = currentMessages + UIMessage.user(prompt = "Tool '${toolPart.toolName}' not found.")
-                    continue
-                }
-                val output = runCatching {
-                    val args = runCatching {
-                        Json.parseToJsonElement(toolPart.input)
-                    }.getOrDefault(buildJsonObject { })
-                    toolDef.execute(args)
-                }.onFailure { error ->
-                    if (error is CancellationException) throw error
-                }.getOrElse { error ->
-                    listOf(UIMessagePart.Text(
-                        """{"error":"[${error.javaClass.name}] ${error.message ?: "Unknown error"}","stack":"${error.stackTraceToString().replace("\"", "\\\"")}"}"""
-                    ))
-                }
-                // 子代理此前完全没有上限：工具输出有多大就原样拼进下一条 user 消息。
-                // 与主循环共用 clipToolOutput，一次大输出不再撑爆上下文。
-                currentMessages = currentMessages + UIMessage.user(
-                    prompt = clipToolOutput(output).joinToString("\n") { part ->
-                        when (part) {
-                            is UIMessagePart.Text -> part.text
-                            else -> "[${part::class.simpleName}]"
-                        }
-                    }
-                )
+            // 执行本轮的每一个工具调用，结果**写回那次调用所在的 Tool part**（不是追加一条 user
+            // 消息）。机制与理由见 `withToolOutputs` 的 KDoc——这一步错了，模型看到的就是
+            // 「工具返回空 + 用户又说了一句话」，于是把开场白当结论交回来（白卷），或者反复重调
+            // 同一个工具（打转、空烧 token 与 CPU）。
+            val outputs = mutableMapOf<String, List<UIMessagePart>>()
+            toolParts.forEach { toolPart ->
+                val output = executeSubAgentTool(toolPart, tools)
+                outputs[toolPart.toolCallId] = output
+                Logging.log(TAG, "step $step: ${toolPart.toolName} -> ${output.size} part(s)")
             }
+            currentMessages = currentMessages.withToolOutputs(toolCallMessageId = lastMsg.id, outputs = outputs)
         }
 
-        SubAgentResult(success = true, text = textResponse)
+        Logging.log(TAG, "子代理达到 $MAX_SUB_AGENT_STEPS 轮仍未给出结论")
+        SubAgentResult(
+            success = false,
+            text = "",
+            error = "子代理 $MAX_SUB_AGENT_STEPS 轮内没有给出结论（工具调用可能打转）",
+        )
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
         SubAgentResult(success = false, text = "", error = e.message ?: "Unknown error")
+    }
+
+    /** 执行一个工具调用并返回它的输出。异常与「工具不存在」都变成**工具结果**（不再是一条 user 消息）。 */
+    private suspend fun executeSubAgentTool(
+        toolPart: UIMessagePart.Tool,
+        tools: List<Tool>,
+    ): List<UIMessagePart> {
+        val toolDef = tools.find { it.name == toolPart.toolName }
+            ?: return listOf(
+                UIMessagePart.Text("""{"error":"Tool '${toolPart.toolName}' not found."}"""),
+            )
+        return runCatching {
+            val args = runCatching {
+                Json.parseToJsonElement(toolPart.input.ifBlank { "{}" })
+            }.getOrDefault(buildJsonObject { })
+            toolDef.execute(args)
+        }.onFailure { error ->
+            if (error is CancellationException) throw error
+        }.getOrElse { error ->
+            listOf(
+                UIMessagePart.Text(
+                    """{"error":"[${error.javaClass.name}] ${error.message ?: "Unknown error"}","stack":"${error.stackTraceToString().replace("\"", "\\\"")}"}""",
+                ),
+            )
+        }
     }
 
     fun executeAsync(
