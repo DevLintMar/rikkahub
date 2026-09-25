@@ -493,8 +493,8 @@ class ChatService(
                 append(" judged=")
                 append(
                     candidates.joinToString(",") { candidate ->
-                        "${candidate.taskId}(card=${candidate.cardCreatedAt.toJavaLocalDateTime().toMessageTimeString()}" +
-                            ",cardProcStart=${candidate.cardProcessStartedAt})"
+                        "${candidate.taskId}(msgAt=${candidate.cardCreatedAt.toJavaLocalDateTime().toMessageTimeString()}" +
+                            ",launched=${candidate.cardLaunchedAt},cardProcStart=${candidate.cardProcessStartedAt})"
                     },
                 )
                 append(" registry=@").append(System.identityHashCode(localTools.subAgentTaskRegistry))

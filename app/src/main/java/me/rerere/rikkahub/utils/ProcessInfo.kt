@@ -1,6 +1,9 @@
 package me.rerere.rikkahub.utils
 
 import android.os.Process
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * 本进程的身份：pid 与启动墙钟时刻。
@@ -29,6 +32,16 @@ object ProcessInfo {
         if (startedAt == 0L) startedAt = System.currentTimeMillis()
     }
 
-    /** 诊断日志用的一行身份描述。 */
-    fun describe(): String = "pid=$pid procStart=$startedAt"
+    /**
+     * 诊断日志用的一行身份描述。
+     *
+     * 两个形式都给：epoch 毫秒用于与卡片里的 `process_started_at` 精确比对，本地时刻用于肉眼核对
+     * （日志页的环形缓冲只有 100 条、**最老的先被挤掉**，所以「本进程第一条日志」随时可能已经不在，
+     * 每条日志自带的这个 `procStart` 才是稳定的那一份证据）。
+     */
+    fun describe(): String {
+        val at = startedAt
+        val stamp = if (at == 0L) "unset" else SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(at))
+        return "pid=$pid procStart=$at($stamp)"
+    }
 }

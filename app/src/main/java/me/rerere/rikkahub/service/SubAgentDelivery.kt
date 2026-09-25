@@ -263,11 +263,27 @@ internal fun Conversation.applyTaskDelivery(
  */
 internal data class InterruptedTaskCandidate(
     val taskId: String,
-    /** 承载这张卡片的消息的创建时刻。 */
+    /** **承载这张卡片的 assistant 消息**的创建时刻（不是卡片被写入的时刻）。 */
     val cardCreatedAt: LocalDateTime,
-    /** 卡片 JSON 里的 `process_started_at`；老卡片（或同步路径）没有这个键，为 null。 */
+    /** 卡片 JSON 里由 `SubAgentTool` 写下的 `launched_at`；老卡片（或同步路径）为 null。 */
+    val cardLaunchedAt: Long?,
+    /** 卡片 JSON 里的 `process_started_at`；老卡片（或同步路径）为 null。 */
     val cardProcessStartedAt: Long?,
 )
+
+/**
+ * 只读一次、**不抛**的取值。
+ *
+ * `jsonPrimitive` 遇到对象/数组会抛 `IllegalArgumentException`，而这些 JSON 来自**持久化会话**
+ * （备份导入、历史编辑都可能把字段弄成别的类型）。放任它抛出的后果很具体：对账是从
+ * `ensureLoaded` 内部调的，异常会被 `handleTaskFinished` 的 `catch` 吞掉
+ * ⇒ **整条投递被静默丢弃**（终态不入库、也不触发回复）。畸形卡片跳过即可，不值得炸掉投递。
+ */
+private fun JsonObject.readString(key: String): String? =
+    runCatching { this[key]?.jsonPrimitive?.contentOrNull }.getOrNull()
+
+private fun JsonObject.readLong(key: String): Long? =
+    runCatching { this[key]?.jsonPrimitive?.longOrNull }.getOrNull()
 
 /**
  * 中断对账的判据：工具结果仍是 `started` **且 registry 里没有这个 taskId**（`get(taskId) == null`），
@@ -287,13 +303,14 @@ internal fun List<UIMessage>.interruptedSubAgentTaskCandidates(
         message.parts.filterIsInstance<UIMessagePart.Tool>().forEach { part ->
             if (part.toolName != SUB_AGENT_TOOL_NAME) return@forEach
             val json = runCatching { JsonInstant.parseToJsonElement(part.outputText()).jsonObject }.getOrNull() ?: return@forEach
-            if (json["status"]?.jsonPrimitive?.contentOrNull != "started") return@forEach
-            val taskId = json["task_id"]?.jsonPrimitive?.contentOrNull ?: return@forEach
+            if (json.readString("status") != "started") return@forEach
+            val taskId = json.readString("task_id") ?: return@forEach
             if (isTracked(taskId)) return@forEach
             found += InterruptedTaskCandidate(
                 taskId = taskId,
                 cardCreatedAt = message.createdAt,
-                cardProcessStartedAt = json["process_started_at"]?.jsonPrimitive?.longOrNull,
+                cardLaunchedAt = json.readLong("launched_at"),
+                cardProcessStartedAt = json.readLong("process_started_at"),
             )
         }
     }

@@ -478,6 +478,7 @@ class SubAgentDeliveryTest {
         assertEquals("sub_self", candidates.single().taskId)
         assertEquals(cardTime, candidates.single().cardCreatedAt)
         assertEquals(1_699_999_000_000L, candidates.single().cardProcessStartedAt ?: -1L)
+        assertEquals(1_700_000_000_000L, candidates.single().cardLaunchedAt ?: -1L)
     }
 
     @Test
@@ -488,6 +489,7 @@ class SubAgentDeliveryTest {
 
         assertEquals(listOf("sub_old"), candidates.map { it.taskId })
         assertNull(candidates.single().cardProcessStartedAt)
+        assertNull(candidates.single().cardLaunchedAt)
     }
 
     @Test
