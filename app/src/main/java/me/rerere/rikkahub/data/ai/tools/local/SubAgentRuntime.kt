@@ -6,7 +6,6 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import me.rerere.ai.core.MessageRole
@@ -35,39 +34,16 @@ import kotlin.uuid.Uuid
 private const val TAG = "SubAgentRuntime"
 
 /**
- * 子代理自身的轮数上限（一轮 = 一次 provider 往返）。
+ * 工具没有任何输出时写进 Tool part 的占位文本（见 `withToolOutputs`）。
  *
- * 此处原先没有上限：`while (true)` 唯一的出口是「模型这一轮不再调工具」。而子代理看到的工具结果
- * 曾经是空的（见 `withToolOutputs`），模型会以为工具没返回东西、于是反复重调同一个工具——打转。
- * 现场表现是三个后台子代理一起跑时 CPU 打到 97%。给一个有界的轮数，用尽就如实报失败。
+ * **它不是次数/时长限制。** 子代理的轮数、工具调用次数、墙钟时长都**不设上限**（用户要求）：
+ * 那些护栏当初是给「打转」装的，而打转的真因是工具结果没送到模型（见 `withToolOutputs`）；
+ * 真因修掉之后，上限只会砍掉合法的长任务。
+ *
+ * 这条占位文本只保证「执行过的工具一定带 output」——否则 `isExecuted` 为假 ⇒ provider 会把这条
+ * 工具调用**整条丢掉**（模型看不到自己调过工具），而且下一轮还会被当成「还没执行」重跑。
  */
-private const val MAX_SUB_AGENT_STEPS = 32
-
-/** 工具没有任何输出时写进 Tool part 的占位文本（见 `withToolOutputs`）。 */
 private const val TOOL_NO_OUTPUT_NOTE = "[tool returned no output]"
-
-/** 同一个 (工具, 参数) 允许重复调用的次数，超过即判「打转」并中止。 */
-private const val MAX_IDENTICAL_TOOL_CALLS = 3
-
-/**
- * 同一个工具名的**总**调用预算。
- *
- * 与上面那条互补：模型也可能每次换一个措辞去搜同一个东西（参数不同，重复判据抓不到）。
- * 现场反馈是「后台一直在报子代理调工具，从 step 1 到这会一直」——查一份情报没有道理调十几次搜索，
- * 所以给每个工具一个总预算，超了即中止并如实报失败，别让用户干等十几分钟。
- */
-private const val MAX_CALLS_PER_TOOL = 10
-
-/**
- * 子代理的墙钟期限（8 分钟）。
- *
- * 为什么除了轮数上限还需要它：一轮 = 一次 provider 往返，而单次往返的耗时不受我们控制——
- * 网络卡住、上游排队、息屏后被系统限流，都会让「32 轮」这个上限在时间维度上失效。
- * 现场反馈是「发出去十来分钟都没回来」，而用户侧看到的是卡片一直停在「运行中」、
- * 既没有结果也没有失败回执——这违反验收标准里那条「意外中断也要有失败信息正常返回」。
- * 到点即取消并如实报失败，至少让用户立刻拿到回执、知道该重试。
- */
-private const val SUB_AGENT_DEADLINE_MS = 8L * 60 * 1000
 
 data class SubAgentResult(
     val success: Boolean,
@@ -185,7 +161,8 @@ class SubAgentRuntime(
         modelOverride: Uuid? = null,
         tools: List<Tool> = emptyList(),
         systemPrompt: String? = null,
-    ): SubAgentResult = try {
+    ): SubAgentResult {
+        try {
         val settings = settingsStore.settingsFlow.first()
         val resolvedModelId = resolveModelId(modelOverride, settings)
         val model = settings.findModelById(resolvedModelId) ?: settings.findModelById(settings.chatModelId)
@@ -230,11 +207,13 @@ class SubAgentRuntime(
 
         var currentMessages: List<UIMessage> = messages
         var textResponse = ""
-        // 同一 (工具, 参数) 与同一工具名的调用计数：模型「打转」的典型形态是反复发起同一件事，
-        // 每一轮都在烧一次 provider 往返。现场表现为「后台一直在报子代理调工具」。
-        val callCounts = mutableMapOf<String, Int>()
-        val toolCounts = mutableMapOf<String, Int>()
-        for (step in 1..MAX_SUB_AGENT_STEPS) {
+        // **轮数不设上限**（用户要求）。原先的四道护栏——轮数上限、同一 (工具, 参数) 重复上限、
+        // 单工具调用上限、8 分钟墙钟期限——都已移除：它们是给「打转」装的，而打转的真因是工具结果
+        // 没送到模型（见 `withToolOutputs`）。真因修掉之后，这些上限只会砍掉合法的长任务。
+        // 兜底仍在：进程若被杀，未回复的结果会在打开会话时重新排队（ChatService）。
+        var step = 0
+        while (true) {
+            step++
             val resultFlow = provider.streamText(
                 providerSetting = providerSetting,
                 messages = currentMessages,
@@ -255,8 +234,7 @@ class SubAgentRuntime(
             // `messages.last().getTools().filter { !it.isExecuted }`），而且**不加这一条就会死循环**：
             // 下一轮的回复会**合并进同一条助手消息**（`StreamChunkHandler` 只在「末尾不是助手消息」时
             // 才新建一条），于是本轮那个已经带上 output 的 Tool part 会一直留在末尾消息里；若照旧
-            // 全部重跑，就会每轮把同一个调用再执行一次——现场就是「任何工具调用都陷入循环」，
-            // 连让子代理用 eval_javascript 算 1+1 也一样。
+            // 全部重跑，就会每轮把同一个调用再执行一次——现场就是「任何工具调用都陷入循环」。
             val freshTools = lastMsg.parts.unexecutedToolCalls()
             if (freshTools.isEmpty()) return subAgentCompletion(textResponse)
 
@@ -265,55 +243,30 @@ class SubAgentRuntime(
             // 「工具返回空 + 用户又说了一句话」，于是把开场白当结论交回来（白卷）。
             val outputs = mutableMapOf<String, List<UIMessagePart>>()
             freshTools.forEach { toolPart ->
-                val key = "${toolPart.toolName}|${toolPart.input}"
-                val callCount = (callCounts[key] ?: 0) + 1
-                callCounts[key] = callCount
-                if (callCount > MAX_IDENTICAL_TOOL_CALLS) {
-                    Logging.log(TAG, "step $step: 同一调用第 $callCount 次，中止")
-                    return SubAgentResult(
-                        success = false,
-                        text = "",
-                        error = "子代理反复调用同一个工具（${toolPart.toolName} 同一参数已第 $callCount 次），已中止",
-                    )
-                }
-                val toolCount = (toolCounts[toolPart.toolName] ?: 0) + 1
-                toolCounts[toolPart.toolName] = toolCount
-                if (toolCount > MAX_CALLS_PER_TOOL) {
-                    Logging.log(TAG, "step $step: ${toolPart.toolName} 已调 $toolCount 次，中止")
-                    return SubAgentResult(
-                        success = false,
-                        text = "",
-                        error = "子代理反复调用 ${toolPart.toolName}（已 $toolCount 次），已中止",
-                    )
-                }
                 val output = executeSubAgentTool(toolPart, tools)
                 outputs[toolPart.toolCallId] = output
-                // 参数与输出都留一小段：判断「为什么打转」（同一查询重试？工具在报错？）只看这一行。
+                // 参数与输出各留一小段：这一行就是「子代理到底在干什么」的全部现场。
                 Logging.log(
                     TAG,
-                    "step $step: ${toolPart.toolName}(${previewForLog(toolPart.input)}) x$callCount -> " +
+                    "step $step: ${toolPart.toolName}(${previewForLog(toolPart.input)}) -> " +
                         "${output.size} part(s): ${previewForLog(output.filterIsInstance<UIMessagePart.Text>().joinToString("") { it.text })}",
                 )
             }
             currentMessages = currentMessages
                 .withToolOutputs(toolCallMessageId = lastMsg.id, outputs = outputs)
-                // 再补一条**空的助手消息作为轮次边界**：下一轮的回复会落进它，而不是与上一轮合并。
-                // 不补的话 `textResponse` 会把上一轮的开场白一起拼进来（「让我去看看最近的消息」+ 正文），
-                // 而 `freshTools` 也可能因为旧 Tool part 仍在末尾而判不出「这一轮没有新调用」。
+                // 再补一条**空的助手消息作为轮次边界**：下一轮的回复会落进它，而不是与上一轮合并
+                // （不补的话 `textResponse` 会把上一轮的开场白一起拼进来，且 `freshTools` 判据会失真）。
                 // 这与主循环 `responseBaseMessages` 的做法相同。
                 .let { it + UIMessage(role = MessageRole.ASSISTANT, parts = emptyList(), modelId = model.id) }
         }
 
-        Logging.log(TAG, "子代理达到 $MAX_SUB_AGENT_STEPS 轮仍未给出结论")
-        SubAgentResult(
-            success = false,
-            text = "",
-            error = "子代理 $MAX_SUB_AGENT_STEPS 轮内没有给出结论（工具调用可能打转）",
-        )
+        // `while (true)` 只有 `break`（消息列表为空）能走到这里。
+        Logging.log(TAG, "子代理循环意外退出（消息列表为空）")
+        return SubAgentResult(success = false, text = "", error = "子代理循环意外退出")
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        SubAgentResult(success = false, text = "", error = e.message ?: "Unknown error")
+        return SubAgentResult(success = false, text = "", error = e.message ?: "Unknown error")
     }
 
     /** 执行一个工具调用并返回它的输出。异常与「工具不存在」都变成**工具结果**（不再是一条 user 消息）。 */
@@ -368,19 +321,14 @@ class SubAgentRuntime(
             // 子代理的网络流必须自己持有前台服务：父生成一结束就会释放它，而任务可能还要跑很久。
             val token = keepAlive.hold(conversationId, backgroundTask = true)
             try {
-                // 期限到点即取消（`withTimeoutOrNull` 吞掉自己的 CancellationException 并返回 null），
-                // 于是任务照常走到终态、留下失败回执并触发那一轮——而不是永远停在「运行中」。
-                val result = withTimeoutOrNull(SUB_AGENT_DEADLINE_MS) {
-                    executeSync(
-                        prompt = prompt,
-                        modelOverride = modelOverride,
-                        tools = tools,
-                        systemPrompt = systemPrompt,
-                    )
-                } ?: SubAgentResult(
-                    success = false,
-                    text = "",
-                    error = "子代理超过 ${SUB_AGENT_DEADLINE_MS / 60_000} 分钟仍未完成（已取消）",
+                // 不设墙钟期限（用户要求）：任务跑多久由它自己决定，不再到点取消。
+                // 进程若在这中间被系统杀掉，未回复的结果会在用户打开会话时重新排队
+                // （见 ChatService.requeueUnrepliedTaskMarkers），不会永远没有回执。
+                val result = executeSync(
+                    prompt = prompt,
+                    modelOverride = modelOverride,
+                    tools = tools,
+                    systemPrompt = systemPrompt,
                 )
                 finish(
                     taskId = taskId,

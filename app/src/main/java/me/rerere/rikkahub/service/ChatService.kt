@@ -1166,23 +1166,41 @@ class ChatService(
                 model = model,
                 processingStatus = session.processingStatus,
                 messages = conversation.currentMessages.let { raw ->
-                    val base = (if (messageRange != null) {
+                    val base = if (messageRange != null) {
                         raw.subList(messageRange.start, messageRange.endInclusive + 1)
                     } else {
                         raw
-                    })
-                        // **标记是给用户看的回执，不能进 prompt。** 它的正文在 metadata 里，唯一
-                        // 到模型手上的通道是下面注入的通知。此前标记随历史一起发给模型，于是模型
-                        // 看到「Agent X 已完成」却看不到内容——现场就是主代理说「另一个也跑完了，
-                        // 不过结果还没送到我手上」，既多余又误导。
-                        .filterNot { it.subAgentTaskMarkerOrNull() != null }
-                    // 按标记派生待汇报的子代理任务通知（不落库，只存在于这一次请求）。
-                    // `notifyTaskIds` 非空时只注入这一条结果的通知（触发轮），否则注入全部未汇报的（用户轮）。
-                    injectTaskNotifications(
+                    }
+                    // **顺序要紧：注入必须从「还带标记的列表」派生**——通知的正文就是从标记的
+                    // metadata 里读出来的。滤掉标记只作用于最终发给 provider 的那一份。
+                    // 反过来做（先把标记滤掉、再注入）会让通知一条都派生不出来：模型干看着工具卡片
+                    // 上的 completed，只能猜「它们跑完了但结果没送到我手上」。
+                    val injected = injectTaskNotifications(
                         messages = base,
                         pendingTaskCount = localTools.subAgentTaskRegistry.liveCount(),
                         onlyTaskIds = notifyTaskIds,
                     )
+                    Logging.log(
+                        TAG,
+                        "inject: round=${if (notifyTaskIds != null) "trigger" else "user"} " +
+                            "task=${notifyTaskIds?.joinToString(",") ?: "-"} " +
+                            "→ ${injected.size - base.size} 条通知",
+                    )
+                    injected
+                        // 标记是给用户看的回执（正文在 metadata 里、只走上面注入的通知），不能进 prompt：
+                        // 否则模型会看到「Agent X 已完成」却看不到内容，既多余又误导。
+                        .filterNot { it.subAgentTaskMarkerOrNull() != null }
+                        // 触发轮再补一条**空的助手消息**：这一轮的回复落进它，而不是追加进上一条——
+                        // 否则多轮回复会堆在同一条消息里（现场：生成的东西都被加到原来的节点里去了）。
+                        // `GenerationLoop` 的 responseBaseMessages 会「复用末尾那条助手消息」，所以
+                        // 先放一条空的，落点就一定是新的。
+                        .let { list ->
+                            if (notifyTaskIds == null) {
+                                list
+                            } else {
+                                list + UIMessage(role = MessageRole.ASSISTANT, parts = emptyList(), modelId = model.id)
+                            }
+                        }
                 },
                 assistant = assistant,
                 conversationId = conversationId,
