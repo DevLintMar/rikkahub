@@ -608,6 +608,7 @@ class ChatService(
         Logging.log(
             TAG,
             "deliver proceed: task=${event.taskId} status=$status loaded=${session.loaded} " +
+                "generating=${session.generationJob.value?.isActive} queue=${session.taskDeliveries.size()} " +
                 ProcessInfo.describe(),
         )
 
@@ -811,6 +812,12 @@ class ChatService(
             handleMessageComplete(session.id)
         }
         session.setJob(job, cancelPrevious = false)
+        Logging.log(
+            TAG,
+            "startTaskDelivery: task=$taskId 开一轮（cancelPrevious=false，绝不取消在飞生成） " +
+                "pending=${session.state.value.currentMessages.pendingTaskMarkers().size()} " +
+                "queueLeft=${session.taskDeliveries.size()} ${ProcessInfo.describe()}",
+        )
         job.invokeOnCompletion { appScope.launch { advanceConversation(session.id) } }
         return job
     }
