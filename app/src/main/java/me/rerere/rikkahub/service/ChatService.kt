@@ -815,7 +815,7 @@ class ChatService(
         Logging.log(
             TAG,
             "startTaskDelivery: task=$taskId 开一轮（cancelPrevious=false，绝不取消在飞生成） " +
-                "pending=${session.state.value.currentMessages.pendingTaskMarkers().size()} " +
+                "pending=${session.state.value.currentMessages.pendingTaskMarkers().size} " +
                 "queueLeft=${session.taskDeliveries.size()} ${ProcessInfo.describe()}",
         )
         job.invokeOnCompletion { appScope.launch { advanceConversation(session.id) } }
