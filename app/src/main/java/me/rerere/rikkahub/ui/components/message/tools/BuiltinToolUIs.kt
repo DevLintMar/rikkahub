@@ -1872,8 +1872,16 @@ object SubAgentToolUI : ToolUIRenderer {
                 }
                 taskId?.takeIf { it.isNotBlank() }?.let { ToolPill(it) }
             }
-            // 失败时只显示分类短文案；原始 error 正文在标记 metadata 里，只给 AI（决策 5）
-            if (status == "failed") {
+            // 失败时只显示分类短文案；原始 error 正文在标记 metadata 里，只给 AI（决策 5）。
+            //
+            // **必须带 `error.isNullOrBlank()` 这个守卫**：同步路径也会写 `status:"failed"`，而且它
+            // 同时把**真实错误文本**放在 `error` 里（`SubAgentTool.kt:186-195`）。没有这个守卫，
+            // 同步失败会渲染三行——分类行（对 reason==null 一律猜「模型或网络错误」）+ 原有的真实
+            // error 行——而且那句猜测可能与真相矛盾（真实 error 可能是「No model available for
+            // sub-agent」或「Provider not found for model: X」）。
+            // 有守卫后：异步路径的投递改写**剔除**了 `result`/`error`（Task 3），故 `error` 为空
+            // ⇒ 分类行显示；同步路径 `error` 非空 ⇒ 分类行让位给真实 error。
+            if (status == "failed" && error.isNullOrBlank()) {
                 val reasonLabel = when (reason) {
                     "user_cancelled" -> stringResource(R.string.tool_ui_sub_agent_reason_user_cancelled)
                     "app_exit" -> stringResource(R.string.tool_ui_sub_agent_reason_app_exit)
