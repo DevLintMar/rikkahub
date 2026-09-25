@@ -208,6 +208,23 @@ class SubAgentDeliveryTest {
     }
 
     @Test
+    fun `注入的通知被识别为待剔除`() {
+        val injected = injectTaskNotifications(conversationOf(userText("你好"), marker()).currentMessages, 1).last()
+
+        assertTrue(injected.isInjectedTaskNotification())
+    }
+
+    @Test
+    fun `真实消息里出现标签不算注入通知（否则会被误剔除）`() {
+        // 用户或模型复述了 <task-notification> 字面量：必须**不**被剔除，否则最后一条 assistant
+        // 会被静默丢弃、标记永远 pending（见该谓词的 KDoc）
+        assertTrue(!UIMessage.user("<task-notification> 这串是什么？</task-notification>").isInjectedTaskNotification())
+        assertTrue(!UIMessage.assistant("<task-notification>x</task-notification>").isInjectedTaskNotification())
+        // 合成的 USER 消息若不含标签，也不该被剔除
+        assertTrue(!UIMessage.user("普通合成消息").copy(isSynthetic = true).isInjectedTaskNotification())
+    }
+
+    @Test
     fun `无需汇报时注入是恒等变换`() {
         val messages = listOf(userText("你好"), assistantText("在的"))
 

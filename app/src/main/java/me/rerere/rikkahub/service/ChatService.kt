@@ -1088,12 +1088,12 @@ class ChatService(
             }.collect { chunk ->
                 when (chunk) {
                     is GenerationChunk.Messages -> {
-                        // 过滤掉注入的子代理通知（用户不可见，仅提供给 AI 上下文）
-                        // 只看标签，不看角色：派生通知是 USER 消息（SYSTEM 在 Claude / Responses 上
-                        // 会被整类丢弃、根本送不到模型），再按角色判定就会把注入块当成真实用户消息写回会话。
-                        val filteredMessages = chunk.messages.filter { msg ->
-                            msg.parts.none { it is UIMessagePart.Text && it.text.contains(TASK_NOTIFICATION_TAG) }
-                        }
+                        // 过滤掉注入的子代理通知（用户不可见，仅提供给 AI 上下文）。
+                        // 判据是 USER + isSynthetic + 含标签三者同时满足，**不是只看标签**：真实消息
+                        // （用户写的、或模型复述的）里若出现该字面量，只看标签会把它们一起剔掉，而误过滤
+                        // 不可恢复（回复静默不写回 + 下标合并错位），漏过滤只是多一条可疑气泡。
+                        // 取舍的完整论证见 `UIMessage.isInjectedTaskNotification` 的 KDoc。
+                        val filteredMessages = chunk.messages.filterNot { it.isInjectedTaskNotification() }
                         val updatedConversation = getConversationFlow(conversationId).value
                             .updateCurrentMessages(filteredMessages)
                         updateConversation(conversationId, updatedConversation)

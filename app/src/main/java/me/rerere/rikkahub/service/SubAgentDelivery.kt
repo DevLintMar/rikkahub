@@ -21,6 +21,20 @@ internal const val SUB_AGENT_TASK_METADATA_KEY = "subAgentTask"
 internal const val TASK_NOTIFICATION_TAG = "<task-notification>"
 
 /**
+ * 是否是「派生注入的子代理通知」——写回会话时必须剔除它。
+ *
+ * 判据是**三者同时满足**：USER 角色 + `isSynthetic` + 文本含标签。**不能只看标签**：真实消息
+ * （用户写的、或模型复述的）里若出现字面量 `<task-notification>`，只看标签会把它们一起剔掉——
+ * 若命中的是最后一条 assistant，这轮回复会**静默不写回**（UI 读的是会话状态）且标记仍是 pending
+ * ⇒ 下一轮再注入 ⇒ 反复；若命中的在中间，`updateCurrentMessages` 的下标合并会把其后每条消息
+ * 都塞进前一个节点。取舍：漏过滤（注入块被写回）可恢复，误过滤（回复静默丢失 + 下标错位）不可。
+ */
+internal fun UIMessage.isInjectedTaskNotification(): Boolean =
+    role == MessageRole.USER &&
+        isSynthetic &&
+        parts.any { it is UIMessagePart.Text && it.text.contains(TASK_NOTIFICATION_TAG) }
+
+/**
  * 投递期写在**可见标记**上的机器可读部分。
  *
  * 载体选 `UIMessagePart.Text.metadata` 而不是「隐藏节点」：metadata 随 `nodes` blob 一起持久化、
@@ -109,7 +123,7 @@ internal fun injectTaskNotifications(
     if (markers.isEmpty()) return messages
     val injected = markers.map { marker ->
         // **必须是 USER，不能是 SYSTEM**：本仓 `ClaudeProvider.buildMessages` 会滤掉**全部** SYSTEM
-        // 消息（`ClaudeProvider.kt:555` 的 `it.role != MessageRole.SYSTEM`），Responses API 同样丢弃
+        // 消息（`ClaudeProvider.kt:558` 的 `it.role != MessageRole.SYSTEM`），Responses API 同样丢弃
         // 除首条外的 SYSTEM。用 SYSTEM 会让这条通知在那些 provider 上**根本送不到模型**——而通知正是
         // 结果正文唯一的去向（工具结果里已不正文），于是「AI 拿到子代理结果」这个核心承诺在 Claude 上
         // 直接不成立，症状恰好是「切屏之后回复里没有子代理的结果」。
