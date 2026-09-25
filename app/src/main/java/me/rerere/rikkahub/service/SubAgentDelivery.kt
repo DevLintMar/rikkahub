@@ -286,17 +286,19 @@ private fun JsonObject.readLong(key: String): Long? =
     runCatching { this[key]?.jsonPrimitive?.longOrNull }.getOrNull()
 
 /**
- * 中断对账的判据：工具结果仍是 `started` **且 registry 里没有这个 taskId**（`get(taskId) == null`），
- * 即「本进程完全不认识它」——只有这一种情形才等于「它随上一个进程一起死了」。
+ * 中断对账的判据：工具结果仍是 `started` **且本进程完全没登记过这个 taskId**——只有这一种情形
+ * 才等于「它随上一个进程一起死了」。改写后 `status` 变终态，所以这条判据天然幂等。
  *
- * 参数名是 `isTracked` 而不是 `isLive`：问法必须是「本进程是否登记过它」。若问「它是否还在跑」，
- * 本进程里刚完成、投递尚未落地的任务那一刻既不是 live、工具结果又还是 `started`，会被误判成中断，
- * 先写出一条假的「应用退出」回执，随后真正的投递因标记已存在而按幂等契约返回 null 被**静默丢弃**。
- *
- * 改写后 `status` 变终态，所以这条判据天然幂等。
+ * **参数收「已登记 taskId 的集合」，不收布尔谓词。** 这里踩过一次，代价是一整轮排查：
+ * 上一版收的是 `isTracked: (String) -> Boolean`，而调用点传的 lambda 是
+ * `registry.get(taskId) == null`（**意思是「没登记」**），名字与语义正好相反；函数体里靠
+ * `if (!isTracked(...))` 这个双重否定把它救回来，能用但谁读谁错。重写函数体时照着名字抄成
+ * `if (isTracked(...)) return` ⇒ **判据整个反过来**：本进程登记过的任务全被判「应用退出」，
+ * 真死掉的反而放过。两个方向都自洽（照那个撒谎的名字写的单测也照样全绿），现场只有日志能抓。
+ * 现在没有 flag 可翻：`taskId in knownTaskIds` 只有一个读法。
  */
 internal fun List<UIMessage>.interruptedSubAgentTaskCandidates(
-    isTracked: (String) -> Boolean,
+    knownTaskIds: Set<String>,
 ): List<InterruptedTaskCandidate> {
     val found = mutableListOf<InterruptedTaskCandidate>()
     forEach { message ->
@@ -305,7 +307,7 @@ internal fun List<UIMessage>.interruptedSubAgentTaskCandidates(
             val json = runCatching { JsonInstant.parseToJsonElement(part.outputText()).jsonObject }.getOrNull() ?: return@forEach
             if (json.readString("status") != "started") return@forEach
             val taskId = json.readString("task_id") ?: return@forEach
-            if (isTracked(taskId)) return@forEach
+            if (taskId in knownTaskIds) return@forEach
             found += InterruptedTaskCandidate(
                 taskId = taskId,
                 cardCreatedAt = message.createdAt,
@@ -318,5 +320,5 @@ internal fun List<UIMessage>.interruptedSubAgentTaskCandidates(
 }
 
 /** 只要 taskId 的简版（[interruptedSubAgentTaskCandidates] 的投影）。 */
-internal fun List<UIMessage>.interruptedSubAgentTaskIds(isTracked: (String) -> Boolean): List<String> =
-    interruptedSubAgentTaskCandidates(isTracked).map { it.taskId }
+internal fun List<UIMessage>.interruptedSubAgentTaskIds(knownTaskIds: Set<String>): List<String> =
+    interruptedSubAgentTaskCandidates(knownTaskIds).map { it.taskId }

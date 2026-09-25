@@ -2634,6 +2634,9 @@ CI 绿之后装 debug 包，按 spec §10.3 的 8 条清单验。**其中第 1 �
 
 **Pre-flight 扫描修掉的计划缺陷**（由控制器在开工前修正，已记账）：T2 的 `?.let {} ?: run {}` 改为 if/else；T2 转义测试里 `</result>` 的期望计数 2 → 1；`applyTaskDelivery` 的 `markerText` 由成品字符串改为 `(String) -> String`（否则中断对账只能拿 taskId 当子代理名）；改写时显式剔除 `result`/`error`；截断断言改为 `MAX + 后缀长度`；T4 `addLast` 返回 Unit 不能当表达式；T7 去掉 `cancel().let { true }`。
 
+**合并后回归（2026-09-25，设备核验中发现，已修）**：把 `interruptedSubAgentTaskIds` 重写成带证据的 `interruptedSubAgentTaskCandidates` 时，**把对账判据的极性写反了**。原函数收 `isTracked: (String) -> Boolean`，而调用点传的 lambda 是 `registry.get(taskId) == null`（**意思是「没登记」**）——名字与语义相反，靠函数体里的 `if (!isTracked(taskId))` 这个双重否定救着用。我按名字抄成 `if (isTracked(taskId)) return@forEach` ⇒ **本进程登记过的任务全被判「应用退出」，真死掉的反而放过**；两个方向都自洽，照那个撒谎的名字写的单测照样全绿，**只有设备上的现场日志能抓**（`reconcile: judged=sub_X … known=sub_X` —— 同一毫秒里判据说它没登记、证据表说它登记着）。修法不是在名字上做文章，而是**把极性从代码里删掉**：参数改为 `knownTaskIds: Set<String>`，判据写成 `taskId in knownTaskIds`，调用点传 `registry.all().map { it.taskId }.toSet()`；并补一条双向回归测试（登记过的不判、没登记的要判）——这条在倒置版本上会红。
+> **教训（与本计划 §7.5 同源、但换了皮）**：**名字与语义不一致的函数参数，重写时不能信名字**。上一轮的教训是「缺陷的根因是那个名字，修的时候要连名字一起改」；这一轮更狠——那个名字当时就是错的（`isTracked` 收的是「没登记」），而我没去看调用点。凡是「布尔参数的语义可以被反向解释」的地方，都该换成**集合/枚举这类只有一个读法**的表示。
+
 **已知缺口（执行者注意）**：
 - **`github-build-only` 环境**：本机跑不了 Gradle，所以每个任务的「跑测试」都是 push + CI。计划里每个任务都给了完整的 CI 命令，Task 1–6 可以合并到一次 CI。
 - **`strings.xml` 里的双引号**：本仓惯例是写 `\"`（`values/strings.xml` 里已有 **5 处**、`&quot;` **0 处**；aapt2 的字符串资源本就支持反斜杠转义）。Task 8 已按此写完并 CI 通过；Task 9 新增的六条文案不含引号，不受影响。**若将来要加，照抄 `\"` 即可。**（这条原话写的是「要写 `&quot;`、别照抄 `\"` 示例」——那是本控制器写错的，会让实现者把正确的代码改成与本仓惯例不一致的写法，已在 Task 8 派发前更正，此处一并写实。）

@@ -416,7 +416,7 @@ class SubAgentDeliveryTest {
             toolCallMessage(subAgentToolPart("sub_done", status = "completed")),
         )
 
-        val interrupted = messages.interruptedSubAgentTaskIds { it == "sub_live" }
+        val interrupted = messages.interruptedSubAgentTaskIds(setOf("sub_live"))
 
         assertEquals(listOf("sub_dead"), interrupted)
     }
@@ -427,21 +427,21 @@ class SubAgentDeliveryTest {
             toolCallMessage(subAgentToolPart("sub_dead", status = "failed")),
         )
 
-        assertTrue(messages.interruptedSubAgentTaskIds { false }.isEmpty())
+        assertTrue(messages.interruptedSubAgentTaskIds(emptySet()).isEmpty())
     }
 
     @Test
     fun `对账判据在投递后不再命中同一条`() {
         val conversation = conversationOf(toolCallMessage(subAgentToolPart("sub_dead", status = "started")))
 
-        assertEquals(listOf("sub_dead"), conversation.currentMessages.interruptedSubAgentTaskIds { false })
+        assertEquals(listOf("sub_dead"), conversation.currentMessages.interruptedSubAgentTaskIds(emptySet()))
 
         val updated = conversation.applyTaskDelivery(
             TaskDelivery("sub_dead", "failed", "app_exit", null, null, "进程被回收"),
             markerText = { _ -> "已中断" },
         )!!
 
-        assertTrue(updated.currentMessages.interruptedSubAgentTaskIds { false }.isEmpty())
+        assertTrue(updated.currentMessages.interruptedSubAgentTaskIds(emptySet()).isEmpty())
     }
 
     @Test
@@ -472,7 +472,7 @@ class SubAgentDeliveryTest {
             createdAt = cardTime,
         )
 
-        val candidates = listOf(card).interruptedSubAgentTaskCandidates { false }
+        val candidates = listOf(card).interruptedSubAgentTaskCandidates(emptySet())
 
         assertEquals(1, candidates.size)
         assertEquals("sub_self", candidates.single().taskId)
@@ -485,7 +485,7 @@ class SubAgentDeliveryTest {
     fun `没有进程字段的老卡片仍是候选，只是证据为 null`() {
         val messages = listOf(toolCallMessage(subAgentToolPart("sub_old")))
 
-        val candidates = messages.interruptedSubAgentTaskCandidates { false }
+        val candidates = messages.interruptedSubAgentTaskCandidates(emptySet())
 
         assertEquals(listOf("sub_old"), candidates.map { it.taskId })
         assertNull(candidates.single().cardProcessStartedAt)
@@ -496,6 +496,21 @@ class SubAgentDeliveryTest {
     fun `本进程认识的任务不出现在候选里`() {
         val messages = listOf(toolCallMessage(subAgentToolPart("sub_live")))
 
-        assertTrue(messages.interruptedSubAgentTaskCandidates { it == "sub_live" }.isEmpty())
+        assertTrue(messages.interruptedSubAgentTaskCandidates(setOf("sub_live")).isEmpty())
+    }
+    @Test
+    fun `判据两个方向都对：登记过的不判中断，没登记的要判`() {
+        val messages = listOf(
+            toolCallMessage(subAgentToolPart("sub_live")),
+            toolCallMessage(subAgentToolPart("sub_dead")),
+        )
+        // 本进程登记过 sub_live，没登记过 sub_dead
+        val known = setOf("sub_live")
+
+        assertEquals(listOf("sub_dead"), messages.interruptedSubAgentTaskIds(known))
+        assertEquals(
+            listOf("sub_dead"),
+            messages.interruptedSubAgentTaskCandidates(known).map { it.taskId },
+        )
     }
 }

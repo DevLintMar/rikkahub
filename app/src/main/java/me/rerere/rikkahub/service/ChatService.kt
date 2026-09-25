@@ -478,9 +478,11 @@ class ChatService(
         // 时标记已存在、按幂等契约返回 null ⇒ **真投递被静默丢弃**：结果正文丢失、且不触发 AI 回复。
         // 这正是验收标准第一条要保证的场景（用户切屏离开 → 会话被 5 秒空闲回收 → 子代理完成 →
         // 投递的 ensureLoaded 先跑对账）。「本进程不认识它」才等于「它随上一个进程一起死了」。
-        val candidates = conversation.currentMessages.interruptedSubAgentTaskCandidates { taskId ->
-            localTools.subAgentTaskRegistry.get(taskId) == null
-        }
+        // 传「本进程登记过的 taskId 集合」，不传谓词：谓词的名字与语义曾经正好相反，而那次
+        // 反转让「本进程刚跑完的任务」全被判成「应用退出」（详见候选函数的 KDoc）。
+        // 集合只取一次，判定与下面那行诊断日志用的是**同一份**数据——两者对不上就说明代码有病。
+        val knownTaskIds = localTools.subAgentTaskRegistry.all().map { it.taskId }.toSet()
+        val candidates = conversation.currentMessages.interruptedSubAgentTaskCandidates(knownTaskIds)
         if (candidates.isEmpty()) return
         // 诊断（本判定的唯一产出就是「应用退出」回执，而判据本身无法自证，所以两侧证据都钉下来）：
         // 本进程身份（pid/procStart）、本进程 registry 的身份与它登记过的全部 taskId、以及每张被
@@ -498,8 +500,7 @@ class ChatService(
                     },
                 )
                 append(" registry=@").append(System.identityHashCode(localTools.subAgentTaskRegistry))
-                append(" tracked=")
-                append(localTools.subAgentTaskRegistry.all().joinToString(",") { it.taskId })
+                append(" known=").append(knownTaskIds.joinToString(","))
                 append(' ')
                 append(ProcessInfo.describe())
             },
