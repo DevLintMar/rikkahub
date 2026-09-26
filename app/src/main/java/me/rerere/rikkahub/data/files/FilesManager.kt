@@ -529,6 +529,7 @@ data class SyncResult(
 object FileFolders {
     const val UPLOAD = "upload"
     const val SKILLS = "skills"
+    const val BUILTIN_SKILLS = "builtin_skills"
     const val FONTS = "fonts"
     const val TOOL_OUTPUTS = "tool_outputs"
 
@@ -541,6 +542,7 @@ object FileFolders {
      */
     val ROOTFS_BIND_MOUNTS: List<Pair<String, String>> = listOf(
         "/skills" to SKILLS,
+        "/builtin_skills" to BUILTIN_SKILLS,
         "/tool_outputs" to TOOL_OUTPUTS,
         "/upload" to UPLOAD,
     )

@@ -18,6 +18,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import me.rerere.rikkahub.data.files.FileFolders
 import me.rerere.rikkahub.ui.components.richtext.registerSerifCjkFallback
+import me.rerere.rikkahub.data.files.SkillManager
 import java.io.File
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -134,6 +135,9 @@ class RikkaHubApp : Application() {
         // 头像/背景文件存在性诊断：每次启动记录，便于定位恢复后头像丢失的环节
         logAvatarDiagnostics()
 
+        // Extract builtin skills from assets after install/update
+        extractBuiltinSkills()
+
         // Start WebServer if enabled in settings
         startWebServerIfEnabled()
 
@@ -206,6 +210,12 @@ class RikkaHubApp : Application() {
                         if (total > TOOL_OUTPUT_MAX_BYTES) file.delete()
                     }
             }
+        }
+    }
+
+    private fun extractBuiltinSkills() {
+        get<AppScope>().launch(Dispatchers.IO) {
+            get<SkillManager>().ensureBuiltinSkillsExtracted()
         }
     }
 

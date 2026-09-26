@@ -31,6 +31,7 @@ internal fun createWorkspaceTerminalSession(
     val filesDir = File(workspaceDir, "files")
     val linuxDir = File(workspaceDir, "linux")
     val tempDir = File(workspaceDir, "tmp")
+
     val nativeLibraryDir = File(appContext.applicationInfo.nativeLibraryDir)
     val proot = File(nativeLibraryDir, "libproot_exec.so")
     val loader = File(nativeLibraryDir, "libproot_loader.so")
@@ -45,6 +46,7 @@ internal fun createWorkspaceTerminalSession(
         WORKSPACE_DIR,
         "-b",
         "${filesDir.absolutePath}:$WORKSPACE_DIR",
+
     )
     // 与 AI 侧 shell（RepositoryModule → WorkspaceShellRunner）共用同一张挂载表。
     // 原来这里自己硬编码，少挂 /upload 与 /tool_outputs —— 提示词已经向模型承诺
@@ -327,6 +329,7 @@ internal class WorkspaceTerminalViewClient(
 }
 
 private const val WORKSPACE_DIR = "/workspace"
+
 
 // 一个 URL 最多还原跨越的软换行行数(向上/向下各算), 足够覆盖任意真实 URL
 private const val URL_MAX_WRAP_ROWS = 50
