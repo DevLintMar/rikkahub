@@ -40,4 +40,8 @@ sealed class LocalToolOption {
     @Serializable
     @SerialName("workflow")
     data object Workflow : LocalToolOption()
+
+    @Serializable
+    @SerialName("chart_display")
+    data object ChartDisplay : LocalToolOption()
 }

@@ -55,6 +55,8 @@ class LocalTools(
     val subAgentTool by lazy { buildSubAgentTool(subAgentRuntime) }
     val workflowTool by lazy { buildWorkflowTool(workflowEngine) }
 
+    val chartDisplayTool by lazy { buildChartDisplayTool() }
+
     fun getTools(options: List<LocalToolOption>): List<Tool> {
         val tools = mutableListOf<Tool>()
         if (options.contains(LocalToolOption.JavascriptEngine)) {
@@ -84,6 +86,10 @@ class LocalTools(
         }
         if (options.contains(LocalToolOption.Workflow)) {
             tools.add(workflowTool)
+        }
+        if (options.contains(LocalToolOption.ChartDisplay)) {
+            tools.add(chartDisplayTool)
+        }
         }
         return tools
     }

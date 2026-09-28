@@ -61,6 +61,9 @@ import me.rerere.ai.ui.UIMessagePart
 import me.rerere.common.http.jsonObjectOrNull
 import me.rerere.highlight.HighlightText
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.ChartColumn
+import me.rerere.hugeicons.stroke.ChartLineData01
+import me.rerere.hugeicons.stroke.ChartScatter
 import me.rerere.hugeicons.stroke.ChatBot
 import me.rerere.hugeicons.stroke.Clipboard
 import me.rerere.hugeicons.stroke.Delete01
@@ -1399,6 +1402,43 @@ object CalendarCreateToolUI : ToolUIRenderer {
         if (content == null || content.getStringContent("error") != null) {
             DefaultToolPreview(context = context)
             return
+        val title = content.getStringContent("title") ?: stringResource(R.string.tool_ui_untitled)
+        val start = content.getStringContent("start")
+        val end = content.getStringContent("end")
+        val eventId = content.getStringContent("event_id")
+        ToolDetailContainer {
+            Text(
+                text = stringResource(R.string.tool_ui_event_created, title),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            start?.let { Text(stringResource(R.string.tool_ui_event_start, it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            end?.let { Text(stringResource(R.string.tool_ui_event_end, it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            eventId?.let { ToolPill(stringResource(R.string.tool_ui_event_id, it)) }
+        }
+    }
+}
+
+object ChartDisplayToolUI : ToolUIRenderer {
+    override val toolName: String = "chart_display"
+
+    override fun icon(context: ToolUIContext): ImageVector =
+        when (context.arguments.getStringContent("style")) {
+            "bar" -> HugeIcons.ChartColumn
+            "scatter" -> HugeIcons.ChartScatter
+            else -> HugeIcons.ChartLineData01
+        }
+
+    @Composable
+    override fun title(context: ToolUIContext): String {
+        val chartTitle = context.arguments.getStringContent("title")
+        return if (chartTitle.isNullOrBlank()) {
+            stringResource(R.string.chat_message_tool_chart_display)
+        } else {
+            stringResource(R.string.chat_message_tool_chart_display_with_title, chartTitle)
+        }
+    }
+}
         }
         val title = content.getStringContent("title") ?: stringResource(R.string.tool_ui_untitled)
         val start = content.getStringContent("start")

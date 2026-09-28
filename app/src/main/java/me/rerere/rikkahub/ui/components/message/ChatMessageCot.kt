@@ -6,7 +6,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.util.fastForEachIndexed
 import kotlin.time.Clock
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.rikkahub.utils.JsonInstant
+
+internal const val CHART_DISPLAY_TOOL_NAME = "chart_display"
 
 /**
  * 聚合思考块内的用户交互状态（用于抑制执行结束后的自动收起）：
@@ -45,6 +51,9 @@ sealed interface MessagePartBlock {
 
     /** 连续图片合并块（仅用户消息）：index 取组内第一张图的原始 index，渲染为一行右对齐 */
     data class ImageGroupBlock(val images: List<UIMessagePart.Image>, val index: Int) : MessagePartBlock
+
+    /** 成功执行的 chart_display 工具调用, 在正文中以图表卡片展示 */
+    data class ChartBlock(val tool: UIMessagePart.Tool, val index: Int) : MessagePartBlock
 }
 
 /**
@@ -53,6 +62,9 @@ sealed interface MessagePartBlock {
  *
  * @param mergeConsecutiveImages 为 true 时，相邻的 Image part 合并为一个 [MessagePartBlock.ImageGroupBlock]
  *   （用户消息多图并排一行）；false 时保持每个 Image 一个 ContentBlock（assistant 消息/导出预览原样）。
+
+ * 成功执行的 chart_display 原地替换为 ChartBlock (会切断所在的 ThinkingBlock);
+ * 生成中或失败的调用仍作为普通 ToolStep 展示
  */
 fun List<UIMessagePart>.groupMessageParts(
     mergeConsecutiveImages: Boolean = false,
@@ -74,7 +86,12 @@ fun List<UIMessagePart>.groupMessageParts(
             }
 
             is UIMessagePart.Tool -> {
-                currentThinkingSteps.add(ThinkingStep.ToolStep(part))
+                if (part.isSuccessfulChartDisplay()) {
+                    flushThinkingSteps()
+                    result.add(MessagePartBlock.ChartBlock(part, index))
+                } else {
+                    currentThinkingSteps.add(ThinkingStep.ToolStep(part))
+                }
             }
 
             is UIMessagePart.ServerTool -> {
@@ -126,4 +143,12 @@ fun List<ThinkingStep>.thinkingAggregate(): Pair<Long, Int> {
         }
     }
     return thoughtMs to toolCount
+}
+
+private fun UIMessagePart.Tool.isSuccessfulChartDisplay(): Boolean {
+    if (toolName != CHART_DISPLAY_TOOL_NAME || !isExecuted) return false
+    val outputText = output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
+    val result = runCatching { JsonInstant.parseToJsonElement(outputText) }.getOrNull() as? JsonObject
+    return (result?.get("success") as? JsonPrimitive)?.booleanOrNull == true
+}
 }
