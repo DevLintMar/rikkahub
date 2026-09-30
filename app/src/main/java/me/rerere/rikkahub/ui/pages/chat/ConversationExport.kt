@@ -3,7 +3,6 @@ package me.rerere.rikkahub.ui.pages.chat
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
-import android.widget.Toast
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Book02
 import me.rerere.hugeicons.stroke.Book04
@@ -77,7 +76,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import me.rerere.ai.core.MessageRole
@@ -137,7 +135,7 @@ fun ChatExportSheet(
     val workspaceId = remember(settings.assistants, conversation.assistantId) {
         settings.getAssistantById(conversation.assistantId)?.workspaceId?.toString()
     }
-    var imageExportOptions by remember { mutableStateOf(ImageExportOptions()) }
+    var exportOptions by remember { mutableStateOf(ExportOptions()) }
 
     if (visible) {
         ModalBottomSheet(
@@ -153,11 +151,27 @@ fun ChatExportSheet(
             ) {
                 Text(text = stringResource(id = R.string.chat_page_export_format))
 
+                OutlinedCard(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    ListItem(
+                        headlineContent = { Text(stringResource(R.string.chat_page_export_include_reasoning)) },
+                        trailingContent = {
+                            Switch(
+                                checked = exportOptions.includeReasoning,
+                                onCheckedChange = {
+                                    exportOptions = exportOptions.copy(includeReasoning = it)
+                                }
+                            )
+                        }
+                    )
+                }
+
                 val markdownSuccessMessage =
                     stringResource(id = R.string.chat_page_export_success, "Markdown")
                 OutlinedCard(
                     onClick = {
-                        exportToMarkdown(context, conversation, selectedMessages)
+                        exportToMarkdown(context, conversation, selectedMessages, exportOptions)
                         toaster.show(
                             markdownSuccessMessage,
                             type = ToastType.Success
@@ -203,9 +217,10 @@ fun ChatExportSheet(
                             headlineContent = { Text(stringResource(R.string.chat_page_export_image_expand_reasoning)) },
                             trailingContent = {
                                 Switch(
-                                    checked = imageExportOptions.expandReasoning,
+                                    checked = exportOptions.expandReasoning,
+                                    enabled = exportOptions.includeReasoning,
                                     onCheckedChange = {
-                                        imageExportOptions = imageExportOptions.copy(expandReasoning = it)
+                                        exportOptions = exportOptions.copy(expandReasoning = it)
                                     }
                                 )
                             }
@@ -229,7 +244,12 @@ fun ChatExportSheet(
                                                 messages = selectedMessages,
                                                 workspaceId = workspaceId,
                                                 settings = settings,
-                                                options = imageExportOptions
+                                                options = exportOptions
+                                            )
+                                        }.onSuccess {
+                                            toaster.show(
+                                                imageSuccessMessage,
+                                                type = ToastType.Success
                                             )
                                         }.onFailure {
                                             it.printStackTrace()
@@ -239,10 +259,6 @@ fun ChatExportSheet(
                                             )
                                         }
                                     }
-                                    toaster.show(
-                                        imageSuccessMessage,
-                                        type = ToastType.Success
-                                    )
                                     onDismissRequest()
                                 }
                             ) {
@@ -259,7 +275,8 @@ fun ChatExportSheet(
 private fun exportToMarkdown(
     context: Context,
     conversation: Conversation,
-    messages: List<UIMessage>
+    messages: List<UIMessage>,
+    options: ExportOptions,
 ) {
     val filename = "chat-export-${LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))}.md"
 
@@ -283,13 +300,13 @@ private fun exportToMarkdown(
                     }
 
                     is UIMessagePart.Reasoning -> {
+                        if (!options.includeReasoning) return@forEach
                         part.reasoning.lines()
                             .filter { it.isNotBlank() }
-                            .map { "> $it" }
                             .forEach {
-                                append(it)
+                                append("> $it")
+                                appendLine()
                             }
-                        appendLine()
                         appendLine()
                     }
 
@@ -407,17 +424,11 @@ private suspend fun exportToImage(
      */
     workspaceId: String?,
     settings: Settings,
-    options: ImageExportOptions = ImageExportOptions()
+    options: ExportOptions = ExportOptions()
 ) {
     val filename = "chat-export-${LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))}.png"
     val composer = BitmapComposer(scope)
-    val activity = context.getActivity()
-    if (activity == null) {
-        withContext(Dispatchers.Main) {
-            Toast.makeText(context, "Failed to get activity", Toast.LENGTH_SHORT).show()
-        }
-        return
-    }
+    val activity = context.getActivity() ?: error("Failed to get activity")
 
     // Coil 的 AsyncImage 是异步的，而 BitmapComposer 只等固定 100ms 就截图 —— 网络图/大图
     // 基本都截不到，导出的图里就是空白。这里先把要画的图片同步加载成 ImageBitmap，
@@ -465,11 +476,6 @@ private suspend fun exportToImage(
             file
         )
         shareFile(context, uri, "image/png")
-    } catch (e: Exception) {
-        e.printStackTrace()
-        withContext(Dispatchers.Main) {
-            Toast.makeText(context, "Failed to export image: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
     } finally {
         bitmap.recycle()
     }
@@ -516,15 +522,19 @@ private suspend fun preloadExportImages(
     }
 }
 
-data class ImageExportOptions(val expandReasoning: Boolean = false)
+data class ExportOptions(
+    val includeReasoning: Boolean = true,
+    val expandReasoning: Boolean = false,
+)
 
 @Composable
 private fun ExportedChatImage(
     conversation: Conversation,
     messages: List<UIMessage>,
-    options: ImageExportOptions = ImageExportOptions(),
+    options: ExportOptions = ExportOptions(),
     images: Map<String, ImageBitmap> = emptyMap(),
     workspaceId: String? = null,
+)
 ) {
     val navBackStack = remember { mutableStateListOf<NavKey>() }
     val navigator = Navigator(navBackStack)
@@ -573,11 +583,11 @@ private fun ExportedChatImage(
                     }
 
                     // Messages
-                    messages.forEach { message ->
+                    messages.forEachIndexed { index, message ->
                         ExportedChatMessage(
                             message = message,
                             options = options,
-                            prevMessage = messages.getOrNull(messages.indexOf(message) - 1),
+                            prevMessage = messages.getOrNull(index - 1),
                             images = images,
                             workspaceId = workspaceId,
                         )
@@ -602,11 +612,15 @@ private fun ExportedChatImage(
 private fun ExportedChatMessage(
     message: UIMessage,
     prevMessage: UIMessage? = null,
-    options: ImageExportOptions = ImageExportOptions(),
+    options: ExportOptions = ExportOptions(),
     images: Map<String, ImageBitmap> = emptyMap(),
     workspaceId: String? = null,
 ) {
-    if (message.parts.isEmptyUIMessage()) return
+    val parts = remember(message.parts, options.includeReasoning) {
+        if (options.includeReasoning) message.parts else message.parts.filterNot { it is UIMessagePart.Reasoning }
+    }
+    if (parts.isEmptyUIMessage()) return
+    val context = LocalContext.current
     val settings = LocalSettings.current
     val model = message.modelId?.let { settings.findModelById(it) }
     // Always show model icon for assistant messages in exported images
@@ -616,7 +630,7 @@ private fun ExportedChatMessage(
         model?.displayName?.isNotBlank() == true -> model.displayName
         else -> "AI"
     }
-    val groupedParts = remember(message.parts) { message.parts.groupMessageParts() }
+    val groupedParts = remember(parts) { parts.groupMessageParts() }
     val messageContent: @Composable () -> Unit = {
         Column(
             modifier = Modifier
