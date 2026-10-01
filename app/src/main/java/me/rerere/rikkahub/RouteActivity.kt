@@ -1,6 +1,7 @@
 package me.rerere.rikkahub
 
 import android.annotation.SuppressLint
+import java.io.File
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
