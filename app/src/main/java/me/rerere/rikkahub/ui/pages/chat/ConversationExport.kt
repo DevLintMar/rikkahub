@@ -534,7 +534,6 @@ private fun ExportedChatImage(
     options: ExportOptions = ExportOptions(),
     images: Map<String, ImageBitmap> = emptyMap(),
     workspaceId: String? = null,
-)
 ) {
     val navBackStack = remember { mutableStateListOf<NavKey>() }
     val navigator = Navigator(navBackStack)
