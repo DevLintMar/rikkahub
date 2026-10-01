@@ -209,7 +209,7 @@ class WorkspaceFileUrlResolverTest {
     @Test
     fun `toSandboxPath 正确解析 upload 目录下的文件`() {
         val uploadFile = canonical("upload/photo.png")
-        uploadFile.parentFile.mkdirs()
+        uploadFile.parentFile?.mkdirs()
         uploadFile.writeText("test")
         assertEquals("/upload/photo.png", WorkspaceFileUrlResolver.toSandboxPath(uploadFile, filesDir))
     }
