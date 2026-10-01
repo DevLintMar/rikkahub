@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import android.webkit.MimeTypeMap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -382,13 +383,17 @@ internal fun openMarkdownLink(
         if (handled) return
 
         runCatching {
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                file,
+            )
+            val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(
+                file.extension.lowercase()
+            ) ?: "*/*"
             val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mime)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                data = FileProvider.getUriForFile(
-                    context,
-                    "${context.packageName}.fileprovider",
-                    file,
-                )
             }
             context.startActivity(Intent.createChooser(intent, null))
         }.onFailure { Log.w(TAG_LINK, "cannot open local file: $href", it) }

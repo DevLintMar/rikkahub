@@ -43,11 +43,11 @@ fun resolveLocalFile(filesDir: File, workspaceId: String?, href: String): Pair<S
 
     workspaceId?.takeIf { it.isNotBlank() }?.let { id ->
         WorkspaceFileUrlResolver.resolveFile(filesDir, id, path)
-            ?.takeIf { it.isFile }
+            ?.takeIf { it.exists() }
             ?.let { return id to it }
     }
     WorkspaceFileUrlResolver.resolveFile(filesDir, null, path)
-        ?.takeIf { it.isFile }
+        ?.takeIf { it.exists() }
         ?.let { return null to it }
 
     val prefix = WorkspaceManager.ROOTFS_WORKSPACE_DIR // "/workspace"
@@ -57,7 +57,7 @@ fun resolveLocalFile(filesDir: File, workspaceId: String?, href: String): Pair<S
 
     val workspaces = File(filesDir, WorkspaceManager.WORKSPACES_BASE_DIR)
     val id = workspaces.listFiles()?.firstOrNull { candidate ->
-        File(File(candidate, WorkspaceManager.FILES_DIR), relative).isFile
+        File(File(candidate, WorkspaceManager.FILES_DIR), relative).exists()
     }?.name ?: return null
     return id to File(File(File(workspaces, id), WorkspaceManager.FILES_DIR), relative)
 }

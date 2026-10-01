@@ -84,11 +84,12 @@ object WorkspaceFileUrlResolver {
      */
     fun toSandboxPath(file: File, filesDir: File): String? {
         val canonical = runCatching { file.canonicalFile }.getOrNull() ?: return null
-        if (!canonical.isFile) return null
+        if (!canonical.exists()) return null
 
         FileFolders.ROOTFS_BIND_MOUNTS.forEach { (target, folder) ->
             val root = runCatching { File(filesDir, folder).canonicalFile }.getOrNull()
                 ?: return@forEach
+            if (canonical == root) return target
             relativeInside(root, canonical)?.let { return "$target/$it" }
         }
 
@@ -98,8 +99,13 @@ object WorkspaceFileUrlResolver {
         }.getOrNull() ?: return null
         val relative = relativeInside(workspacesRoot, canonical) ?: return null
         val segments = relative.split('/')
-        if (segments.size >= 3 && segments[1] == WorkspaceManager.FILES_DIR) {
-            return "$PREFIX_WORKSPACE/" + segments.drop(2).joinToString("/")
+        if (segments.size >= 2 && segments[1] == WorkspaceManager.FILES_DIR) {
+            val subPath = segments.drop(2).joinToString("/")
+            return if (subPath.isEmpty()) PREFIX_WORKSPACE else "$PREFIX_WORKSPACE/$subPath"
+        }
+        if (segments.size >= 2 && segments[1] == WorkspaceManager.LINUX_DIR) {
+            val subPath = segments.drop(2).joinToString("/")
+            return "/$subPath"
         }
         return null
     }

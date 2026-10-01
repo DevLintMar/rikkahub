@@ -10,6 +10,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -52,7 +54,13 @@ fun ImagePreviewDialog(
                 pagerState = state,
                 imageLoader = { index ->
                     val painter = rememberAsyncImagePainter(images[index])
-                    return@ImagePager Pair(painter, painter.intrinsicSize)
+                    val size = painter.intrinsicSize
+                    val safeSize = if (size.isSpecified && size.width > 0f && size.height > 0f) {
+                        size
+                    } else {
+                        Size(1024f, 1024f)
+                    }
+                    return@ImagePager Pair(painter, safeSize)
                 },
             )
 

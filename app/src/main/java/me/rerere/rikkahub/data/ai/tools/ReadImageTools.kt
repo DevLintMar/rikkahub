@@ -76,7 +76,7 @@ private val imageHttpClient by lazy {
 }
 
 /** 判断图片类型需要读取的文件头长度 */
-private const val IMAGE_HEADER_BYTES = 16
+private const val IMAGE_HEADER_BYTES = 256
 
 fun createReadImageTool(
     workspaceId: String?,
@@ -293,6 +293,21 @@ internal fun sniffImageExtension(header: ByteArray): String? {
     val gifHeader = ascii(0, 6)
     if (gifHeader == "GIF89a" || gifHeader == "GIF87a") return "gif"
     if (header.size >= 2 && header[0] == 'B'.code.toByte() && header[1] == 'M'.code.toByte()) return "bmp"
+
+    // ICO：保留字段(2B)=0，类型(2B)=1 (图标)
+    if (header.size >= 4 && header[0] == 0.toByte() && header[1] == 0.toByte() &&
+        header[2] == 1.toByte() && header[3] == 0.toByte()
+    ) {
+        return "ico"
+    }
+
+    // SVG：XML 声明或 <svg 根标签
+    val text = ascii(0, header.size).trimStart()
+    if ((text.startsWith("<?xml", ignoreCase = true) && text.contains("<svg", ignoreCase = true)) ||
+        text.startsWith("<svg", ignoreCase = true)
+    ) {
+        return "svg"
+    }
     return null
 }
 

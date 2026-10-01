@@ -6,6 +6,8 @@ import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
+import com.dokar.sonner.ToastType
+import me.rerere.rikkahub.data.db.dao.WorkspaceDAO
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
@@ -63,6 +65,7 @@ import coil3.network.cachecontrol.CacheControlCacheStrategy
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
 import coil3.svg.SvgDecoder
+import me.rerere.rikkahub.data.image.IcoDecoder
 import com.dokar.sonner.Toaster
 import com.dokar.sonner.rememberToasterState
 import kotlinx.serialization.Serializable
@@ -221,6 +224,7 @@ class RouteActivity : ComponentActivity() {
                                 add(GifDecoder.Factory())
                             }
                             add(SvgDecoder.Factory(scaleToDensity = true))
+                            add(IcoDecoder.Factory())
                         }
                         .build()
                 }
@@ -307,26 +311,58 @@ class RouteActivity : ComponentActivity() {
         var previewImagePath by remember { mutableStateOf<String?>(null) }
         // 点本地文件链接 → 应用内预览（与工作区管理界面点开文件同一套行为）：图片弹应用内看图、
         // 文本/svg 进工作区文件编辑器；其余（如 /upload 里的非图片）不接管，退回安全兜底
+        val workspaceDao = koinInject<WorkspaceDAO>()
+        val workspaces by workspaceDao.listFlow().collectAsStateWithLifecycle(emptyList())
+        val validWorkspaceIds = remember(workspaces) { workspaces.map { it.id }.toSet() }
+
         val appNavigator = remember(backStack) { Navigator(backStack) }
-        val localFileOpener = remember(appNavigator) {
+        val localFileOpener = remember(appNavigator, validWorkspaceIds) {
             LocalFileOpener { workspaceId, sandboxPath, file ->
                 when {
-                    file.extension.lowercase() in PREVIEW_IMAGE_EXTENSIONS -> {
+                    // 1. 目录点击：若在工作区内，跳转到工作区文件管理对应目录
+                    file.isDirectory && workspaceId != null -> {
+                        if (workspaceId !in validWorkspaceIds) {
+                            toastState.show("工作区不存在或已被解绑", type = ToastType.Warning)
+                            true
+                        } else {
+                            val target = workspaceEditorTarget(sandboxPath)
+                            if (target != null) {
+                                appNavigator.navigate(
+                                    Screen.WorkspaceDetail(
+                                        id = workspaceId,
+                                        initialPage = 1,
+                                        initialArea = target.first,
+                                        initialPath = target.second,
+                                    )
+                                )
+                                true
+                            } else false
+                        }
+                    }
+
+                    // 2. 图片文件（含 SVG / ICO）：弹窗全屏预览
+                    file.isFile && file.extension.lowercase() in PREVIEW_IMAGE_EXTENSIONS -> {
                         previewImagePath = file.absolutePath
                         true
                     }
 
-                    workspaceId != null -> {
-                        val target = workspaceEditorTarget(sandboxPath)
-                        if (target == null) false
-                        else {
-                            appNavigator.navigate(
-                                Screen.WorkspaceFileEditor(workspaceId, target.first, target.second)
-                            )
+                    // 3. 文本/代码文件：进入工作区编辑器
+                    file.isFile && workspaceId != null && isTextOrCodeFile(file) -> {
+                        if (workspaceId !in validWorkspaceIds) {
+                            toastState.show("工作区不存在或已被解绑", type = ToastType.Warning)
                             true
+                        } else {
+                            val target = workspaceEditorTarget(sandboxPath)
+                            if (target != null) {
+                                appNavigator.navigate(
+                                    Screen.WorkspaceFileEditor(workspaceId, target.first, target.second)
+                                )
+                                true
+                            } else false
                         }
                     }
 
+                    // 4. 其余未知文件（如 .db, .zip, .pdf 等）：不接管，退回系统安全兜底
                     else -> false
                 }
             }
@@ -598,7 +634,12 @@ class RouteActivity : ComponentActivity() {
                             }
 
                             entry<Screen.WorkspaceDetail> { key ->
-                                WorkspaceDetailPage(key.id)
+                                WorkspaceDetailPage(
+                                    id = key.id,
+                                    initialPage = key.initialPage,
+                                    initialArea = key.initialArea,
+                                    initialPath = key.initialPath,
+                                )
                             }
 
                             entry<Screen.WorkspaceTerminal> { key ->
@@ -822,7 +863,12 @@ sealed interface Screen : NavKey {
     data object Workspaces : Screen
 
     @Serializable
-    data class WorkspaceDetail(val id: String) : Screen
+    data class WorkspaceDetail(
+        val id: String,
+        val initialPage: Int = 0,
+        val initialArea: String? = null,
+        val initialPath: String? = null,
+    ) : Screen
 
     @Serializable
     data class WorkspaceTerminal(val id: String) : Screen
@@ -840,10 +886,31 @@ sealed interface Screen : NavKey {
     data object Stats : Screen
 }
 
-/** 点到这些扩展名的本地文件时弹应用内看图（svg 归文件编辑器，与工作区管理界面点开文件一致）。 */
+/** 点到这些扩展名的本地文件时弹应用内看图。 */
 private val PREVIEW_IMAGE_EXTENSIONS = setOf(
-    "jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif", "avif", "ico",
+    "jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif", "avif", "ico", "svg",
 )
+
+private val KNOWN_TEXT_EXTENSIONS = setOf(
+    "txt", "md", "markdown", "json", "json5", "xml", "yaml", "yml", "toml", "ini", "conf", "cfg",
+    "properties", "env", "csv", "tsv", "log", "html", "htm", "css", "scss", "sass", "less",
+    "js", "mjs", "cjs", "ts", "tsx", "jsx", "kt", "kts", "java", "py", "rb", "go", "rs", "c", "h",
+    "cpp", "hpp", "cc", "cs", "swift", "sh", "bash", "zsh", "gradle", "sql", "gitignore",
+    "dockerfile", "lua", "php", "pl", "r", "dart", "vue", "svelte", "gql", "graphql", "proto",
+    "diff", "patch", "srt", "vtt",
+)
+
+private val KNOWN_DEV_FILENAMES = setOf(
+    "makefile", "dockerfile", "containerfile", "license", "readme",
+)
+
+private fun isTextOrCodeFile(file: File): Boolean {
+    val name = file.name.lowercase()
+    val ext = file.extension.lowercase()
+    if (ext in KNOWN_TEXT_EXTENSIONS) return true
+    if (name in KNOWN_DEV_FILENAMES || name.startsWith(".env") || name.startsWith(".git")) return true
+    return ext.isEmpty()
+}
 
 /**
  * 沙箱路径 → 工作区文件编辑器的 `(area, path)`；不属于工作区时返回 null。

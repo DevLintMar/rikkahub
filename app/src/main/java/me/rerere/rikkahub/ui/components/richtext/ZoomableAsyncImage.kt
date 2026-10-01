@@ -99,8 +99,10 @@ fun ZoomableAsyncImage(
             loading = false
             if (sizeFromCachedAspectRatio && cachedAspectRatio == null) {
                 val image = state.result.image
-                ImageAspectRatioCache.put(model, image.width, image.height)
-                cachedAspectRatio = ImageAspectRatioCache.get(model)
+                if (image.width > 0 && image.height > 0) {
+                    ImageAspectRatioCache.put(model, image.width, image.height)
+                    cachedAspectRatio = ImageAspectRatioCache.get(model)
+                }
             }
             if (BuildConfig.DEBUG) {
                 val now = SystemClock.elapsedRealtime()

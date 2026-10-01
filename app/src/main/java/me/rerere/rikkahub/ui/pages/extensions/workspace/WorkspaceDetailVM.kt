@@ -60,6 +60,18 @@ class WorkspaceDetailVM(
         refresh()
     }
 
+    fun navigateTo(area: WorkspaceStorageArea, path: String) {
+        _state.update {
+            it.copy(
+                area = area,
+                path = path,
+                entries = emptyList(),
+                error = null,
+            )
+        }
+        refresh()
+    }
+
     fun open(entry: WorkspaceFileEntry) {
         if (!entry.isDirectory) return
         _state.update { it.copy(path = entry.path, entries = emptyList(), error = null) }

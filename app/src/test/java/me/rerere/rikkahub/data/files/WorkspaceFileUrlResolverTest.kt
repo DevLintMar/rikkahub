@@ -191,4 +191,26 @@ class WorkspaceFileUrlResolverTest {
         assertNull(WorkspaceFileUrlResolver.resolveFile(filesDir, "w1", ""))
         assertNull(WorkspaceFileUrlResolver.resolveFile(filesDir, "w1", "   "))
     }
+
+    @Test
+    fun `toSandboxPath 正确解析工作区子目录与根目录`() {
+        val srcDir = canonical("workspaces/w1/files/src")
+        srcDir.mkdirs()
+        assertEquals("/workspace/src", WorkspaceFileUrlResolver.toSandboxPath(srcDir, filesDir))
+
+        val filesRoot = canonical("workspaces/w1/files")
+        assertEquals("/workspace", WorkspaceFileUrlResolver.toSandboxPath(filesRoot, filesDir))
+
+        val etcDir = canonical("workspaces/w1/linux/etc")
+        etcDir.mkdirs()
+        assertEquals("/etc", WorkspaceFileUrlResolver.toSandboxPath(etcDir, filesDir))
+    }
+
+    @Test
+    fun `toSandboxPath 正确解析 upload 目录下的文件`() {
+        val uploadFile = canonical("upload/photo.png")
+        uploadFile.parentFile.mkdirs()
+        uploadFile.writeText("test")
+        assertEquals("/upload/photo.png", WorkspaceFileUrlResolver.toSandboxPath(uploadFile, filesDir))
+    }
 }

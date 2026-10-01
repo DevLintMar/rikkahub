@@ -98,14 +98,28 @@ import org.koin.core.parameter.parametersOf
 import java.io.File
 
 @Composable
-fun WorkspaceDetailPage(id: String) {
+fun WorkspaceDetailPage(
+    id: String,
+    initialPage: Int = 0,
+    initialArea: String? = null,
+    initialPath: String? = null,
+) {
     val navController = LocalNavController.current
     val vm: WorkspaceDetailVM = koinViewModel(parameters = { parametersOf(id) })
     val state by vm.state.collectAsStateWithLifecycle()
     val installProgress by vm.installProgress.collectAsStateWithLifecycle()
     val installError by vm.installError.collectAsStateWithLifecycle()
     val settingsError by vm.settingsError.collectAsStateWithLifecycle()
-    val pagerState = rememberPagerState { 2 }
+    val pagerState = rememberPagerState(initialPage = initialPage.coerceIn(0, 1)) { 2 }
+    LaunchedEffect(initialArea, initialPath) {
+        if (!initialArea.isNullOrBlank() || !initialPath.isNullOrBlank()) {
+            val area = when (initialArea?.uppercase()) {
+                WorkspaceStorageArea.LINUX.name -> WorkspaceStorageArea.LINUX
+                else -> WorkspaceStorageArea.FILES
+            }
+            vm.navigateTo(area, initialPath.orEmpty())
+        }
+    }
     val scope = rememberCoroutineScope()
     var deleteTarget by remember { mutableStateOf<WorkspaceFileEntry?>(null) }
     var showInstallDialog by remember { mutableStateOf(false) }

@@ -57,6 +57,9 @@ class ReadImageToolsTest {
         assertEquals("bmp", sniffImageExtension(bytes(0x42, 0x4D, 0x00, 0x00)))
         assertEquals("heic", sniffImageExtension("????ftypheic????".toByteArray(Charsets.US_ASCII)))
         assertEquals("avif", sniffImageExtension("????ftypavif????".toByteArray(Charsets.US_ASCII)))
+        assertEquals("ico", sniffImageExtension(bytes(0x00, 0x00, 0x01, 0x00, 0x01, 0x00)))
+        assertEquals("svg", sniffImageExtension("<svg viewBox="0 0 10 10"></svg>".toByteArray(Charsets.US_ASCII)))
+        assertEquals("svg", sniffImageExtension("<?xml version="1.0"?><svg></svg>".toByteArray(Charsets.US_ASCII)))
     }
 
     @Test
