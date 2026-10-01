@@ -19,10 +19,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -53,6 +55,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEach
@@ -98,6 +101,9 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
     var selectedTagIds by remember { mutableStateOf(emptySet<Uuid>()) }
     // 操作菜单状态
     var actionSheetAssistant by remember { mutableStateOf<Assistant?>(null) }
+    // 待复制的助手(仅在有独立记忆时需要询问是否一并复制)
+    var cloneTarget by remember { mutableStateOf<Assistant?>(null) }
+    var cloneWithMemories by remember { mutableStateOf(false) }
 
     // 根据搜索关键词和选中的标签过滤助手
     val filteredAssistants = remember(settings.assistants, selectedTagIds, searchQuery) {
@@ -241,11 +247,17 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
 
     // 操作菜单 Bottom Sheet
     actionSheetAssistant?.let { assistant ->
+        val memories by vm.getMemories(assistant).collectAsStateWithLifecycle(emptyList())
         AssistantActionSheet(
             assistant = assistant,
             onDismiss = { actionSheetAssistant = null },
             onCopy = {
-                vm.copyAssistant(assistant)
+                if (!assistant.useGlobalMemory && memories.isNotEmpty()) {
+                    cloneWithMemories = false
+                    cloneTarget = assistant
+                } else {
+                    vm.copyAssistant(assistant)
+                }
                 actionSheetAssistant = null
             },
             onDelete = {
@@ -253,6 +265,33 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
                 actionSheetAssistant = null
             }
         )
+    }
+
+    RikkaConfirmDialog(
+        show = cloneTarget != null,
+        title = stringResource(R.string.assistant_page_clone),
+        confirmText = stringResource(R.string.confirm),
+        dismissText = stringResource(R.string.cancel),
+        onConfirm = {
+            cloneTarget?.let { vm.copyAssistant(it, copyMemories = cloneWithMemories) }
+            cloneTarget = null
+        },
+        onDismiss = { cloneTarget = null },
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .toggleable(
+                    value = cloneWithMemories,
+                    role = Role.Checkbox,
+                    onValueChange = { cloneWithMemories = it },
+                ),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Checkbox(checked = cloneWithMemories, onCheckedChange = null)
+            Text(stringResource(R.string.assistant_page_clone_with_memories))
+        }
     }
 }
 
