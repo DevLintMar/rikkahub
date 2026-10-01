@@ -43,14 +43,14 @@ import java.util.concurrent.TimeUnit
  * 恒注册。URL 解析与 markdown 渲染共用一套 Rootfs 逻辑路径规则（[WorkspaceFileUrlResolver]）：
  * - `file:///upload/...` 本地附件（**无需工作区**）
  * - 工作区内任意绝对路径（`/workspace/...`、`/tmp/...`、`/skills/...` 等，需工作区）
- * - `http(s)://` 网页图片（下载到 upload/，8MB 上限）
+ * - `http(s)://` 网页图片（下载到 upload/，32MB 上限）
  * 历史记录在 [chat_message_tool_read_image_failed] 的封装统一见 [ReadImageResult]。
  */
 const val READ_IMAGE_MAX_IMAGES_PER_CALL = 8
 
 private const val TAG = "ReadImageTools"
 
-private const val READ_IMAGE_MAX_DOWNLOAD_BYTES = 8L * 1024 * 1024
+private const val READ_IMAGE_MAX_DOWNLOAD_BYTES = 32L * 1024 * 1024
 
 /** http 下载失败自动重试：1 次初始 + 3 次重试 = 4 次尝试（网络波动等瞬时错误） */
 private const val DOWNLOAD_MAX_ATTEMPTS = 4
@@ -218,7 +218,7 @@ private suspend fun readSingleImage(
  *
  * 复制而不是直接引用工作区原文件：工具结果里的 Image part 会进 `Conversation.files`，
  * 删除该消息时清理逻辑会把它当附件删掉（checkFilesDelete 只对 upload 目录留手），
- * 直接引用工作区路径会导致工作区里的原文件被删。上限 8MB；非图片内容、路径穿越一律拒绝。
+ * 直接引用工作区路径会导致工作区里的原文件被删。上限 32MB；非图片内容、路径穿越一律拒绝。
  */
 internal suspend fun resolveImageFileUri(
     workspaceId: String?,
@@ -312,7 +312,7 @@ internal fun sniffImageExtension(header: ByteArray): String? {
 }
 
 /**
- * 下载 http(s) 图片到 upload/，返回 file:// URL。上限 8MB，超限或非图片抛出。
+ * 下载 http(s) 图片到 upload/，返回 file:// URL。上限 32MB，超限或非图片抛出。
  *
  * **整体 20 秒超时**（[READ_IMAGE_TIMEOUT_SECONDS]），超时直接失败且不重试——访问不到的图片
  * 重试只是再等一轮，会把工具调用一直挂住。其余瞬时错误（5xx、连接被重置等）仍自动重试

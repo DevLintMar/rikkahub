@@ -5,6 +5,8 @@ import java.io.File
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.Parcel
+import android.util.Log
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import com.dokar.sonner.ToastType
@@ -237,6 +239,24 @@ class RouteActivity : ComponentActivity() {
     private fun disableNavigationBarContrast() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        // 防御 TransactionTooLargeException：
+        // 聊天数据已持久化于 Room 数据库，若 Compose/Nav3 累积的瞬态快照超过安全水位（200KB），
+        // 主动清空以避免切屏触发 Binder IPC 500KB 事务过大崩溃（见 SafeModeActivity 历史崩溃分析）。
+        val parcel = Parcel.obtain()
+        try {
+            outState.writeToParcel(parcel, 0)
+            val size = parcel.dataSize()
+            if (size > 200 * 1024) {
+                outState.clear()
+                Log.w(TAG, "onSaveInstanceState: parcel size (${size / 1024}KB) exceeded threshold, cleared to prevent crash")
+            }
+        } finally {
+            parcel.recycle()
         }
     }
 
