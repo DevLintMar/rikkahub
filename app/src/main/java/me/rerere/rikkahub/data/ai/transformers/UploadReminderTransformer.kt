@@ -45,7 +45,7 @@ object UploadReminderTransformer : InputMessageTransformer, KoinComponent {
             appendLine("<uploaded_files>")
             appendLine("The user attached these files to the conversation; they are addressable as `file://` URLs:")
             uploads.forEach { appendLine("- file://$it") }
-            appendLine("To show one in your reply, reference it the same way — for example `![photo](file:///upload/photo.jpg)` — and the app renders it inline (images as pictures, other files as clickable links). Do that when the file actually matters to what you are saying.")
+            appendLine("To show an attached image in your reply, use image markdown: `![photo](file:///upload/photo.jpg)`. To reference an attached non-image file, use standard link markdown without exclamation mark: `[filename](file:///upload/doc.pdf)` (renders as a clickable link). Do that when the file actually matters to what you are saying.")
             appendLine("The `read_image` tool can read any of them back if you need another look.")
             append("</uploaded_files>")
         }
