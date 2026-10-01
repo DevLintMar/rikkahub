@@ -90,7 +90,6 @@ class LocalTools(
         if (options.contains(LocalToolOption.ChartDisplay)) {
             tools.add(chartDisplayTool)
         }
-        }
         return tools
     }
 }

@@ -151,4 +151,3 @@ private fun UIMessagePart.Tool.isSuccessfulChartDisplay(): Boolean {
     val result = runCatching { JsonInstant.parseToJsonElement(outputText) }.getOrNull() as? JsonObject
     return (result?.get("success") as? JsonPrimitive)?.booleanOrNull == true
 }
-}

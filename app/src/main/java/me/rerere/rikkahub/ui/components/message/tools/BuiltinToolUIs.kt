@@ -1402,6 +1402,7 @@ object CalendarCreateToolUI : ToolUIRenderer {
         if (content == null || content.getStringContent("error") != null) {
             DefaultToolPreview(context = context)
             return
+        }
         val title = content.getStringContent("title") ?: stringResource(R.string.tool_ui_untitled)
         val start = content.getStringContent("start")
         val end = content.getStringContent("end")
@@ -1436,23 +1437,6 @@ object ChartDisplayToolUI : ToolUIRenderer {
             stringResource(R.string.chat_message_tool_chart_display)
         } else {
             stringResource(R.string.chat_message_tool_chart_display_with_title, chartTitle)
-        }
-    }
-}
-        }
-        val title = content.getStringContent("title") ?: stringResource(R.string.tool_ui_untitled)
-        val start = content.getStringContent("start")
-        val end = content.getStringContent("end")
-        val eventId = content.getStringContent("event_id")
-        ToolDetailContainer {
-            Text(
-                text = stringResource(R.string.tool_ui_event_created, title),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            start?.let { Text(stringResource(R.string.tool_ui_event_start, it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            end?.let { Text(stringResource(R.string.tool_ui_event_end, it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            eventId?.let { ToolPill(stringResource(R.string.tool_ui_event_id, it)) }
         }
     }
 }
