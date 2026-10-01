@@ -1,0 +1,34 @@
+name: Export Signing Keys
+
+on:
+  workflow_dispatch:
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Export and verify keystores
+        run: |
+          set -eu
+          mkdir -p keys
+          echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > keys/release.keystore
+          echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > keys/debug.keystore
+          echo "${{ secrets.PRE_KEYSTORE_BASE64 }}" | base64 -d > keys/pre.keystore
+
+          for n in release debug pre; do
+            echo "=== $n ==="
+            keytool -list -v -keystore "keys/$n.keystore" -storepass android | grep -E 'Alias name|SHA256:' || true
+          done
+
+      - name: Upload keys artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: signing-keys-backup
+          path: keys/
+          retention-days: 1
