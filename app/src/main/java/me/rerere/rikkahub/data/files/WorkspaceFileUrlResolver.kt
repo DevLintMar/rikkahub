@@ -59,18 +59,36 @@ object WorkspaceFileUrlResolver {
         val id = workspaceId?.takeIf { it.isNotBlank() }
         if (path == PREFIX_WORKSPACE || path.startsWith("$PREFIX_WORKSPACE/")) {
             val workspaceIdOrNull = id ?: return null
+            val rel = path.removePrefix(PREFIX_WORKSPACE).trimStart('/')
             val filesArea = File(workspaceRootDir(filesDir, workspaceIdOrNull), WorkspaceManager.FILES_DIR)
-            return resolveInside(filesArea, path.removePrefix(PREFIX_WORKSPACE).trimStart('/'))
+            val directFile = resolveInside(filesArea, rel)
+            if (directFile != null && directFile.exists()) return directFile
+
+            // 存量自愈：针对历史从备份导入、磁盘物理目录名 root 与逻辑 id 不一致的工作区，
+            // 若按 id 目录未找到，自动在现有物理工作区目录中回退探测目标文件
+            val workspacesBase = File(filesDir, WorkspaceManager.WORKSPACES_BASE_DIR)
+            workspacesBase.listFiles()?.forEach { wsDir ->
+                val candidate = resolveInside(File(wsDir, WorkspaceManager.FILES_DIR), rel)
+                if (candidate != null && candidate.exists()) return candidate
+            }
+            return directFile
         }
 
         // 其余绝对路径：真机（宿主）路径不解析（file:// 的根是沙箱根，不是设备根）；
         // 剩下的按 Rootfs 内部路径落到 linux 区
         val workspaceIdOrNull = id ?: return null
         if (isAppPrivatePath(filesDir, path)) return null
-        return resolveInside(
-            base = File(workspaceRootDir(filesDir, workspaceIdOrNull), WorkspaceManager.LINUX_DIR),
-            relative = path.trimStart('/'),
-        )
+        val rel = path.trimStart('/')
+        val linuxArea = File(workspaceRootDir(filesDir, workspaceIdOrNull), WorkspaceManager.LINUX_DIR)
+        val directFile = resolveInside(linuxArea, rel)
+        if (directFile != null && directFile.exists()) return directFile
+
+        val workspacesBase = File(filesDir, WorkspaceManager.WORKSPACES_BASE_DIR)
+        workspacesBase.listFiles()?.forEach { wsDir ->
+            val candidate = resolveInside(File(wsDir, WorkspaceManager.LINUX_DIR), rel)
+            if (candidate != null && candidate.exists()) return candidate
+        }
+        return directFile
     }
 
     /**
