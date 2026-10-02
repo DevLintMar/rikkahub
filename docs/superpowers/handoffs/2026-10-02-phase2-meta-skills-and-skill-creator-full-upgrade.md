@@ -102,3 +102,31 @@
 - **Compact 恢复指示**：
   - 恢复后可直接输入 `git add` 并提交本地 commit，标记第二阶段战役圆满闭环；
   - 后续可开启下一阶段规划（如：其他扩展技能制作、UI 细节打磨或上游最新变更跟踪）。
+
+---
+
+## 5. 还原工作区链接点击报“工作区不存在”黄色错误根治记录
+
+### 5.1 缺陷现象
+用户从 zip 备份导入/还原了一个工作区并绑定到助手使用后，AI 在对话中发送指向该工作区文件的链接（`file:///workspace/...`），点击该文件或目录链接时，弹出黄色警告 Toast：
+> **“工作区不存在或已被解绑”**
+
+### 5.2 深入排查与根本原因
+1. **新建 vs 还原工作区的实体差异**：
+   - 普通新建工作区（`createWorkspace`）：`id = Uuid.random().toString()`, `root = id`。物理磁盘目录名（`root`）与逻辑主键（`id`）完全相同；
+   - 导入工作区（`importWorkspace`）：历史代码中写为 `id = Uuid.random().toString()`, `root = Uuid.random().toString()`，分别生成了两个不同的随机 UUID（`id = AAAA`, `root = BBBB`）！解压目录位于 `files/workspaces/BBBB/`，而数据库记录的 id 是 `AAAA`；
+2. **反查逻辑与有效性校验脱节**：
+   - 当点击 Markdown 行内文件链接时，`LocalFileOpener.resolveLocalFile` 遍历磁盘目录反查，在 `files/workspaces/BBBB` 下找到了文件，于是把磁盘目录名 `BBBB` 作为工作区 ID 返回给 `RouteActivity`；
+   - `RouteActivity` 校验 `workspaceId !in validWorkspaceIds`（只收集了 `workspaces.map { it.id }`，即 `AAAA`）；
+   - 由于 `"BBBB" !in {"AAAA"}`，判定失效，直接弹出黄色 Toast `toastState.show("工作区不存在或已被解绑", type = ToastType.Warning)`！
+
+### 5.3 彻底修复方案
+1. **`RouteActivity.kt` 引入双向寻址映射**：
+   - 构建 `workspaceRootToId`（同时收录 `it.id -> it.id` 与 `it.root -> it.id`）；
+   - 无论反查返回的是物理磁盘目录名 `root` 还是逻辑 `id`，均能精准映射回正确的有效逻辑 `workspace.id`，彻底修复历史已还原工作区的点击报错；
+2. **`WorkspaceRepository.importWorkspace` 规范对齐**：
+   - 导入新工作区时保证 `root = id`，从源头杜绝新的 `root` 与 `id` 割裂；
+3. **`Markdown.kt` 会话上下文直通**：
+   - `MarkdownBlock` 通过 CompositionLocal 透传当前会话的 `workspaceId`，优先直达对应工作区，失败自动降级磁盘反查；
+4. **单测保障**：
+   - 新增 `WorkspaceRestoreLinkTest`，全量验证双向映射解析。
