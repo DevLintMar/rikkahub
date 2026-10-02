@@ -1,115 +1,168 @@
 ---
 name: skill-creator
 description: >-
-  Create new Agent Skills or update existing ones, with static linting, trigger fidelity evaluation, and interactive HTML reports. Use when the user wants to make a skill, turn a workflow, prompt, or set of instructions into a reusable skill, or improve and test skills in /skills.
+  Create new Agent Skills or upgrade existing ones with industrial-grade tooling:
+  progressive disclosure architecture, static linting, trigger fidelity evaluation,
+  automated self-healing description optimization loop, interactive HTML dashboards,
+  and zip distribution packaging. Use when the user wants to create a skill, convert
+  instructions/workflows into a reusable skill, evaluate or optimize trigger accuracy
+  in /skills, or package skills for distribution.
 ---
 
-# Skill Creator
+# Skill Creator: Industrial-Grade Skill Engineering Workshop
 
-A skill is a directory containing a `SKILL.md` file (YAML frontmatter + Markdown instructions) and optional supporting files. Only the `name` and `description` of enabled skills are always in context; the body is loaded with the `use_skill` tool when a user request matches, and supporting files are loaded on demand.
+A skill is a self-contained directory containing a `SKILL.md` file (YAML frontmatter + Markdown SOP) and optional supporting files (references, scripts, and assets). Only the `name` and `description` of enabled skills are permanently loaded into the assistant's system context; the body and supporting files are disclosed on demand via the `use_skill` tool.
 
-## Where Skills Live
+---
 
-- **User skills**: `/skills/<name>/` in the workspace. Writable.
-- **Built-in skills**: `/builtin_skills/<name>/`, read-only. System meta-skills (like skill-creator and environment-setup) are protected system infrastructure. If a custom skill has the same name, it will be loaded as a custom variant (e.g. `<name>-custom`) without overriding the official meta-skill.
-- **Staging draft area**: `/workspace/skills-draft/<name>/`. Recommended during authoring to isolate work-in-progress drafts from active context.
-- A new skill in `/skills/<name>/` appears in the app's skill list automatically, but is disabled by default. Always remind the user to enable it for their assistant.
+## 1. Where Skills Live
 
-## Recommended Workflow
+- **User Skills (`/skills/<name>/`)**: Workspace directory for user-created and imported skills. Editable and active.
+- **Built-in System Meta-Skills (`/builtin_skills/<name>/`)**: Read-only core infrastructure (such as `skill-creator` and `environment-setup`). Protected system skills cannot be overridden; if a user creates a skill with the same name, it safely coexists as a `<name>-custom` variant.
+- **Staging Draft Area (`/workspace/skills-draft/<name>/`)**: Isolated workspace directory for drafting and evaluating skills before publishing. Always draft here first to avoid polluting active conversation context.
+- **Exported Packages (`/workspace/exports/<name>.zip`)**: Distribution packages ready for sharing or importing on other devices.
 
-1. **Understand requirements**: Clarify the scope, exact trigger queries, and expected outputs.
-2. **Draft in Staging**: Create `/workspace/skills-draft/<name>/` and assemble files.
-3. **Static Linting**: Run `/builtin_skills/skill-creator/scripts/run_eval.py --mode lint` to ensure frontmatter, description length, and file links are valid.
-4. **Evaluate Trigger Accuracy**: Run trigger evaluations (Fast 3+2 query suite) to verify the model triggers `use_skill` appropriately. Refer to [Evaluation Guide](references/evaluation_guide.md) for details.
-5. **Publish**: Move the validated directory from `/workspace/skills-draft/<name>/` to `/skills/<name>/`.
-6. **Report**: Inform the user, provide the interactive HTML report link, remind them to enable the skill, and suggest a trial prompt.
+*Note: Newly published skills in `/skills/<name>/` appear in RikkaHub automatically, but are disabled by default. Always instruct the user to enable the skill in their Assistant configuration.*
 
-## Directory Layout
+---
+
+## 2. Intent Capture Framework
+
+Before generating files, clarify the skill's purpose across three dimensions:
+
+1. **Trigger Boundary (Sensitivity vs Specificity)**:
+   - What exact intents, verbs, and keywords MUST trigger this skill?
+   - What similar but unrelated user tasks must NEVER trigger this skill?
+2. **Deterministic vs Generative**:
+   - Which operations require mathematical, exact, or high-speed execution? (Put them in `scripts/`).
+   - Which operations require LLM reasoning, code synthesis, or natural language guidance? (Put them in `SKILL.md` or `references/`).
+3. **Environment & Dependencies**:
+   - Does the skill depend on Python 3, Shell utilities, or network access?
+   - If Python is needed, recommend relying on standard libraries to avoid external dependency issues.
+
+---
+
+## 3. Progressive Disclosure Architecture
+
+To conserve context window budget, organize skills into three distinct layers. Refer to [Progressive Disclosure Guide](references/progressive_disclosure.md) for full architectural patterns.
 
 ```text
 /skills/<name>/
-├── SKILL.md
-├── references/   # detailed reference docs, loaded on demand
-├── scripts/      # executable helpers (must have #! shebang and chmod +x)
-└── assets/       # templates, mock data, and static assets
+├── SKILL.md          # Tier 1 (Frontmatter) & Tier 2 (Workflow Playbook)
+├── references/       # Tier 3: Deep domain references (read on-demand)
+│   └── guide.md
+├── scripts/          # Tier 3: Executable helpers (executed via workspace_shell)
+│   └── helper.py
+└── assets/           # Tier 3: Templates, mock fixtures, and static resources
+    └── template.json
 ```
 
-## SKILL.md Specification
+### Tier 1: Frontmatter Engineering (`SKILL.md`)
+- `name` (required): Must match the directory name. Lowercase alphanumeric, hyphens, and underscores only (max 64 chars).
+- `description` (required): High semantic density explaining **WHAT** the skill does and **EXACTLY WHEN** to use it.
+  - **Hard Limit**: Maximum 1024 characters.
+  - Written in third person (e.g. `Use when the user wants to...`).
+  - Contains explicit trigger keywords and exclusion boundaries.
 
-```markdown
+### Tier 2: Workflow SOP (`SKILL.md` Body)
+- Loaded into context only when `use_skill(name="<name>")` is invoked.
+- Contains sequential execution steps, checklists, branch logic, and navigation pointers to Tier 3 files.
+- Keep the body concise and actionable. Move detailed tables and code to `references/` or `scripts/`.
+
+### Tier 3: Supporting Files
+- **`references/`**: Detailed documentation. Link via relative Markdown links (`[Deep Guide](references/guide.md)`). The model reads them with `use_skill(name="<name>", path="references/guide.md")`.
+- **`scripts/`**: Deterministic automation scripts.
+  - Must have shebangs (`#!/usr/bin/env python3` or `#!/bin/sh`).
+  - Must be executable (`chmod +x scripts/<script_name>`).
+  - Must be referenced using absolute paths (`/skills/<name>/scripts/<script_name>`).
+- **`assets/`**: Static templates and boilerplate configurations.
+
 ---
-name: my-skill
-description: >-
-  What the skill does and when to use it, including trigger keywords.
-compatibility: Requires python3 (optional)
----
 
-# My Skill
+## 4. End-to-End Development Workflow
 
-Detailed imperative instructions...
-```
+### Step 1: Draft in Staging
+Create the skill directory inside `/workspace/skills-draft/<name>/` and populate `SKILL.md`, `scripts/`, and `references/`.
 
-### Frontmatter Rules
-- Must begin with `---` on line 1, and end with `---`.
-- `name` (required): MUST match the directory name. Lowercase letters, digits, and hyphens only (max 64 chars).
-- `description` (required): What the skill does and when to use it.
-  - **Hard limit**: Maximum 1024 characters. Longer descriptions will be truncated.
-  - Write in third person, including natural user phrasing and keywords.
-- `compatibility` (optional): Environment prerequisites (e.g. `Requires python3`).
-
-### Body & Supporting Files
-- **References**: Document deep instructions in `references/`. Link them using relative Markdown links, e.g. `[Documentation](references/guide.md)`. The `use_skill` tool can read these sub-paths via its `path` argument. Keep links one level deep.
-- **Scripts**: Place deterministic or complex logic into `scripts/`.
-  - Always add a shebang (e.g. `#!/bin/sh` or `#!/usr/bin/env python3`).
-  - Set executable permissions: `chmod +x scripts/<script_name>`.
-  - Reference scripts using absolute paths (e.g. `/skills/<name>/scripts/<script_name>`).
-  - Rely on standard libraries or declare external dependencies in `compatibility`.
-- **Assets**: Text templates or configuration examples in `assets/`.
-
-## Validation & Evaluation Tools
-
-Helper scripts are available in `/builtin_skills/skill-creator/scripts/`:
-
-### 1. Static Linting (0 Token Cost)
+### Step 2: Static Linting (0 Token Cost)
+Run static linting to ensure frontmatter syntax, description length, relative link integrity, and script permissions are valid:
 ```bash
 python3 /builtin_skills/skill-creator/scripts/run_eval.py \
   --skill-path /workspace/skills-draft/<name> \
   --mode lint
 ```
-Validates:
-- Directory name equals `name`.
-- Description is <= 1024 characters.
-- All Markdown links resolve to real files.
-- Scripts have shebangs and executable flags.
 
-### 2. Fast Evaluation (3 Positive + 2 Negative Queries)
+### Step 3: Fast Trigger Evaluation
+Run the standard 3+2 evaluation suite to verify trigger sensitivity and specificity:
 ```bash
 python3 /builtin_skills/skill-creator/scripts/run_eval.py \
   --skill-path /workspace/skills-draft/<name> \
   --mode fast \
   --html
 ```
-Tests sensitivity (triggering on relevant requests) and specificity (not triggering on general or irrelevant queries).
 
-### 3. Interactive HTML Viewer
-The `--html` option outputs `eval_results.html`. You can share the clickable file link with the user:
-```text
-file:///workspace/skills-draft/<name>/eval_results.html
+### Step 4: Automated Self-Healing & Convergence Loop
+If triggers fail or over-trigger, run the automated convergence loop. It splits evaluation queries into Train and Holdout sets, extracts missed keywords, tightens boundaries, and refines the description until it hits the target pass rate:
+```bash
+python3 /builtin_skills/skill-creator/scripts/run_loop.py \
+  --skill-path /workspace/skills-draft/<name> \
+  --max-iterations 3 \
+  --target-pass-rate 100.0 \
+  --holdout-ratio 0.3 \
+  --html \
+  --write
 ```
-Clicking this link opens the full-screen interactive dashboard inside RikkaHub.
+Refer to [Evaluation & Loop Guide](references/evaluation_and_loop_guide.md) for parameter details.
 
-## Without a Workspace
+### Step 5: Publish to Active Workspace
+Once validated, move the draft from staging to `/skills/<name>/`:
+```bash
+mv /workspace/skills-draft/<name> /skills/<name>
+```
 
-If workspace tools (`workspace_shell`, `workspace_write_file`) are unavailable:
-1. Output the complete `SKILL.md` content in a single code block.
-2. Instruct the user to tap **+** on the Agent Skills page, select **Add manually**, and paste the content.
-3. Multi-file skills can be packed into a `.zip` and imported via **Import from file**.
+### Step 6: Package for Distribution (Optional)
+Create an exportable zip package compatible with RikkaHub's "Import from file":
+```bash
+python3 /builtin_skills/skill-creator/scripts/package_skill.py \
+  --skill-path /skills/<name> \
+  --output /workspace/exports/<name>.zip
+```
 
-## Checklist Before Publishing
+### Step 7: Inform and Remind the User
+Provide the user with:
+1. Interactive HTML Report Link: `file:///skills/<name>/eval_results.html` (opens full-screen viewer in RikkaHub).
+2. Direct reminder to enable the skill in **Settings -> Agent Skills** for their assistant.
+3. A sample trial prompt to test the newly installed skill.
 
-- [ ] Directory name matches frontmatter `name`.
-- [ ] `description` is concise, keyword-rich, and under 1024 characters.
-- [ ] All relative file links exist.
-- [ ] Every script has a shebang and `chmod +x`.
-- [ ] Static linting passed with 0 errors.
+---
+
+## 5. Tooling Reference Table
+
+| Script | Purpose | Key Flags |
+|---|---|---|
+| `scripts/run_eval.py` | Static linting & trigger evaluation | `--mode [lint\|fast\|eval]`, `--html`, `--eval-set` |
+| `scripts/improve_description.py` | Semantic/heuristic description self-healing | `--false-negatives`, `--false-positives`, `--write` |
+| `scripts/run_loop.py` | Automated Train/Holdout convergence loop | `--max-iterations`, `--target-pass-rate`, `--write`, `--html` |
+| `scripts/package_skill.py` | Distribution packaging (.zip) & pre-lint | `--output`, `--skip-lint`, `--flat` |
+| `scripts/generate_report.py` | Standalone interactive HTML report builder | `--input-json`, `--output-html` |
+
+---
+
+## 6. Without a Workspace
+
+If workspace execution tools are unavailable:
+1. Provide the complete `SKILL.md` content in a single code block.
+2. Instruct the user to tap **+** in **Settings -> Agent Skills**, select **Add manually**, and paste the content.
+3. For multi-file skills, provide the packaged `.zip` file for import via **Import from file**.
+
+---
+
+## 7. Pre-Publishing Checklist
+
+- [ ] Directory name strictly matches `name` in frontmatter.
+- [ ] `description` is under 1024 characters and starts with third-person imperative.
+- [ ] All relative links in Markdown point to existing files.
+- [ ] All scripts have shebangs (`#!`) and executable permissions (`chmod +x`).
+- [ ] Static linting passes with 0 errors.
+- [ ] Evaluated sensitivity (positive queries trigger `use_skill`) and specificity (negative queries do not trigger).
 - [ ] Moved from staging to `/skills/<name>/`.

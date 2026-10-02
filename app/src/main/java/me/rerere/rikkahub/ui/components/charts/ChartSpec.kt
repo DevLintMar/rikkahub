@@ -65,11 +65,21 @@ data class ChartSpec(
                 ?.filter { if (style == ChartStyle.Scatter) it.points.isNotEmpty() else it.values.isNotEmpty() }
                 .orEmpty()
             if (series.isEmpty()) return null
+            val xAxisObj = when (val x = obj["x_axis"]) {
+                is JsonObject -> x
+                is JsonArray -> kotlinx.serialization.json.buildJsonObject { put("data", x) }
+                else -> null
+            }
+            val yAxisObj = when (val y = obj["y_axis"]) {
+                is JsonObject -> y
+                is JsonArray -> kotlinx.serialization.json.buildJsonObject { put("data", y) }
+                else -> null
+            }
             return ChartSpec(
                 style = style,
                 title = obj.string("title")?.takeIf { it.isNotBlank() },
-                xAxis = (obj["x_axis"] as? JsonObject)?.toAxis() ?: ChartAxis(),
-                yAxis = (obj["y_axis"] as? JsonObject)?.toAxis() ?: ChartAxis(),
+                xAxis = xAxisObj?.toAxis() ?: ChartAxis(),
+                yAxis = yAxisObj?.toAxis() ?: ChartAxis(),
                 series = series,
             )
         }

@@ -81,6 +81,15 @@ val appModule = module {
         GenerationKeepAlive(get())
     }
 
+    single(createdAtStart = true) {
+        me.rerere.rikkahub.data.ai.bridge.WorkspaceLlmBridgeServer(
+            settingsStore = get(),
+            providerManager = get(),
+        ).apply {
+            ensureStarted()
+        }
+    }
+
     // 生成通知与业务解耦：ChatService 只发事件，通知由这里消费；
     // createdAtStart 保证进程启动即订阅，否则后台生成的事件会因无订阅者而丢失
     single(createdAtStart = true) {

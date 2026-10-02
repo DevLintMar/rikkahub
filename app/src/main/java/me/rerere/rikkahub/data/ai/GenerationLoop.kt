@@ -27,6 +27,7 @@ import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.rikkahub.data.ai.bridge.WorkspaceLlmBridgeServer
 import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.ToolState
 import me.rerere.ai.ui.StreamChunkHandler
@@ -57,8 +58,8 @@ import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 private const val TAG = "GenerationLoop"
-private const val MAX_TOOL_OUTPUT_CHARS = 32 * 1024
-private const val TOOL_OUTPUT_PREVIEW_CHARS = 4 * 1024
+private const val MAX_TOOL_OUTPUT_CHARS = 128 * 1024
+private const val TOOL_OUTPUT_PREVIEW_CHARS = 16 * 1024
 private const val MAX_PROVIDER_NETWORK_RETRIES = 3
 private const val INITIAL_PROVIDER_RETRY_DELAY_MS = 1_000L
 
@@ -75,6 +76,7 @@ class GenerationLoop(
     private val context: Context,
     private val providerManager: ProviderManager,
     private val json: Json,
+    private val bridgeServer: WorkspaceLlmBridgeServer? = null,
 ) {
     fun generateText(
         settings: Settings,
@@ -96,6 +98,7 @@ class GenerationLoop(
     ): Flow<GenerationChunk> = flow {
         val provider = model.findProvider(settings.providers) ?: error("Provider not found")
         val providerImpl = providerManager.getProviderByType(provider)
+        bridgeServer?.setActiveSession(providerImpl, provider, model, assistant)
 
         var messages: List<UIMessage> = messages
 
@@ -297,7 +300,7 @@ class GenerationLoop(
                                     is ToolOutput.Progress -> updateToolLive(tool.toolCallId, null)
                                     is ToolOutput.Completed -> {
                                         completed = tool.copy(
-                                            // 顺序要紧：先按 32KB 阈值把**完整**输出落盘到
+                                            // 顺序要紧：先按 128KB 阈值把**完整**输出落盘到
                                             // /tool_outputs（返回预览 + cat 指针），再走 100KB 硬截断
                                             // 兜底。反过来的话落盘的是裁过的文本，模型 cat 也拿不到全量。
                                             output = clipToolOutput(

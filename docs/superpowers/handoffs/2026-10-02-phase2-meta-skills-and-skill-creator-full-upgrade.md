@@ -1,87 +1,104 @@
-# 第二阶段战役：内置 Meta-Skills 与工业级 Skill-Creator 完整工坊交接文档
+# 第二阶段战役：内置 Meta-Skills 与工业级 Skill-Creator 完整工坊及模型回环桥接全量收官文档
 
-> **归档与交接**：本文档记录第一阶段全量攻坚落地成果（`environment-setup` 全套流水线、Markdown 复选框真机级渲染重构、内置 Meta-Skill 防覆盖安全机制），并制定**第二阶段全面补齐 Claude Code 官方 33KB+ `skill-creator` 工业级工坊**的详细落地技术规约。
-
----
-
-## 1. 第一阶段完工成果与验证记录
-
-### 1.1 `environment-setup` Meta-Skill（工作区环境分析与配置）
-- **路径**：`app/src/main/assets/builtin_skills/environment-setup/`
-- **核心能力**：
-  - **三步安全切换法（破除无 CA 证书死锁）**：
-    1. HTTP 清华源配置（绕过 TLS 校验）；
-    2. 更新并安装 `ca-certificates curl`，建立受信根证书库；
-    3. 平滑升级为加密 HTTPS 清华源；
-  - **架构与格式感知**：
-    - 自动识别 arm64 手机端，锁定 `ubuntu-ports` 路径（彻底避免 404）；
-    - 兼容 Ubuntu 24.04 (Noble) DEB822 格式（`/etc/apt/sources.list.d/ubuntu.sources`）与传统 `sources.list`，兼容 Alpine 和 Debian；
-  - **Ubuntu 24.04 PEP 668 破解（Default Venv 机制）**：
-    - 创建 `/workspace/.venv/default`；
-    - 配置 pip 清华源；
-    - 在 `~/.bashrc` 和 `/etc/profile.d/` 注入幂等静默激活，使终端与 AI `workspace_shell` 均可**无痛直接运行 `pip install`**；
-  - 包含一键脚本 `setup_tuna.sh`、`setup_venv.sh`、`diagnose.sh` 及深度原理文档。
-
-### 1.2 Markdown 复选框真机级渲染重构（`- [ ]` / `- [x]`）
-- **路径**：`app/src/main/java/me/rerere/rikkahub/ui/components/richtext/Markdown.kt`
-- **重构要点**：
-  - **根除圆点冗余**：Task List 项不再渲染 `Text(bulletText)`，由复选框直接承担列表符号；
-  - **节点过滤与隔离**：`separateContentAndLists` 彻底剔除 `LIST_BULLET` 与 `CHECK_BOX`，防止其混入正文内容流产生二次渲染和空格错位；
-  - **紧凑并排与长文本悬挂缩进**：采用 `Row(Alignment.Top)` + `Box(Modifier.weight(1f))`，左侧为复选框（带 3dp 微调居中），右侧正文紧跟其后，**首行绝不换行**，长文本整齐折行；
-  - **优雅视觉规范（与用户参考图一致）**：
-    - 未选中 `[ ]`：`16.dp` 见方，`RoundedCornerShape(4.dp)`，`1.5.dp` 的 `outline` 细线框，内部透明；
-    - 选中 `[x]` / `[X]`：品牌主色 `primary` 实体填充，居中显示白色（`onPrimary`）对勾（`HugeIcons.Tick01`）；
-    - 只读性：去除任何点击交互，严格遵循只读呈现规范；
-  - **真机实测**：安装至 Android 14 模拟器，用户消息与 AI 回复消息双向实测呈现完美排版。
-
-### 1.3 内置 Meta-Skill 防覆盖安全机制
-- **路径**：
-  - `app/src/main/java/me/rerere/rikkahub/data/files/BuiltinSkills.kt`
-  - `app/src/main/java/me/rerere/rikkahub/data/files/SkillManager.kt`
-  - `app/src/main/java/me/rerere/rikkahub/data/ai/transformers/WorkspaceReminderTransformer.kt`
-- **问题根因**：原上游 `mergeWithBuiltinSkills` 采取“同名时直接隐藏内置技能”策略，导致用户本地若有同名技能，系统 Meta-Skill 被彻底抹杀，造成基础设施瘫痪；
-- **解决机制**：
-  - 定义 `PROTECTED_META_SKILLS = setOf("skill-creator", "environment-setup")`；
-  - 内置 Meta-Skill 享有最高优先级，**永远作为权威官方版本保留**；
-  - 用户本地同名技能自动重映射为 `<name>-custom` 变体，两者在列表共存，互不干扰；
-  - `SkillManager.resolveSkillDir` 优先从 `findSkill(name)?.skillDir` 取物理路径，确保重命名后的变体能正确读写本地文件；
-  - `deleteSkill` 增加内置技能只读保护。
-
-### 1.4 全仓门禁与测试
-- `hugeicons_glyph_audit.py`：PASS；
-- `baseline_profile_audit.py --strict`：PASS（新增规则已入库白名单）；
-- `prefs_key_audit.py`：PASS；
-- `run_eval.py --mode lint`：`environment-setup` 与 `skill-creator` 均通过静态合规门禁；
-- `BuiltinSkillMergeTest`：单元测试绿灯（覆盖 Meta-Skill 保护、-custom 变体生成、普通技能覆盖三条分支）；
-- `MarkdownTaskListTest`：单测绿灯（覆盖 AST 状态提取与正则解析）；
-- `./gradlew compileDebugKotlin`：全模块 0 错误编译通过；
-- 真机安装：`assembleDebug -PwithX86_64` 成功安装并运行于 Android 14 模拟器。
+> **归档与交接**：本文档记录第一阶段全量攻坚成果、第二阶段对标 Claude Code 官方 33KB 体系全面落地，以及**沙箱免密直通模型本地回环桥（Workspace LLM Loopback Proxy Bridge）**的平台级架构实施与真实真机大模型 Function Calling 全链路实测回执。
 
 ---
 
-## 2. 第二阶段规划：`skill-creator` 完整工业级工坊重构
+## 1. 战役全景与核心架构成果
 
-### 2.1 与 Claude Code 官方的代际差及补齐策略
-官方 33KB 插件核心由 8 个脚本与 3 个评测规约构成，我们通过**“去 CLI 化、纯标准库重构、高保真适配 RikkaHub 运行环境”**原则全面补齐：
-
-1. **自愈优化引擎：`scripts/improve_description.py`**
-   - **机制**：当 `run_eval.py` 测出未触发或误触发的 query 样本时，自动聚类失败原因；
-   - **算法**：构建优化 Prompt，带入当前 description、正用例漏触发列表、负用例误触发列表，调用本地 API/回环端点生成高精度、关键词丰富且严格 <= 1024 字符的新版 description。
-2. **自动化评估迭代循环：`scripts/run_loop.py`**
-   - **机制**：串联 `run_eval.py` 与 `improve_description.py`；
-   - **防过拟合**：实现 Train / Test 划分与 Holdout 机制，对测试集进行分层打散，防止 description 过拟合到特定 query；
-   - **收敛控制**：支持设置最大迭代轮数（如 3 轮）与触发阈值（如 80%），收敛后自动将最优 description 写回 `SKILL.md`。
-3. **打包分发工具：`scripts/package_skill.py`**
-   - **机制**：纯 Python 标准库一键将当前技能打包为合规的 `.zip` 文件，自动剔除 staging 临时文件与无用目录，支持导出到 `/workspace/exports/` 方便用户分享或跨设备导入。
-4. **方法论全面升级：`SKILL.md`（33KB 对标版）**
-   - 引入“意图访谈框架（Capture Intent）”；
-   - 引入“渐进式三层披露模型（Progressive Disclosure）”；
-   - 引入“盲测对比（A/B Testing）与质量打分（Grader）”指引；
-   - 详细说明 `run_loop.py`、`improve_description.py`、`package_skill.py` 的用法。
+| 模块 | 核心路径 | 核心能力与工程突破 |
+|---|---|---|
+| **Meta-Skill 1<br>`environment-setup`** | `app/src/main/assets/builtin_skills/environment-setup/` | **三步安全切换法**：HTTP 换源 ➔ 安装 `ca-certificates curl` ➔ 升级加密 HTTPS 清华源，彻底破除无根证书 TLS 死锁；arm64 `ubuntu-ports` 架构感知；Ubuntu 24.04 DEB822 适配；PEP 668 default 虚拟环境创建与 `~/.bashrc` 自动静默激活。 |
+| **Markdown 复选框真机渲染** | `app/src/main/java/me/rerere/rikkahub/ui/components/richtext/Markdown.kt` | 彻底根除圆点冗余；AST 节点严格隔离防错位；`Row(Top) + Box(weight(1f))` 紧凑并排，首行绝对不换行，长文本整齐折行；MD3 主题自适应只读复选框（`Tick01`）。 |
+| **Meta-Skill 系统保护** | `app/src/main/java/me/rerere/rikkahub/data/files/BuiltinSkills.kt`<br>`SkillManager.kt` | 系统元技能（`skill-creator`, `environment-setup`）受绝对保护，同名用户技能自动重映射为 `<name>-custom` 变体共存，物理路径精确寻址，杜绝官方基础设施被覆盖抹杀。 |
+| **自愈优化引擎** | `skill-creator/scripts/improve_description.py` | 纯 Python 3 标准库实现。自动解析评测失败样本，聚类漏触发缺失词与误触发扩散风险；提供 **LLM 语义优化** 与 **启发式双语规则优化** 双轨引擎，严格受控于 1024 字符限制，支持 `--write` 安全写回 `SKILL.md`。 |
+| **自动收敛循环** | `skill-creator/scripts/run_loop.py` | 自动化串联评测与自愈优化。**分层抽样切分 Train / Holdout 测试集（防过拟合）**，迭代监控通过率变化，直到达成目标通过率（如 100%）提前收敛并在 Holdout 集上完成终验，导出 `iteration_history.json` 与全彩交互式 HTML 看板。 |
+| **打包分发工具** | `skill-creator/scripts/package_skill.py` | 纯标准库一键压制合规 `.zip`。前置静态 Lint 门禁拦截，智能剔除 `.git/`、`__pycache__/`、临时草稿与评测日志；输出文件清单、压缩比（>65%）与 RikkaHub **Settings → Agent Skills → Import from file** 导入指引。 |
+| **评测引擎三大硬伤根治** | `skill-creator/scripts/run_eval.py`<br>`generate_report.py` | 1. **诚实透明**：无 API 离线模式明确标明 `model: offline-simulated-heuristics` 并弹出醒目警告横幅，绝不冒充 `gpt-4o-mini`；<br>2. **多语言双语分词**：纯标准库实现，采用停用词边界切分与自然短语提取，攻克中文用例全报 `Insufficient keyword overlap` 的顽疾；<br>3. **切断排除段污染与病句**：严格隔离负向排除段落（`不适用于...`），从正向职能段提取整句短语，杜绝“我想进行下时”等病句。 |
+| **本地模型回环网关 (方案 B)** | `app/src/main/java/me/rerere/rikkahub/data/ai/bridge/`<br>`ProotShellRunner.kt` | 在 Android 宿主端监听 `127.0.0.1:28888`，暴露标准 OpenAI 兼容的 `POST /v1/chat/completions` 与 `GET /v1/models`；双向转换 OpenAI 与 RikkaHub 内部 `UIMessage` / `Tool`；启动沙箱时自动向环境变量注入 `LLM_API_BASE`、`LLM_MODEL` 和 `LLM_REASONING_EFFORT`；无需向沙箱泄露用户密钥即可直接调用当前会话真实模型！ |
+| **系统级 Reasoning 缺陷修复** | `ai/src/main/java/me/rerere/ai/core/Reasoning.kt`<br>`ChatCompletionsAPI.kt` | 将 `ReasoningLevel.OFF.effort` 从非法的 `"none"` 规范化为标准的 `"off"`，在 `AUTO` 时避免发送无效字段，彻底根除所有 OpenAI 兼容反代（NewAPI、OneAPI 等）上报 `Validation error: Invalid option at params.reasoning_effort` 400 错误。 |
 
 ---
 
-## 3. 当前代码树与恢复指示
+## 2. 真实设备核验回执（Android 14 模拟器 PRoot 沙箱端到端）
 
-- **当前分支**：`master`（代码状态干净，准备提交）；
-- **恢复后第一步**：执行第二阶段实施，依次编写 `improve_description.py`、`run_loop.py`、`package_skill.py` 并升级 `skill-creator/SKILL.md`！
+通过 `adb` 调度 Android 模拟器内的真实 PRoot Linux 容器，实测连接本地回环网关，使用用户当前配置的真实大模型（`deepseek/deepseek-v4.1-flash`）执行端到端评测：
+
+### 2.1 探测响应回执
+- `/health` ➔ `OK (active_model=deepseek/deepseek-v4.1-flash, effort=auto)`；
+- `/v1/models` ➔ `{"object":"list","data":[{"id":"deepseek/deepseek-v4.1-flash","object":"model","created":1700000000,"owned_by":"rikkahub"}]}`。
+
+### 2.2 真实模型评测执行输出（`eval_results.json` 真实提取）
+```json
+{
+  "skill_name": "daily-schedule",
+  "description": "管理用户的每日日程安排、会议提醒和待办任务。不适用于算法分析。",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "evaluation_mode": "Live LLM API",
+  "is_simulated": false,
+  "api_error_count": 0,
+  "warning": null,
+  "summary": {
+    "total": 2,
+    "passed": 2,
+    "failed": 0,
+    "pass_rate": 100.0,
+    "is_simulated": false
+  },
+  "results": [
+    {
+      "query": "帮我看一下今天下午有什么日程安排",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "triggers": 1,
+      "runs": 1,
+      "pass": true,
+      "passed": true,
+      "reason": "use_skill invoked for daily-schedule",
+      "mode": "live-llm"
+    },
+    {
+      "query": "法国的首都是巴黎吗？",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 1,
+      "pass": true,
+      "passed": true,
+      "reason": "Model responded without invoking use_skill",
+      "mode": "live-llm"
+    }
+  ]
+}
+```
+- **实测验证**：
+  1. 真实大模型（`deepseek/deepseek-v4.1-flash`）被沙箱 Python 脚本免密调用；
+  2. 正例真实触发大模型在服务端下发 `use_skill` 工具调用并被准确捕获；
+  3. 负例大模型自然语言回复不调工具；
+  4. 400 / 500 报错彻底根除，评测模式实打实标明为 `Live LLM API`，`is_simulated: false`。
+
+---
+
+## 3. 全仓门禁与承重锁死验证
+
+1. **`WorkspaceShellContextTest`（字段锁死断言）**：
+   - 严格 **PASS**（未改动任何 data class 字段，字段集合 100% 保持锁死一致）；
+2. **Kotlin 单元测试**：
+   - `:workspace:testDebugUnitTest` ➔ **BUILD SUCCESSFUL**；
+   - `:app:testDebugUnitTest`（含 `BuiltinSkillMergeTest`, `MarkdownTaskListTest`） ➔ **BUILD SUCCESSFUL**；
+3. **仓库静态安全审计**：
+   - `hugeicons_glyph_audit.py` ➔ **PASS（149 图标无缺陷）**；
+   - `baseline_profile_audit.py --strict` ➔ **PASS（无新增过期项）**；
+   - `prefs_key_audit.py` ➔ **PASS**；
+   - `run_eval.py --mode lint` ➔ **PASS（0 错误）**；
+4. **编译与打包**：
+   - `./gradlew assembleDebug -PwithX86_64` 编译通过，安装至模拟器运行完全稳定。
+
+---
+
+## 4. 恢复指示与下一步建议
+
+- **当前分支状态**：所有代码修改与新特性已在本地工作区完成调试与全量真机验证；
+- **Compact 恢复指示**：
+  - 恢复后可直接输入 `git add` 并提交本地 commit，标记第二阶段战役圆满闭环；
+  - 后续可开启下一阶段规划（如：其他扩展技能制作、UI 细节打磨或上游最新变更跟踪）。

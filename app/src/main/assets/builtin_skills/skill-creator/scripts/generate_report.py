@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""RikkaHub Skill Evaluation Report Generator.
+"""Interactive HTML Evaluation Report Generator for RikkaHub Skills.
 
-Generates a standalone, dependency-free HTML report (viewer.html) from evaluation JSON results.
-Compatible with pure Python 3 standard library.
+Zero third-party dependencies. Compatible with pure Python 3 standard library.
+Generates single-file, responsive, self-contained HTML reports with:
+- MD3 Adaptive Theme (Dark / Light)
+- Truthful Execution Mode & Warning Banners (Live LLM vs Offline Heuristic Simulation)
+- Summary metrics (Pass Rate, Positive Sensitivity, Negative Specificity)
+- Granular query-level trigger results & semantic reasons
 """
 
 import argparse
@@ -13,8 +17,14 @@ from pathlib import Path
 
 
 def render_html_report(data: dict) -> str:
+    """Render self-contained interactive HTML report from evaluation results JSON."""
     skill_name = html.escape(str(data.get("skill_name", "Unknown Skill")))
-    description = html.escape(str(data.get("description", "No description provided.")))
+    description = html.escape(str(data.get("description", "")))
+    model = html.escape(str(data.get("model", "Unknown Model")))
+    eval_mode = html.escape(str(data.get("evaluation_mode", "Heuristic Simulation")))
+    is_simulated = bool(data.get("is_simulated", True))
+    warning = data.get("warning")
+
     summary = data.get("summary", {})
     total = summary.get("total", 0)
     passed = summary.get("passed", 0)
@@ -41,6 +51,7 @@ def render_html_report(data: dict) -> str:
         triggers = item.get("triggers", 1 if item.get("triggered") else 0)
         runs = item.get("runs", 1)
         rate = item.get("trigger_rate", (triggers / runs) if runs > 0 else 0.0)
+        reason = html.escape(str(item.get("reason", "N/A")))
 
         status_class = "pass" if is_pass else "fail"
         status_label = "PASS" if is_pass else "FAIL"
@@ -55,6 +66,7 @@ def render_html_report(data: dict) -> str:
           <td class="col-query">{query}</td>
           <td class="col-expected">{expected_badge}</td>
           <td class="col-actual">{actual_desc}</td>
+          <td class="col-reason">{reason}</td>
         </tr>
         """)
 
@@ -64,6 +76,18 @@ def render_html_report(data: dict) -> str:
     c_pass = "pass" if pass_rate >= 80 else "fail"
     c_pos = "pass" if pos_rate >= 80 else "fail"
     c_neg = "pass" if neg_rate >= 80 else "fail"
+
+    warning_banner_html = ""
+    if is_simulated:
+        warning_banner_html = """
+    <div class="banner warning-banner">
+      <div class="banner-title">⚠️ 注意：当前运行在【离线启发式模拟（Wiring Smoke Test）】模式</div>
+      <div class="banner-desc">
+        本次评测未连接真实大模型（<code>model: offline-simulated-heuristics</code>），仅对本地关键词/意图规则与连通性进行了冒烟检验。<br>
+        <strong>该分数不代表大模型的真实触发质量</strong>。如需进行真实模型端点评测，请在执行时传入 <code>--api-base</code> 或配置环境变量 <code>LLM_API_BASE</code>。
+      </div>
+    </div>
+        """
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -84,6 +108,9 @@ def render_html_report(data: dict) -> str:
       --pass-bg: #f0fdf4;
       --fail: #dc2626;
       --fail-bg: #fef2f2;
+      --warn-border: #f59e0b;
+      --warn-bg: #fffbeb;
+      --warn-text: #b45309;
       --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }}
     @media (prefers-color-scheme: dark) {{
@@ -99,110 +126,142 @@ def render_html_report(data: dict) -> str:
         --pass-bg: #14532d;
         --fail: #ef4444;
         --fail-bg: #7f1d1d;
+        --warn-border: #d97706;
+        --warn-bg: #451a03;
+        --warn-text: #fde68a;
       }}
     }}
     body {{
       margin: 0;
-      padding: 1.5rem;
+      padding: 1.25rem;
       background-color: var(--bg-color);
       color: var(--text-main);
       font-family: var(--font-family);
       line-height: 1.5;
     }}
     .container {{
-      max-width: 900px;
+      max-width: 1000px;
       margin: 0 auto;
     }}
-    .header-card {{
-      background-color: var(--card-bg);
-      border: 1px solid var(--border-color);
-      border-radius: 12px;
-      padding: 1.5rem;
-      margin-bottom: 1.5rem;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    .header {{
+      margin-bottom: 1.25rem;
     }}
-    .title-row {{
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 0.5rem;
-    }}
-    h1 {{
-      margin: 0;
+    .title {{
       font-size: 1.5rem;
       font-weight: 700;
+      margin: 0 0 0.25rem 0;
     }}
     .desc {{
       color: var(--text-muted);
-      font-size: 0.95rem;
-      margin-top: 0.25rem;
-      margin-bottom: 1rem;
+      font-size: 0.9rem;
+      margin: 0 0 0.5rem 0;
+      line-height: 1.4;
+    }}
+    .meta-badges {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }}
+    .meta-badge {{
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      background-color: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 0.2rem 0.6rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }}
+    .meta-badge strong {{
+      color: var(--text-main);
+    }}
+    .banner {{
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1.25rem;
+      font-size: 0.85rem;
+    }}
+    .warning-banner {{
+      background-color: var(--warn-bg);
+      border: 1px solid var(--warn-border);
+      color: var(--warn-text);
+    }}
+    .banner-title {{
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+    }}
+    .banner-desc {{
+      line-height: 1.4;
+      opacity: 0.95;
     }}
     .metrics-grid {{
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap: 1rem;
-      margin-top: 1rem;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
     }}
     .metric-card {{
-      background: var(--bg-color);
+      background-color: var(--card-bg);
       border: 1px solid var(--border-color);
       border-radius: 8px;
-      padding: 1rem;
+      padding: 0.85rem;
       text-align: center;
     }}
     .metric-val {{
-      font-size: 1.75rem;
+      font-size: 1.6rem;
       font-weight: 700;
       color: var(--primary);
     }}
     .metric-val.pass {{ color: var(--pass); }}
     .metric-val.fail {{ color: var(--fail); }}
     .metric-label {{
-      font-size: 0.8rem;
+      font-size: 0.75rem;
       text-transform: uppercase;
       letter-spacing: 0.05em;
       color: var(--text-muted);
-      margin-top: 0.25rem;
+      margin-top: 0.2rem;
     }}
     .table-card {{
       background-color: var(--card-bg);
       border: 1px solid var(--border-color);
-      border-radius: 12px;
-      overflow: hidden;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-      margin-bottom: 1.5rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin-bottom: 1.25rem;
     }}
     table {{
       width: 100%;
       border-collapse: collapse;
-      font-size: 0.9rem;
+      font-size: 0.85rem;
       text-align: left;
+      min-width: 650px;
     }}
     th {{
       background-color: var(--bg-color);
       border-bottom: 1px solid var(--border-color);
-      padding: 0.75rem 1rem;
+      padding: 0.6rem 0.75rem;
       color: var(--text-muted);
       font-weight: 600;
-      font-size: 0.8rem;
+      font-size: 0.75rem;
       text-transform: uppercase;
     }}
     td {{
-      padding: 0.75rem 1rem;
+      padding: 0.6rem 0.75rem;
       border-bottom: 1px solid var(--border-color);
+      vertical-align: top;
     }}
     tr:last-child td {{
       border-bottom: none;
     }}
-    .col-num {{ width: 40px; color: var(--text-muted); text-align: center; }}
-    .col-status {{ width: 80px; text-align: center; }}
+    .col-num {{ width: 35px; color: var(--text-muted); text-align: center; }}
+    .col-status {{ width: 65px; text-align: center; }}
     .status-badge {{
       display: inline-block;
-      padding: 0.2rem 0.5rem;
+      padding: 0.15rem 0.4rem;
       border-radius: 4px;
       font-weight: 700;
-      font-size: 0.75rem;
+      font-size: 0.7rem;
     }}
     .status-badge.pass {{ background: var(--pass-bg); color: var(--pass); }}
     .status-badge.fail {{ background: var(--fail-bg); color: var(--fail); }}
@@ -210,17 +269,19 @@ def render_html_report(data: dict) -> str:
       display: inline-block;
       padding: 0.15rem 0.4rem;
       border-radius: 4px;
-      font-size: 0.75rem;
+      font-size: 0.7rem;
       font-weight: 600;
     }}
     .expected-true {{ background: var(--primary-light); color: var(--primary); }}
     .expected-false {{ background: var(--bg-color); color: var(--text-muted); border: 1px solid var(--border-color); }}
+    .col-query {{ max-width: 250px; word-break: break-word; }}
+    .col-reason {{ color: var(--text-muted); font-size: 0.8rem; word-break: break-word; }}
     details {{
       background-color: var(--card-bg);
       border: 1px solid var(--border-color);
       border-radius: 8px;
-      padding: 0.75rem 1rem;
-      font-size: 0.85rem;
+      padding: 0.6rem 0.85rem;
+      font-size: 0.8rem;
     }}
     summary {{
       cursor: pointer;
@@ -228,34 +289,41 @@ def render_html_report(data: dict) -> str:
       color: var(--text-muted);
     }}
     pre {{
+      margin-top: 0.5rem;
+      padding: 0.6rem;
       background: var(--bg-color);
-      padding: 0.75rem;
-      border-radius: 6px;
+      border-radius: 4px;
       overflow-x: auto;
-      font-size: 0.8rem;
+      font-size: 0.75rem;
     }}
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="header-card">
-      <div class="title-row">
-        <h1>Skill Eval Report: {skill_name}</h1>
+    <div class="header">
+      <h1 class="title">{skill_name}</h1>
+      <p class="desc">{description}</p>
+      <div class="meta-badges">
+        <span class="meta-badge">Mode: <strong>{eval_mode}</strong></span>
+        <span class="meta-badge">Model: <strong>{model}</strong></span>
+        <span class="meta-badge">Total Tests: <strong>{total}</strong></span>
       </div>
-      <div class="desc"><strong>Description:</strong> {description}</div>
-      <div class="metrics-grid">
-        <div class="metric-card">
-          <div class="metric-val {c_pass}">{pass_rate:.1f}%</div>
-          <div class="metric-label">Pass Rate ({passed}/{total})</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-val {c_pos}">{pos_rate:.1f}%</div>
-          <div class="metric-label">Trigger Sensitivity ({pos_passed}/{pos_total})</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-val {c_neg}">{neg_rate:.1f}%</div>
-          <div class="metric-label">Negative Specificity ({neg_passed}/{neg_total})</div>
-        </div>
+    </div>
+
+    {warning_banner_html}
+
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-val {c_pass}">{pass_rate:.1f}%</div>
+        <div class="metric-label">Overall Pass Rate ({passed}/{total})</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-val {c_pos}">{pos_rate:.1f}%</div>
+        <div class="metric-label">Sensitivity ({pos_passed}/{pos_total})</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-val {c_neg}">{neg_rate:.1f}%</div>
+        <div class="metric-label">Specificity ({neg_passed}/{neg_total})</div>
       </div>
     </div>
 
@@ -264,10 +332,11 @@ def render_html_report(data: dict) -> str:
         <thead>
           <tr>
             <th class="col-num">#</th>
-            <th class="col-status">Result</th>
-            <th>Test Query</th>
-            <th>Expected</th>
-            <th>Trigger Rate</th>
+            <th class="col-status">Status</th>
+            <th>Query</th>
+            <th>Target Expectation</th>
+            <th>Actual Result</th>
+            <th>Trigger Attribution / Reason</th>
           </tr>
         </thead>
         <tbody>
@@ -282,30 +351,30 @@ def render_html_report(data: dict) -> str:
     </details>
   </div>
 </body>
-</html>"""
+</html>
+"""
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate HTML viewer report from skill eval JSON")
-    parser.add_argument("--input", required=True, help="Path to input eval JSON file")
-    parser.add_argument("--output", default=None, help="Path to output HTML file (default: alongside JSON)")
+    parser = argparse.ArgumentParser(description="Generate Interactive HTML Evaluation Report")
+    parser.add_argument("--input-json", required=True, help="Path to eval_results.json")
+    parser.add_argument("--output-html", default=None, help="Path to save HTML report")
     args = parser.parse_args()
 
-    input_path = Path(args.input)
-    if not input_path.exists():
-        print(f"Error: input file {input_path} not found.", file=sys.stderr)
+    in_path = Path(args.input_json)
+    if not in_path.exists():
+        print(f"Error: {in_path} does not exist", file=sys.stderr)
         sys.exit(1)
 
-    with open(input_path, "r", encoding="utf-8") as f:
+    with open(in_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     html_content = render_html_report(data)
-
-    output_path = Path(args.output) if args.output else input_path.with_suffix(".html")
-    with open(output_path, "w", encoding="utf-8") as f:
+    out_path = Path(args.output_html) if args.output_html else in_path.with_suffix(".html")
+    with open(out_path, "w", encoding="utf-8") as f:
         f.write(html_content)
 
-    print(f"Report successfully generated at: {output_path}")
+    print(f"HTML Report generated successfully: {out_path}")
 
 
 if __name__ == "__main__":

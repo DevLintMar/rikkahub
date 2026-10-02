@@ -115,7 +115,7 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
                     JsonInstant.parseToJsonElement(
                         tool.output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
                     )
-                }.getOrElse { JsonObject(emptyMap()) }
+                }.getOrNull()
             } else {
                 null
             },

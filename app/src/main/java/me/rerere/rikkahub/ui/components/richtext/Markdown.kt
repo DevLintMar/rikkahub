@@ -28,6 +28,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ColorScheme
@@ -839,18 +840,16 @@ private fun MarkdownNode(
                 ?.invoke(imageUrl)
                 ?.takeIf { it.isFile }
             Column(
-                modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally
+                modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // 这里可以使用Coil等图片加载库加载图片
+                // 聊天图默认占满内容区宽度，高度由真实宽高比垂直延伸，避免长图塌缩成 120dp 窄条
                 ZoomableAsyncImage(
                     model = workspaceImage?.toUri()?.toString() ?: imageUrl,
                     contentDescription = altText,
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .widthIn(min = 120.dp)
-                        .heightIn(min = 120.dp),
-                    // 记住首次加载的真实宽高比：消息列表回收后滚回来时不再退回占位图的
-                    // 1024×1024 正方形，消除滚动时的高度跳动
+                        .fillMaxWidth(),
+                    contentScale = ContentScale.FillWidth,
                     sizeFromCachedAspectRatio = true,
                 )
             }

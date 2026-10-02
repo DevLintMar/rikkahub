@@ -113,5 +113,5 @@ internal fun mergeWithBuiltinSkills(
         isMetaSkill(it.name) || it.name !in localNames
     }
 
-    return survivingBuiltin + resolvedLocal
+    return resolvedLocal + survivingBuiltin
 }

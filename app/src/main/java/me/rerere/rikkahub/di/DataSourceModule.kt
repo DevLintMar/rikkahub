@@ -121,6 +121,7 @@ val dataSourceModule = module {
             context = get(),
             providerManager = get(),
             json = get(),
+            bridgeServer = get(),
         )
     }
 

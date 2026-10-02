@@ -36,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Size
@@ -252,14 +253,18 @@ private fun HtmlBlockElement(
                 val workspaceImage = LocalWorkspaceFileProvider.current
                     ?.invoke(src)
                     ?.takeIf { it.isFile }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     ZoomableAsyncImage(
                         model = workspaceImage?.toUri()?.toString() ?: src,
                         contentDescription = alt.takeIf { it.isNotEmpty() },
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
-                            .widthIn(min = 120.dp)
-                            .heightIn(min = 120.dp),
+                            .fillMaxWidth(),
+                        contentScale = ContentScale.FillWidth,
+                        sizeFromCachedAspectRatio = true,
                     )
                 }
             }
@@ -762,14 +767,20 @@ private fun HtmlInlineAsComposable(node: Node, onClickCitation: (String) -> Unit
                         val workspaceImage = LocalWorkspaceFileProvider.current
                             ?.invoke(src)
                             ?.takeIf { it.isFile }
-                        ZoomableAsyncImage(
-                            model = workspaceImage?.toUri()?.toString() ?: src,
-                            contentDescription = alt.takeIf { it.isNotEmpty() },
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .widthIn(min = 120.dp)
-                                .heightIn(min = 120.dp),
-                        )
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            ZoomableAsyncImage(
+                                model = workspaceImage?.toUri()?.toString() ?: src,
+                                contentDescription = alt.takeIf { it.isNotEmpty() },
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .fillMaxWidth(),
+                                contentScale = ContentScale.FillWidth,
+                                sizeFromCachedAspectRatio = true,
+                            )
+                        }
                     }
                 }
 

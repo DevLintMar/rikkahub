@@ -92,9 +92,7 @@ class ProotShellRunner(
             }
         }
 
-        command += listOf(
-            "/usr/bin/env",
-            "-i",
+        val envList = mutableListOf(
             "HOME=/root",
             "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             "TERM=xterm-256color",
@@ -104,6 +102,16 @@ class ProotShellRunner(
             "CI=true",
             "NO_COLOR=1",
             "PAGER=cat",
+            "LLM_API_BASE=http://127.0.0.1:28888/v1",
+            "LLM_API_KEY=rikkahub-loopback",
+        )
+        extraEnvProvider?.invoke()?.forEach { (k, v) ->
+            envList += "$k=$v"
+        }
+
+        command += listOf("/usr/bin/env", "-i")
+        command += envList
+        command += listOf(
             "/bin/bash",
             "-l",
             "-c",
@@ -128,7 +136,8 @@ class ProotShellRunner(
     private fun File.hasUsableRootfs(): Boolean =
         isDirectory && File(this, "bin/sh").isFile
 
-    private companion object {
+    companion object {
+        var extraEnvProvider: (() -> Map<String, String>)? = null
         private const val PROOT_EXEC = "libproot_exec.so"
         private const val PROOT_LOADER = "libproot_loader.so"
         private val WORKSPACE_DIR = WorkspaceManager.ROOTFS_WORKSPACE_DIR

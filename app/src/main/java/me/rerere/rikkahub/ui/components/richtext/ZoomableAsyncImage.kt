@@ -56,16 +56,33 @@ fun ZoomableAsyncImage(
         mutableStateOf<Float?>(ImageAspectRatioCache.get(model))
     }
     // remember：item 存活期间父级重组不再重建 ImageRequest → Coil 状态机不重启（内存缓存命中直接复用绘制结果）
-    val coilModel = remember(model, export, darkMode) {
+    val coilModel = remember(model, export, darkMode, cachedAspectRatio) {
+        val displayMetrics = context.resources.displayMetrics
+        val screenWidth = displayMetrics.widthPixels.coerceAtLeast(1080)
+        // 动态计算解码尺寸上限：避免长图（如 1000x10000）按 1024x1024 Fit 裁剪导致宽度被压缩至 100px 造成严重模糊。
+        // 长图以屏幕物理宽度为短边基准，高度允许延伸至 4096px 纹理上限；超大宽图则宽上限 2048px。
+        val (targetWidth, targetHeight) = if (cachedAspectRatio != null && cachedAspectRatio!! > 0f) {
+            val ratio = cachedAspectRatio!!
+            if (ratio < 1f) {
+                // 竖长图：保证宽度至少达到屏幕物理分辨率，高度受限在 4096px 纹理上限以内
+                val h = (screenWidth / ratio).toInt().coerceIn(screenWidth, 4096)
+                screenWidth to h
+            } else {
+                // 横长图 / 方图：高度保证 1080px，宽度自适应至至多 2048px
+                val w = (1080 * ratio).toInt().coerceIn(1080, 2048)
+                w to 1080
+            }
+        } else {
+            // 未知比例时（首次加载）：宽度至少 1440px，高度上限 4096px，确保长图首次解码不模糊
+            screenWidth.coerceAtLeast(1440) to 4096
+        }
+
         ImageRequest.Builder(context)
             .data(model)
             .placeholder(placeholder)
             .crossfade(false)
             .allowHardware(!export)
-            // 解码上限 1024px：聊天图显示尺寸都不超过 ~400dp（72dp 缩略 / markdown 行内图）。
-            // 不设上限时 markdown 行内图宽高无界 → Coil 按原始尺寸解码（手机照片 4000px+），
-            // 单张解码 500ms+、内存缓存每条目 48MB 挤掉所有缩略图、大纹理每帧被 GPU 采样 → 滚动卡顿。
-            .size(1024, 1024)
+            .size(targetWidth, targetHeight)
             .build()
     }
     // aspectRatio 放在链尾（最贴近 AsyncImage）：它会给子项 Constraints.fixed，

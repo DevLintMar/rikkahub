@@ -401,7 +401,7 @@ class ChatCompletionsAPI(
                             }
                         } else {
                             if (level != ReasoningLevel.AUTO) {
-                                put("reasoning_effort", if (level.effort == "none") "low" else level.effort)
+                                put("reasoning_effort", if (level == ReasoningLevel.OFF) "low" else level.effort)
                             }
                         }
                     }

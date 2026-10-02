@@ -9,7 +9,7 @@ enum class ReasoningLevel(
     val effort: String
 ) {
     @SerialName("off")
-    OFF(0, "none"),
+    OFF(0, "off"),
 
     @SerialName("auto")
     AUTO(-1, "auto"),

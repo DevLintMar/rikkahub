@@ -285,13 +285,14 @@ object SearchWebToolUI : ToolUIRenderer {
         }
     }
 
-    // 与 Preview 的 DefaultToolPreview fallback 保持一致
-    override fun hasSemanticDetail(context: ToolUIContext): Boolean = context.content != null
+    // 与 Preview 的 DefaultToolPreview fallback 保持一致：只有具备合法 items 或 answer 时才视作有语义卡片，否则回退默认文本/截断视图
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean =
+        context.content != null && (items(context).isNotEmpty() || context.content.getStringContent("answer") != null)
 
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
         val content = context.content
-        if (content == null) {
+        if (content == null || (items(context).isEmpty() && content.getStringContent("answer") == null)) {
             DefaultToolPreview(context = context)
             return
         }
@@ -364,13 +365,14 @@ object ScrapeWebToolUI : ToolUIRenderer {
         }
     }
 
-    // 与 Preview 的 DefaultToolPreview fallback 保持一致
-    override fun hasSemanticDetail(context: ToolUIContext): Boolean = context.content != null
+    // 与 Preview 的 DefaultToolPreview fallback 保持一致：具备有效 entries 时才走语义详情，否则优雅降级默认文本/截断视图
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean =
+        context.content != null && entries(context).isNotEmpty()
 
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
         val content = context.content
-        if (content == null) {
+        if (content == null || entries(context).isEmpty()) {
             DefaultToolPreview(context = context)
             return
         }

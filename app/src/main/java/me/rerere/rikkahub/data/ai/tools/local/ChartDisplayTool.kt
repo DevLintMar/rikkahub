@@ -31,6 +31,7 @@ internal fun buildChartDisplayTool(): Tool = Tool(
         For line and bar charts the X axis is categorical: x_axis only supports 'title' and 'data',
         so x_axis 'min'/'max' and log scale are not allowed; use y_axis for range and log scale.
         Axis 'data' labels are only allowed on x_axis for line and bar charts.
+        CRITICAL: x_axis must be an OBJECT containing a 'data' array (e.g. x_axis: {"data": ["Mon", "Tue", "Wed"]}), NOT a bare array.
         At most $MAX_SERIES series, and at most $MAX_SERIES_POINTS values/points per series.
         The chart is rendered for the user directly; you don't need to repeat the raw data in your reply.
     """.trimIndent().replace("\n", " "),
@@ -46,8 +47,8 @@ internal fun buildChartDisplayTool(): Tool = Tool(
                     put("type", "string")
                     put("description", "Chart title, shown at the top.")
                 })
-                put("x_axis", buildAxisSchema())
-                put("y_axis", buildAxisSchema())
+                put("x_axis", buildAxisSchema(isXAxis = true))
+                put("y_axis", buildAxisSchema(isXAxis = false))
                 put("series", buildJsonObject {
                     put("type", "array")
                     put("description", "One or more data series (1-$MAX_SERIES).")
@@ -109,8 +110,13 @@ internal fun buildChartDisplayTool(): Tool = Tool(
     }
 )
 
-private fun buildAxisSchema(): JsonObject = buildJsonObject {
+private fun buildAxisSchema(isXAxis: Boolean = false): JsonObject = buildJsonObject {
     put("type", "object")
+    put("description", if (isXAxis) {
+        "X-axis configuration object. IMPORTANT: Must be an object with 'data' array (e.g. {\"data\": [\"Mon\", \"Tue\"]}), NOT a bare array."
+    } else {
+        "Y-axis configuration object."
+    })
     put("properties", buildJsonObject {
         put("title", buildJsonObject {
             put("type", "string")
@@ -151,14 +157,19 @@ private fun JsonObject.number(key: String): Double? = (this[key] as? JsonPrimiti
 private fun JsonObject.string(key: String): String? =
     (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
 
-private fun validateChartArgs(params: JsonObject): String? {
+internal fun validateChartArgs(params: JsonObject): String? {
     val style = params.string("style")
     if (style !in CHART_STYLES) return "style must be one of ${CHART_STYLES.joinToString()}"
 
     val axes = mutableMapOf<String, JsonObject>()
     for (axisName in listOf("x_axis", "y_axis")) {
         val element = params[axisName] ?: continue
-        val axis = element as? JsonObject ?: return "$axisName must be an object"
+        // 自动容错：如果模型误将数组直接传给了 x_axis/y_axis，自动包装为 {"data": [...]}，避免翻车
+        val axis = when (element) {
+            is JsonObject -> element
+            is JsonArray -> buildJsonObject { put("data", element) }
+            else -> return "$axisName must be an object with 'data' array (e.g. {\"data\": [...]})"
+        }
         validateAxis(axisName, axis, style!!)?.let { return it }
         axes[axisName] = axis
     }
