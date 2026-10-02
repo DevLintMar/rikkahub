@@ -98,7 +98,9 @@ class SkillManager(
     }
 
     suspend fun deleteSkill(name: String): Boolean = withContext(Dispatchers.IO) {
-        val skillDir = resolveSkillDir(name) ?: return@withContext false
+        val skill = findSkill(name)
+        if (skill?.builtin == true) return@withContext false // 内置技能只读受保护，禁止删除
+        val skillDir = skill?.skillDir ?: resolveSkillDir(name) ?: return@withContext false
         // 目录不存在时 deleteRecursively 也返回 true，需提前拦截，避免误清理内置技能的启用状态
         if (!skillDir.exists()) return@withContext false
         val deleted = skillDir.deleteRecursively()
@@ -222,6 +224,8 @@ class SkillManager(
     }
 
     private fun resolveSkillDir(skillName: String): File? {
+        val matchedSkill = listSkills().firstOrNull { it.name == skillName }
+        if (matchedSkill != null) return matchedSkill.skillDir
         return SkillPaths.resolveSkillDir(getSkillsDir(), skillName)
     }
 

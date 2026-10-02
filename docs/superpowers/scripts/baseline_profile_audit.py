@@ -73,6 +73,8 @@ KNOWN_STALE = {
     "me/rerere/rikkahub/data/ai/tools/LocalToolOption": "已搬进 tools/local/ 子包",
     "me/rerere/rikkahub/data/ai/tools/LocalTools": "已搬进 tools/local/ 子包",
     "me/rerere/rikkahub/data/api/SponsorAPI": "fork 已移除赞助商功能",
+    "me/rerere/rikkahub/ui/pages/chat/ExportKt": "上游 21448350 重命名/抽取 ConversationExport.kt",
+    "me/rerere/rikkahub/ui/pages/chat/ImageExportOptions": "上游 21448350 重命名/整合导出配置为 ExportOptions",
 }
 
 REGENERATE_HINT = (

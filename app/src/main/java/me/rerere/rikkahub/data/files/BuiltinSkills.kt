@@ -76,12 +76,42 @@ internal object BuiltinSkills {
 }
 
 /**
- * 合并用户技能与内置技能，用户技能在前；与用户技能同名的内置技能会被隐藏。
+ * 系统内置的核心元技能（Meta-Skills），承载系统运行环境分析、技能评估等核心基础设施能力。
+ * 内置 Meta-Skill 受到系统保护，绝对不允许被用户目录下的同名技能静默覆盖或消除。
+ */
+val PROTECTED_META_SKILLS: Set<String> = setOf("skill-creator", "environment-setup")
+
+fun isMetaSkill(name: String): Boolean = name in PROTECTED_META_SKILLS
+
+/**
+ * 合并用户技能与内置技能：
+ * 1. 系统内置的 Meta-Skill 享有系统级保护，永远保留官方版本，绝不被同名用户技能覆盖；
+ * 2. 如果用户在本地创建了与 Meta-Skill 同名的技能，该用户技能保留并重命名为 `<name>-custom`，两全其美；
+ * 3. 其他非 Meta-Skill 的普通内置技能如果同名，以用户技能优先。
  */
 internal fun mergeWithBuiltinSkills(
     local: List<SkillMetadata>,
     builtin: List<SkillMetadata>,
 ): List<SkillMetadata> {
-    val localNames = local.mapTo(HashSet()) { it.name }
-    return local + builtin.filter { it.name !in localNames }
+    val builtinMetaSkillNames = builtin.filter { isMetaSkill(it.name) }.mapTo(HashSet()) { it.name }
+
+    // 与内置 Meta-Skill 冲突的本地用户技能重命名为 -custom 变体，避免遮蔽官方基础设施
+    val resolvedLocal = local.map { skill ->
+        if (skill.name in builtinMetaSkillNames) {
+            skill.copy(
+                name = "${skill.name}-custom",
+                description = "[Custom] " + skill.description
+            )
+        } else {
+            skill
+        }
+    }
+
+    val localNames = resolvedLocal.mapTo(HashSet()) { it.name }
+    // 内置 Meta-Skill 永远保留；普通内置技能若与 localNames 冲突则允许覆盖
+    val survivingBuiltin = builtin.filter {
+        isMetaSkill(it.name) || it.name !in localNames
+    }
+
+    return survivingBuiltin + resolvedLocal
 }

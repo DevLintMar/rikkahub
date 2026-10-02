@@ -727,27 +727,11 @@ private fun MarkdownNode(
 
         // Checkbox
         GFMTokenTypes.CHECK_BOX -> {
-            val isChecked = node.getTextInNode(content).trim() == "[x]"
-            Surface(
-                shape = RoundedCornerShape(2.dp),
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+            val isChecked = node.getTextInNode(content).trim().startsWith("[x]", ignoreCase = true)
+            TaskCheckbox(
+                isChecked = isChecked,
                 modifier = modifier,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .padding(2.dp)
-                        .size(LocalTextStyle.current.fontSize.toDp() * 0.8f),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (isChecked) {
-                        Icon(
-                            imageVector = HugeIcons.Tick01,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            }
+            )
         }
 
         // 引用块
@@ -1029,31 +1013,93 @@ private fun OrderedListNode(
 }
 
 @Composable
+private fun TaskCheckbox(
+    isChecked: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val onPrimaryColor = MaterialTheme.colorScheme.onPrimary
+    val outlineColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.8f)
+    val shape = RoundedCornerShape(4.dp)
+
+    Box(
+        modifier = modifier
+            .size(16.dp)
+            .clip(shape)
+            .background(if (isChecked) primaryColor else Color.Transparent)
+            .border(
+                width = 1.5.dp,
+                color = if (isChecked) primaryColor else outlineColor,
+                shape = shape,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (isChecked) {
+            Icon(
+                imageVector = HugeIcons.Tick01,
+                contentDescription = null,
+                tint = onPrimaryColor,
+                modifier = Modifier.size(11.dp),
+            )
+        }
+    }
+}
+
+@Composable
 private fun ListItemNode(
     node: ASTNode, content: String, bulletText: String, onClickCitation: (String) -> Unit = {}, level: Int
 ) {
-    Column {
+    Column(
+        modifier = Modifier.padding(vertical = 2.dp)
+    ) {
         // 分离列表项的直接内容和嵌套列表
         val (directContent, nestedLists) = separateContentAndLists(node)
+        val checkBoxNode = node.children.find { it.type == GFMTokenTypes.CHECK_BOX }
+        val isTaskItem = checkBoxNode != null
+        val isOrdered = node.findChildOfTypeRecursive(MarkdownTokenTypes.LIST_NUMBER) != null
+
         // directContent 渲染处理
-        if (directContent.isNotEmpty()) {
-            Row {
-                Text(
-                    text = bulletText,
-                    modifier = Modifier.alignByBaseline(),
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    itemVerticalAlignment = Alignment.CenterVertically,
-                ) {
-                    directContent.fastForEach { contentChild ->
-                        MarkdownNode(
-                            node = contentChild,
-                            content = content,
-                            onClickCitation = onClickCitation,
-                            listLevel = level,
+        if (directContent.isNotEmpty() || isTaskItem) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+            ) {
+                if (isTaskItem) {
+                    if (isOrdered) {
+                        Text(
+                            text = bulletText,
+                            modifier = Modifier.padding(end = 4.dp),
+                            color = MaterialTheme.colorScheme.primary,
                         )
+                    }
+                    val isChecked = checkBoxNode.let {
+                        it.getTextInNode(content).trim().startsWith("[x]", ignoreCase = true)
+                    }
+                    TaskCheckbox(
+                        isChecked = isChecked,
+                        modifier = Modifier.padding(top = 3.dp, end = 8.dp)
+                    )
+                } else {
+                    Text(
+                        text = bulletText,
+                        modifier = Modifier.padding(end = 4.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                if (directContent.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column {
+                            directContent.fastForEach { contentChild ->
+                                MarkdownNode(
+                                    node = contentChild,
+                                    content = content,
+                                    onClickCitation = onClickCitation,
+                                    listLevel = level,
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1075,6 +1121,10 @@ private fun separateContentAndLists(listItemNode: ASTNode): Pair<List<ASTNode>, 
         when (child.type) {
             MarkdownElementTypes.UNORDERED_LIST, MarkdownElementTypes.ORDERED_LIST -> {
                 nestedLists.add(child)
+            }
+
+            MarkdownTokenTypes.LIST_BULLET, GFMTokenTypes.CHECK_BOX -> {
+                // 由 ListItemNode 统筹渲染复选框或 bullet，不混入内容节点
             }
 
             else -> {

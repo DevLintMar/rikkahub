@@ -22,3 +22,7 @@ local.properties
 *.p12
 app.key
 google-services.json
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
