@@ -346,6 +346,7 @@ private fun ASTNode.containsCitationLink(content: String): Boolean {
  * `file:///tmp/...` 等）解析为宿主 File 的提供器；非工作区渲染上下文（预览/导出）为 null。
  */
 val LocalWorkspaceFileProvider = staticCompositionLocalOf<((String) -> File?)?> { null }
+private val LocalCurrentWorkspaceId = staticCompositionLocalOf<String?> { null }
 
 /** 链接打开的兜底日志标签（只进 logcat；这里刻意不打扰用户，见 [openMarkdownLink]）。 */
 private const val TAG_LINK = "MarkdownLink"
@@ -435,6 +436,7 @@ fun MarkdownBlock(
     CompositionLocalProvider(
         LocalWorkspaceFileProvider provides workspaceFileResolver,
         LocalUriHandler provides safeUriHandler,
+        LocalCurrentWorkspaceId provides workspaceId,
     ) {
         var (data, setData) = remember { mutableStateOf(parseMarkdownCached(content)) }
 
@@ -774,8 +776,9 @@ private fun MarkdownNode(
             // 与 AnnotatedString 那条路径共用同一个打开逻辑（openMarkdownLink）：
             // 本地文件走应用内预览；其余交给系统；失败一律吞掉，不让链接把会话崩掉。
             // 这里拿不到会话的 workspaceId —— openMarkdownLink 会按文件反查它在哪个工作区
+            val currentWsId = LocalCurrentWorkspaceId.current
             val linkModifier = modifier.clickable {
-                openMarkdownLink(context, null, localFileOpener, linkDest)
+                openMarkdownLink(context, currentWsId, localFileOpener, linkDest)
             }
             Text(
                 text = linkText,

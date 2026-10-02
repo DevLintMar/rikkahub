@@ -337,15 +337,25 @@ class RouteActivity : ComponentActivity() {
         // 文本/svg 进工作区文件编辑器；其余（如 /upload 里的非图片）不接管，退回安全兜底
         val workspaceDao = koinInject<WorkspaceDAO>()
         val workspaces by workspaceDao.listFlow().collectAsStateWithLifecycle(emptyList())
-        val validWorkspaceIds = remember(workspaces) { workspaces.map { it.id }.toSet() }
+        // 支持根据物理目录 root 或逻辑 id 双向映射到有效的工作区逻辑 id，
+        // 彻底根除从备份还原的工作区（历史 root != id）反查时报“工作区不存在或已被解绑”的缺陷
+        val workspaceRootToId = remember(workspaces) {
+            buildMap {
+                workspaces.forEach { ws ->
+                    put(ws.id, ws.id)
+                    put(ws.root, ws.id)
+                }
+            }
+        }
 
         val appNavigator = remember(backStack) { Navigator(backStack) }
-        val localFileOpener = remember(appNavigator, validWorkspaceIds) {
-            LocalFileOpener { workspaceId, sandboxPath, file ->
+        val localFileOpener = remember(appNavigator, workspaceRootToId) {
+            LocalFileOpener { rawWorkspaceId, sandboxPath, file ->
+                val workspaceId = rawWorkspaceId?.let { workspaceRootToId[it] }
                 when {
                     // 1. 目录点击：若在工作区内，跳转到工作区文件管理对应目录
-                    file.isDirectory && workspaceId != null -> {
-                        if (workspaceId !in validWorkspaceIds) {
+                    file.isDirectory && rawWorkspaceId != null -> {
+                        if (workspaceId == null) {
                             toastState.show("工作区不存在或已被解绑", type = ToastType.Warning)
                             true
                         } else {
@@ -371,8 +381,8 @@ class RouteActivity : ComponentActivity() {
                     }
 
                     // 3. 文本/代码文件：进入工作区编辑器
-                    file.isFile && workspaceId != null && isTextOrCodeFile(file) -> {
-                        if (workspaceId !in validWorkspaceIds) {
+                    file.isFile && rawWorkspaceId != null && isTextOrCodeFile(file) -> {
+                        if (workspaceId == null) {
                             toastState.show("工作区不存在或已被解绑", type = ToastType.Warning)
                             true
                         } else {

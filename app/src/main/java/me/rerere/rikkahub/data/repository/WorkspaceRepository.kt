@@ -411,10 +411,11 @@ class WorkspaceRepository(
             suffix++
         }
         val now = System.currentTimeMillis()
+        val id = Uuid.random().toString()
         val workspace = WorkspaceEntity(
-            id = Uuid.random().toString(),
+            id = id,
             name = name,
-            root = Uuid.random().toString(),
+            root = id,
             shellStatus = meta.shellStatus,
             createdAt = now,
             updatedAt = now,
