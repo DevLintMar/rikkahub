@@ -41,6 +41,8 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Switch
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,6 +57,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.sync.S3BackupItem
@@ -91,6 +94,44 @@ fun S3Tab(
 
     fun updateS3Config(newConfig: S3Config) {
         vm.updateSettings(settings.copy(s3Config = newConfig))
+    }
+
+    // 本地草稿状态：100% 同步接管输入，彻底隔离异步 DataStore 反流导致的光标回跳与丢字
+    var endpointDraft by remember { mutableStateOf(s3Config.endpoint) }
+    var accessKeyIdDraft by remember { mutableStateOf(s3Config.accessKeyId) }
+    var secretAccessKeyDraft by remember { mutableStateOf(s3Config.secretAccessKey) }
+    var bucketDraft by remember { mutableStateOf(s3Config.bucket) }
+    var regionDraft by remember { mutableStateOf(s3Config.region) }
+
+    fun flushDraft(): S3Config {
+        val trimmedEndpoint = endpointDraft.trim()
+        val trimmedKey = accessKeyIdDraft.trim()
+        val trimmedBucket = bucketDraft.trim()
+        val trimmedRegion = regionDraft.trim()
+        val flushed = s3Config.copy(
+            endpoint = trimmedEndpoint,
+            accessKeyId = trimmedKey,
+            secretAccessKey = secretAccessKeyDraft,
+            bucket = trimmedBucket,
+            region = trimmedRegion
+        )
+        if (trimmedEndpoint != s3Config.endpoint || trimmedKey != s3Config.accessKeyId ||
+            secretAccessKeyDraft != s3Config.secretAccessKey || trimmedBucket != s3Config.bucket ||
+            trimmedRegion != s3Config.region) {
+            updateS3Config(flushed)
+        }
+        return flushed
+    }
+
+    LaunchedEffect(endpointDraft, accessKeyIdDraft, secretAccessKeyDraft, bucketDraft, regionDraft) {
+        delay(500)
+        flushDraft()
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            flushDraft()
+        }
     }
 
     fun performRestore(item: S3BackupItem) {
@@ -181,8 +222,8 @@ fun S3Tab(
                     supportingContent = {
                         OutlinedTextField(
                             modifier = Modifier.fillMaxWidth(),
-                            value = s3Config.endpoint,
-                            onValueChange = { updateS3Config(s3Config.copy(endpoint = it.trim())) },
+                            value = endpointDraft,
+                            onValueChange = { endpointDraft = it },
                             placeholder = { Text("https://s3.amazonaws.com") },
                             singleLine = true
                         )
@@ -193,8 +234,8 @@ fun S3Tab(
                     supportingContent = {
                         OutlinedTextField(
                             modifier = Modifier.fillMaxWidth(),
-                            value = s3Config.accessKeyId,
-                            onValueChange = { updateS3Config(s3Config.copy(accessKeyId = it.trim())) },
+                            value = accessKeyIdDraft,
+                            onValueChange = { accessKeyIdDraft = it },
                             singleLine = true
                         )
                     },
@@ -205,8 +246,8 @@ fun S3Tab(
                         var passwordVisible by remember { mutableStateOf(false) }
                         OutlinedTextField(
                             modifier = Modifier.fillMaxWidth(),
-                            value = s3Config.secretAccessKey,
-                            onValueChange = { updateS3Config(s3Config.copy(secretAccessKey = it.trim())) },
+                            value = secretAccessKeyDraft,
+                            onValueChange = { secretAccessKeyDraft = it },
                             visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                             trailingIcon = {
                                 val image = if (passwordVisible) {
@@ -227,8 +268,8 @@ fun S3Tab(
                     supportingContent = {
                         OutlinedTextField(
                             modifier = Modifier.fillMaxWidth(),
-                            value = s3Config.bucket,
-                            onValueChange = { updateS3Config(s3Config.copy(bucket = it.trim())) },
+                            value = bucketDraft,
+                            onValueChange = { bucketDraft = it },
                             placeholder = { Text("my-bucket") },
                             singleLine = true
                         )
@@ -249,8 +290,8 @@ fun S3Tab(
                     supportingContent = {
                         OutlinedTextField(
                             modifier = Modifier.fillMaxWidth(),
-                            value = s3Config.region,
-                            onValueChange = { updateS3Config(s3Config.copy(region = it.trim())) },
+                            value = regionDraft,
+                            onValueChange = { regionDraft = it },
                             placeholder = { Text("auto") },
                             singleLine = true
                         )
@@ -304,6 +345,7 @@ fun S3Tab(
         ) {
             OutlinedButton(
                 onClick = {
+                    flushDraft()
                     scope.launch {
                         try {
                             vm.testS3()
@@ -328,6 +370,7 @@ fun S3Tab(
             }
             OutlinedButton(
                 onClick = {
+                    flushDraft()
                     vm.loadS3BackupFileItems()
                     showBackupFiles = true
                 }
@@ -337,6 +380,7 @@ fun S3Tab(
 
             Button(
                 onClick = {
+                    flushDraft()
                     scope.launch {
                         isBackingUp = true
                         runCatching {

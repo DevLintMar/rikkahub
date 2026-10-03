@@ -40,6 +40,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +56,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.WebDavConfig
@@ -90,6 +93,40 @@ fun WebDavTab(
 
     fun updateWebDavConfig(newConfig: WebDavConfig) {
         vm.updateSettings(settings.copy(webDavConfig = newConfig))
+    }
+
+    // 本地草稿状态：100% 同步接管输入，彻底隔离异步 DataStore 反流导致的光标回跳与丢字
+    var urlDraft by remember { mutableStateOf(webDavConfig.url) }
+    var usernameDraft by remember { mutableStateOf(webDavConfig.username) }
+    var passwordDraft by remember { mutableStateOf(webDavConfig.password) }
+    var pathDraft by remember { mutableStateOf(webDavConfig.path) }
+
+    fun flushDraft(): WebDavConfig {
+        val trimmedUrl = urlDraft.trim()
+        val trimmedUser = usernameDraft.trim()
+        val trimmedPath = pathDraft.trim()
+        val flushed = webDavConfig.copy(
+            url = trimmedUrl,
+            username = trimmedUser,
+            password = passwordDraft,
+            path = trimmedPath
+        )
+        if (trimmedUrl != webDavConfig.url || trimmedUser != webDavConfig.username ||
+            passwordDraft != webDavConfig.password || trimmedPath != webDavConfig.path) {
+            updateWebDavConfig(flushed)
+        }
+        return flushed
+    }
+
+    LaunchedEffect(urlDraft, usernameDraft, passwordDraft, pathDraft) {
+        delay(500)
+        flushDraft()
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            flushDraft()
+        }
     }
 
     fun performRestore(item: WebDavBackupItem) {
@@ -180,8 +217,8 @@ fun WebDavTab(
                     supportingContent = {
                         OutlinedTextField(
                             modifier = Modifier.fillMaxWidth(),
-                            value = webDavConfig.url,
-                            onValueChange = { updateWebDavConfig(webDavConfig.copy(url = it.trim())) },
+                            value = urlDraft,
+                            onValueChange = { urlDraft = it },
                             placeholder = { Text("https://example.com/dav") },
                             singleLine = true
                         )
@@ -192,14 +229,8 @@ fun WebDavTab(
                     supportingContent = {
                         OutlinedTextField(
                             modifier = Modifier.fillMaxWidth(),
-                            value = webDavConfig.username,
-                            onValueChange = {
-                                updateWebDavConfig(
-                                    webDavConfig.copy(
-                                        username = it.trim()
-                                    )
-                                )
-                            },
+                            value = usernameDraft,
+                            onValueChange = { usernameDraft = it },
                             singleLine = true
                         )
                     },
@@ -210,8 +241,8 @@ fun WebDavTab(
                         var passwordVisible by remember { mutableStateOf(false) }
                         OutlinedTextField(
                             modifier = Modifier.fillMaxWidth(),
-                            value = webDavConfig.password,
-                            onValueChange = { updateWebDavConfig(webDavConfig.copy(password = it.trim())) },
+                            value = passwordDraft,
+                            onValueChange = { passwordDraft = it },
                             visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                             trailingIcon = {
                                 val image = if (passwordVisible) {
@@ -232,8 +263,8 @@ fun WebDavTab(
                     supportingContent = {
                         OutlinedTextField(
                             modifier = Modifier.fillMaxWidth(),
-                            value = webDavConfig.path,
-                            onValueChange = { updateWebDavConfig(webDavConfig.copy(path = it.trim())) },
+                            value = pathDraft,
+                            onValueChange = { pathDraft = it },
                             singleLine = true
                         )
                     },
@@ -286,6 +317,7 @@ fun WebDavTab(
         ) {
             OutlinedButton(
                 onClick = {
+                    flushDraft()
                     scope.launch {
                         try {
                             vm.testWebDav()
@@ -310,6 +342,7 @@ fun WebDavTab(
             }
             OutlinedButton(
                 onClick = {
+                    flushDraft()
                     vm.loadBackupFileItems()
                     showBackupFiles = true
                 }
@@ -318,6 +351,7 @@ fun WebDavTab(
             }
             Button(
                 onClick = {
+                    flushDraft()
                     scope.launch {
                         isBackingUp = true
                         runCatching {

@@ -29,6 +29,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,7 +39,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import me.rerere.rikkahub.data.datastore.EmbedderConfig
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.FormItem
@@ -59,10 +62,40 @@ fun SettingEmbedderPage(vm: SettingEmbedderViewModel = koinViewModel()) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     val embedder = settings.embedder
-    var baseUrl by remember(embedder.baseUrl) { mutableStateOf(embedder.baseUrl) }
-    var model by remember(embedder.model) { mutableStateOf(embedder.model) }
-    var apiKey by remember(embedder.apiKey) { mutableStateOf(embedder.apiKey) }
-    var batchSize by remember(embedder.batchSize) { mutableStateOf(embedder.batchSize) }
+    var baseUrl by remember { mutableStateOf(embedder.baseUrl) }
+    var model by remember { mutableStateOf(embedder.model) }
+    var apiKey by remember { mutableStateOf(embedder.apiKey) }
+    var batchSize by remember { mutableStateOf(embedder.batchSize) }
+
+    fun flushEmbedderDraft(): EmbedderConfig {
+        val trimmedBaseUrl = baseUrl.trim()
+        val trimmedModel = model.trim()
+        val trimmedKey = apiKey.trim()
+        val flushed = embedder.copy(
+            baseUrl = trimmedBaseUrl,
+            model = trimmedModel,
+            apiKey = trimmedKey,
+            batchSize = batchSize
+        )
+        if (trimmedBaseUrl != embedder.baseUrl || trimmedModel != embedder.model ||
+            trimmedKey != embedder.apiKey || batchSize != embedder.batchSize) {
+            scope.launch {
+                settingsStore.updateEmbedder { flushed }
+            }
+        }
+        return flushed
+    }
+
+    LaunchedEffect(baseUrl, model, apiKey, batchSize) {
+        delay(500)
+        flushEmbedderDraft()
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            flushEmbedderDraft()
+        }
+    }
 
     LaunchedEffect(vm.rebuildFinished) {
         vm.rebuildFinished?.let { message ->
@@ -137,12 +170,7 @@ fun SettingEmbedderPage(vm: SettingEmbedderViewModel = koinViewModel()) {
                         ) {
                             OutlinedTextField(
                                 value = baseUrl,
-                                onValueChange = { value ->
-                                    baseUrl = value
-                                    scope.launch {
-                                        settingsStore.updateEmbedder { it.copy(baseUrl = value) }
-                                    }
-                                },
+                                onValueChange = { baseUrl = it },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true
                             )
@@ -155,12 +183,7 @@ fun SettingEmbedderPage(vm: SettingEmbedderViewModel = koinViewModel()) {
                         ) {
                             OutlinedTextField(
                                 value = model,
-                                onValueChange = { value ->
-                                    model = value
-                                    scope.launch {
-                                        settingsStore.updateEmbedder { it.copy(model = value) }
-                                    }
-                                },
+                                onValueChange = { model = it },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true
                             )
@@ -176,12 +199,7 @@ fun SettingEmbedderPage(vm: SettingEmbedderViewModel = koinViewModel()) {
                         ) {
                             OutlinedTextField(
                                 value = apiKey,
-                                onValueChange = { value ->
-                                    apiKey = value
-                                    scope.launch {
-                                        settingsStore.updateEmbedder { it.copy(apiKey = value) }
-                                    }
-                                },
+                                onValueChange = { apiKey = it },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true
                             )
@@ -197,12 +215,7 @@ fun SettingEmbedderPage(vm: SettingEmbedderViewModel = koinViewModel()) {
                         ) {
                             OutlinedNumberInput(
                                 value = batchSize,
-                                onValueChange = { value ->
-                                    batchSize = value
-                                    scope.launch {
-                                        settingsStore.updateEmbedder { it.copy(batchSize = value) }
-                                    }
-                                },
+                                onValueChange = { batchSize = it },
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
@@ -243,7 +256,10 @@ fun SettingEmbedderPage(vm: SettingEmbedderViewModel = koinViewModel()) {
                             }
                         ) {
                             Button(
-                                onClick = { vm.testConnection(baseUrl, model, apiKey) },
+                                onClick = {
+                                    val flushed = flushEmbedderDraft()
+                                    vm.testConnection(flushed.baseUrl, flushed.model, flushed.apiKey)
+                                },
                                 enabled = vm.testState != SettingEmbedderViewModel.TestState.TESTING,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
@@ -299,7 +315,10 @@ fun SettingEmbedderPage(vm: SettingEmbedderViewModel = koinViewModel()) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Button(
-                            onClick = { vm.rebuild() },
+                            onClick = {
+                                flushEmbedderDraft()
+                                vm.rebuild()
+                            },
                             enabled = !vm.isRebuilding,
                             modifier = Modifier.fillMaxWidth()
                         ) {
