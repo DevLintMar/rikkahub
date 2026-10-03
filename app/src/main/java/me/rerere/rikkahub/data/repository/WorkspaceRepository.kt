@@ -387,11 +387,14 @@ class WorkspaceRepository(
      * 导出工作区为 zip（含 files/ + rootfs），返回 cacheDir 中的临时 zip 文件。
      * 调用方负责把文件复制到用户选择的位置后删除临时文件。
      */
-    suspend fun exportWorkspace(id: String): File {
+    suspend fun exportWorkspace(
+        id: String,
+        onProgress: ((current: Int, total: Int, itemPath: String) -> Unit)? = null
+    ): File {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
         val target = File(cacheDir, "workspace_export_${System.currentTimeMillis()}.zip")
         withContext(Dispatchers.IO) {
-            WorkspaceBackup.export(manager, workspace, target)
+            WorkspaceBackup.export(manager, workspace, target, onProgress)
         }
         return target
     }
@@ -400,7 +403,10 @@ class WorkspaceRepository(
      * 从 zip 导入工作区：解析元信息 → 创建新工作区（新 UUID id/root，重名自动加序号）→
      * 解压 files/ + linux/ → 注册 DB（恢复 toolApprovals/shellStatus；rootfs 完整，启动 checkIntegrity 兜底校正）。
      */
-    suspend fun importWorkspace(zipFile: File): WorkspaceEntity = withContext(Dispatchers.IO) {
+    suspend fun importWorkspace(
+        zipFile: File,
+        onProgress: ((current: Int, total: Int, itemPath: String) -> Unit)? = null
+    ): WorkspaceEntity = withContext(Dispatchers.IO) {
         val meta = ZipFile(zipFile).use { WorkspaceBackup.parseMeta(it) }
         // 重名自动加序号：name (2)、name (3)…
         val baseName = meta.name.ifBlank { "Workspace" }
@@ -425,7 +431,7 @@ class WorkspaceRepository(
         )
         manager.ensureWorkspace(workspace.root)
         ZipFile(zipFile).use { zip ->
-            WorkspaceBackup.extractTo(zip, manager.workspaceDir(workspace.root))
+            WorkspaceBackup.extractTo(zip, manager.workspaceDir(workspace.root), onProgress)
         }
         dao.upsert(workspace)
         workspace

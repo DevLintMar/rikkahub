@@ -2,7 +2,9 @@ package me.rerere.rikkahub.ui.pages.extensions.workspace
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,8 +16,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -23,6 +27,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -38,8 +43,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -72,6 +79,7 @@ import java.io.FileOutputStream
 fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
     val navController = LocalNavController.current
     val workspaces by vm.workspaces.collectAsStateWithLifecycle()
+    val taskProgress by vm.taskProgress.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
     var editTarget by remember { mutableStateOf<WorkspaceEntity?>(null) }
@@ -150,107 +158,114 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
         }
     }
 
-    Scaffold(
-        topBar = {
-            LargeFlexibleTopAppBar(
-                title = { Text(stringResource(R.string.workspace_page_title)) },
-                navigationIcon = { BackButton() },
-                scrollBehavior = scrollBehavior,
-                colors = CustomColors.topBarColors,
-                actions = {
-                    IconButton(
-                        onClick = {
-                            if (!isImporting) {
-                                openDocumentLauncher.launch(arrayOf("application/zip"))
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            topBar = {
+                LargeFlexibleTopAppBar(
+                    title = { Text(stringResource(R.string.workspace_page_title)) },
+                    navigationIcon = { BackButton() },
+                    scrollBehavior = scrollBehavior,
+                    colors = CustomColors.topBarColors,
+                    actions = {
+                        IconButton(
+                            onClick = {
+                                if (!isImporting) {
+                                    openDocumentLauncher.launch(arrayOf("application/zip"))
+                                }
+                            },
+                        ) {
+                            if (isImporting) {
+                                CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(HugeIcons.FileImport, contentDescription = stringResource(R.string.workspace_page_import))
                             }
-                        },
-                    ) {
-                        if (isImporting) {
-                            CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
-                        } else {
-                            Icon(HugeIcons.FileImport, contentDescription = stringResource(R.string.workspace_page_import))
-                        }
-                    }
-                },
-            )
-        },
-        floatingActionButton = {
-            FloatingActionButton(onClick = { showAddDialog = true }) {
-                Icon(HugeIcons.Add01, contentDescription = null)
-            }
-        },
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        containerColor = CustomColors.topBarColors.containerColor,
-    ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = innerPadding + PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            if (workspaces.isEmpty()) {
-                item {
-                    EmptyWorkspaceState()
-                }
-            }
-
-            items(workspaces, key = { it.id }) { workspace ->
-                WorkspaceCard(
-                    workspace = workspace,
-                    onRename = { editTarget = workspace },
-                    onDelete = { deleteTarget = workspace },
-                    onOpen = { navController.navigate(Screen.WorkspaceDetail(workspace.id)) },
-                    onExport = {
-                        if (!isExporting) {
-                            exportTarget = workspace
-                            createDocumentLauncher.launch(
-                                "workspace_export_${System.currentTimeMillis()}.zip"
-                            )
                         }
                     },
-                    isExporting = isExporting,
                 )
+            },
+            floatingActionButton = {
+                FloatingActionButton(onClick = { showAddDialog = true }) {
+                    Icon(HugeIcons.Add01, contentDescription = null)
+                }
+            },
+            modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+            containerColor = CustomColors.topBarColors.containerColor,
+        ) { innerPadding ->
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = innerPadding + PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                if (workspaces.isEmpty()) {
+                    item {
+                        EmptyWorkspaceState()
+                    }
+                }
+
+                items(workspaces, key = { it.id }) { workspace ->
+                    WorkspaceCard(
+                        workspace = workspace,
+                        onRename = { editTarget = workspace },
+                        onDelete = { deleteTarget = workspace },
+                        onOpen = { navController.navigate(Screen.WorkspaceDetail(workspace.id)) },
+                        onExport = {
+                            if (!isExporting) {
+                                exportTarget = workspace
+                                createDocumentLauncher.launch(
+                                    "workspace_export_${System.currentTimeMillis()}.zip"
+                                )
+                            }
+                        },
+                        isExporting = isExporting,
+                    )
+                }
             }
         }
-    }
 
-    if (showAddDialog) {
-        EditWorkspaceDialog(
-            title = stringResource(R.string.workspace_page_create),
-            initialName = "",
-            existingNames = workspaces.map { it.name.trim() }.toSet(),
-            onDismiss = { showAddDialog = false },
-            onConfirm = { name ->
-                vm.create(name)
-                showAddDialog = false
+        if (showAddDialog) {
+            EditWorkspaceDialog(
+                title = stringResource(R.string.workspace_page_create),
+                initialName = "",
+                existingNames = workspaces.map { it.name.trim() }.toSet(),
+                onDismiss = { showAddDialog = false },
+                onConfirm = { name ->
+                    vm.create(name)
+                    showAddDialog = false
+                },
+            )
+        }
+
+        editTarget?.let { workspace ->
+            EditWorkspaceDialog(
+                title = stringResource(R.string.workspace_page_rename),
+                initialName = workspace.name,
+                existingNames = workspaces.filter { it.id != workspace.id }.map { it.name.trim() }.toSet(),
+                onDismiss = { editTarget = null },
+                onConfirm = { name ->
+                    vm.rename(workspace, name)
+                    editTarget = null
+                },
+            )
+        }
+
+        RikkaConfirmDialog(
+            show = deleteTarget != null,
+            title = stringResource(R.string.workspace_page_delete),
+            confirmText = stringResource(R.string.common_delete),
+            dismissText = stringResource(R.string.common_cancel),
+            onConfirm = {
+                deleteTarget?.let { vm.delete(it) }
+                deleteTarget = null
             },
-        )
-    }
+            onDismiss = { deleteTarget = null },
+        ) {
+            Text(stringResource(R.string.workspace_page_delete_confirm))
+        }
 
-    editTarget?.let { workspace ->
-        EditWorkspaceDialog(
-            title = stringResource(R.string.workspace_page_rename),
-            initialName = workspace.name,
-            existingNames = workspaces.filter { it.id != workspace.id }.map { it.name.trim() }.toSet(),
-            onDismiss = { editTarget = null },
-            onConfirm = { name ->
-                vm.rename(workspace, name)
-                editTarget = null
-            },
-        )
-    }
-
-    RikkaConfirmDialog(
-        show = deleteTarget != null,
-        title = stringResource(R.string.workspace_page_delete),
-        confirmText = stringResource(R.string.common_delete),
-        dismissText = stringResource(R.string.common_cancel),
-        onConfirm = {
-            deleteTarget?.let { vm.delete(it) }
-            deleteTarget = null
-        },
-        onDismiss = { deleteTarget = null },
-    ) {
-        Text(stringResource(R.string.workspace_page_delete_confirm))
+        // 导入导出悬浮进度条 HUD
+        taskProgress?.let { progress ->
+            WorkspaceProgressOverlay(progress = progress)
+        }
     }
 }
 
@@ -436,4 +451,74 @@ private fun EditWorkspaceDialog(
             }
         },
     )
+}
+
+@Composable
+private fun WorkspaceProgressOverlay(progress: WorkspaceTaskProgress) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.5f))
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            modifier = Modifier
+                .padding(32.dp)
+                .fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = if (progress.isExport) {
+                        stringResource(R.string.workspace_page_exporting)
+                    } else {
+                        stringResource(R.string.workspace_page_importing)
+                    },
+                    style = MaterialTheme.typography.titleMedium
+                )
+                val fraction = if (progress.total > 0) progress.current.toFloat() / progress.total.toFloat() else 0f
+                LinearProgressIndicator(
+                    progress = { fraction.coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = if (progress.total > 0) "${progress.current} / ${progress.total} 个文件" else progress.currentPath,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (progress.total > 0) {
+                        Text(
+                            text = "${(fraction * 100).toInt()}%",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+                if (progress.total > 0 && progress.currentPath.isNotBlank()) {
+                    Text(
+                        text = progress.currentPath,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
 }

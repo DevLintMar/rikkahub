@@ -13,10 +13,19 @@ import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.workspace.RootfsInstallProgress
 
+data class WorkspaceTaskProgress(
+    val isExport: Boolean,
+    val current: Int,
+    val total: Int,
+    val currentPath: String = "",
+)
+
 class WorkspaceVM(
     private val repository: WorkspaceRepository,
     private val terminalSessionManager: WorkspaceTerminalSessionManager,
 ) : ViewModel() {
+    val taskProgress = MutableStateFlow<WorkspaceTaskProgress?>(null)
+
     val workspaces = repository.listFlow()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
@@ -40,9 +49,36 @@ class WorkspaceVM(
     }
 
     /** 导出工作区为 zip（含 rootfs），返回 cacheDir 临时文件 */
-    suspend fun exportWorkspace(id: String): java.io.File = repository.exportWorkspace(id)
+    suspend fun exportWorkspace(id: String): java.io.File {
+        taskProgress.value = WorkspaceTaskProgress(isExport = true, current = 0, total = 0, currentPath = "准备打包...")
+        return try {
+            repository.exportWorkspace(id) { current, total, path ->
+                taskProgress.value = WorkspaceTaskProgress(
+                    isExport = true,
+                    current = current,
+                    total = total,
+                    currentPath = path,
+                )
+            }
+        } finally {
+            taskProgress.value = null
+        }
+    }
 
     /** 导入工作区备份，返回新建的工作区 */
-    suspend fun importWorkspace(zipFile: java.io.File): WorkspaceEntity =
-        repository.importWorkspace(zipFile)
+    suspend fun importWorkspace(zipFile: java.io.File): WorkspaceEntity {
+        taskProgress.value = WorkspaceTaskProgress(isExport = false, current = 0, total = 0, currentPath = "准备解压...")
+        return try {
+            repository.importWorkspace(zipFile) { current, total, path ->
+                taskProgress.value = WorkspaceTaskProgress(
+                    isExport = false,
+                    current = current,
+                    total = total,
+                    currentPath = path,
+                )
+            }
+        } finally {
+            taskProgress.value = null
+        }
+    }
 }

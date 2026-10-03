@@ -80,8 +80,11 @@ object WorkspaceBackup {
         manager: WorkspaceManager,
         entity: WorkspaceEntity,
         target: File,
+        onProgress: ((current: Int, total: Int, itemPath: String) -> Unit)? = null,
     ) {
         val modes = mutableMapOf<String, Int>()
+        val totalFiles = countFiles(manager.workspaceDir(entity.root))
+        val currentCounter = intArrayOf(0)
         ZipOutputStream(FileOutputStream(target)).use { zipOut ->
             // 元信息首个条目：导入先读它拿 name 建 workspace，再解压其余
             val metaBytes = JsonInstant.encodeToString(
@@ -98,7 +101,7 @@ object WorkspaceBackup {
             zipOut.write(metaBytes)
             zipOut.closeEntry()
 
-            addDirectoryToZip(zipOut, manager.workspaceDir(entity.root), "", modes)
+            addDirectoryToZip(zipOut, manager.workspaceDir(entity.root), "", modes, totalFiles, currentCounter, onProgress)
 
             // 权限位清单（顺序无所谓：读取一律按条目名查）
             zipOut.putNextEntry(ZipEntry(MODES_ENTRY))
@@ -122,13 +125,21 @@ object WorkspaceBackup {
      * 每个文件按 `modes.json` 把权限位设回去（zip 不携带权限位，见文件头 —— 少了这一步
      * 导入的 rootfs 没有可执行位，proot 直接起不来）。
      */
-    fun extractTo(zip: ZipFile, rootDir: File) {
+    fun extractTo(
+        zip: ZipFile,
+        rootDir: File,
+        onProgress: ((current: Int, total: Int, itemPath: String) -> Unit)? = null,
+    ) {
         val rootCanonical = rootDir.canonicalFile
         val symlinkTargets = mutableMapOf<String, String>()
         // 空 map = 本修复之前导出的 zip（没有清单），由 legacyOwnerMode 兜底
         val modes = readModes(zip)
+        val total = zip.size()
+        var current = 0
 
         zip.entries().asSequence().forEach { entry ->
+            current++
+            onProgress?.invoke(current, total, entry.name)
             if (entry.isDirectory || entry.name == META_ENTRY || entry.name == MODES_ENTRY) return@forEach
             if (entry.name == TEMP_DIR_NAME || entry.name.startsWith("$TEMP_DIR_NAME/")) return@forEach
 
@@ -184,11 +195,29 @@ object WorkspaceBackup {
     private fun legacyOwnerMode(entryName: String): Int =
         if (entryName.startsWith("${WorkspaceManager.LINUX_DIR}/")) 0b111 else 0b110
 
+    private fun countFiles(dir: File, prefix: String = ""): Int {
+        val children = dir.listFiles() ?: return 0
+        var count = 0
+        for (file in children) {
+            if (prefix.isEmpty() && file.name == TEMP_DIR_NAME) continue
+            val entryName = "$prefix${file.name}"
+            if (file.isDirectory && !Files.isSymbolicLink(file.toPath())) {
+                count += countFiles(file, "$entryName/")
+            } else {
+                count++
+            }
+        }
+        return count
+    }
+
     private fun addDirectoryToZip(
         zipOut: ZipOutputStream,
         dir: File,
         prefix: String,
         modes: MutableMap<String, Int>,
+        totalFiles: Int = 0,
+        currentCounter: IntArray = intArrayOf(0),
+        onProgress: ((current: Int, total: Int, itemPath: String) -> Unit)? = null,
     ) {
         val children = dir.listFiles()?.sortedBy { it.name } ?: return
         for (file in children) {
@@ -202,17 +231,21 @@ object WorkspaceBackup {
                 zipOut.putNextEntry(ZipEntry("$SYMLINKS_PREFIX$entryName"))
                 zipOut.write(target.toByteArray())
                 zipOut.closeEntry()
+                currentCounter[0]++
+                onProgress?.invoke(currentCounter[0], totalFiles, entryName)
                 continue
             }
             if (file.isDirectory) {
                 zipOut.putNextEntry(ZipEntry("$entryName/"))
                 zipOut.closeEntry()
-                addDirectoryToZip(zipOut, file, "$entryName/", modes)
+                addDirectoryToZip(zipOut, file, "$entryName/", modes, totalFiles, currentCounter, onProgress)
             } else {
                 zipOut.putNextEntry(ZipEntry(entryName))
                 file.inputStream().use { it.copyTo(zipOut) }
                 zipOut.closeEntry()
                 modes[entryName] = file.readOwnerMode()
+                currentCounter[0]++
+                onProgress?.invoke(currentCounter[0], totalFiles, entryName)
             }
         }
     }
