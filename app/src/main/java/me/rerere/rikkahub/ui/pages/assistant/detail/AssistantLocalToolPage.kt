@@ -248,6 +248,20 @@ private fun AssistantLocalToolContent(
             )
             item(
                 headlineContent = {
+                    Text(stringResource(R.string.assistant_page_local_tools_alarm_clock_title))
+                },
+                supportingContent = {
+                    Text(stringResource(R.string.assistant_page_local_tools_alarm_clock_desc))
+                },
+                trailingContent = {
+                    Switch(
+                        checked = assistant.localTools.contains(LocalToolOption.AlarmClock),
+                        onCheckedChange = { toggleLocalTool(LocalToolOption.AlarmClock, it) }
+                    )
+                }
+            )
+            item(
+                headlineContent = {
                     Text(stringResource(R.string.assistant_page_local_tools_chart_display_title))
                 },
                 supportingContent = {

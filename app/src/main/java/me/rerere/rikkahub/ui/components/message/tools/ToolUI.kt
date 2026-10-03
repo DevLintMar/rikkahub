@@ -104,6 +104,7 @@ object ToolUIRegistry {
         GetScreenTimeToolUI,
         CalendarQueryToolUI,
         CalendarCreateToolUI,
+        AlarmClockToolUI,
         ChartDisplayToolUI,
         UseSkillToolUI,
         ReadImageToolUI,

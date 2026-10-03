@@ -34,6 +34,10 @@ sealed class LocalToolOption {
     data object Calendar : LocalToolOption()
 
     @Serializable
+    @SerialName("alarm_clock")
+    data object AlarmClock : LocalToolOption()
+
+    @Serializable
     @SerialName("sub_agent")
     data object SubAgent : LocalToolOption()
 

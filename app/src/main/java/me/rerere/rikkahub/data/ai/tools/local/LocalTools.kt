@@ -56,6 +56,7 @@ class LocalTools(
     val workflowTool by lazy { buildWorkflowTool(workflowEngine) }
 
     val chartDisplayTool by lazy { buildChartDisplayTool() }
+    val alarmClockTool by lazy { buildAlarmClockTool(context) }
 
     fun getTools(options: List<LocalToolOption>): List<Tool> {
         val tools = mutableListOf<Tool>()
@@ -80,6 +81,9 @@ class LocalTools(
         if (options.contains(LocalToolOption.Calendar)) {
             tools.add(calendarQueryTool)
             tools.add(calendarCreateTool)
+        }
+        if (options.contains(LocalToolOption.AlarmClock)) {
+            tools.add(alarmClockTool)
         }
         if (options.contains(LocalToolOption.SubAgent)) {
             tools.add(subAgentTool)

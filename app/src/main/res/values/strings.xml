@@ -1556,4 +1556,7 @@
   <string name="setting_app_icon_create_shortcut">Add to Home Screen</string>
   <string name="setting_app_icon_shortcut_success">Requested to add shortcut to home screen</string>
   <string name="setting_app_icon_shortcut_not_supported">Launcher does not support pinning shortcuts</string>
+  <string name="assistant_page_local_tools_alarm_clock_title">Alarm &amp; Timer</string>
+  <string name="assistant_page_local_tools_alarm_clock_desc">Let the AI set system alarms and countdown timers</string>
+  <string name="chat_message_tool_alarm_clock">Alarm &amp; Timer</string>
 </resources>

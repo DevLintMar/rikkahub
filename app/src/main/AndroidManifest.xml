@@ -21,6 +21,7 @@
     tools:ignore="ProtectedPermissions" />
   <uses-permission android:name="android.permission.READ_CALENDAR" />
   <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+  <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
 
   <uses-feature
     android:name="android.hardware.camera"

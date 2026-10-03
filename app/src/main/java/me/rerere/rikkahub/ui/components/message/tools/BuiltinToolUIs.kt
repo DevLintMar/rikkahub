@@ -1422,6 +1422,53 @@ object CalendarCreateToolUI : ToolUIRenderer {
     }
 }
 
+object AlarmClockToolUI : ToolUIRenderer {
+    override val toolName: String = "alarm_clock"
+
+    override fun icon(context: ToolUIContext): ImageVector = HugeIcons.Time02
+
+    @Composable
+    override fun title(context: ToolUIContext): String {
+        val action = context.arguments.getStringContent("action")
+        return when (action) {
+            "set_alarm" -> {
+                val hour = context.arguments.getStringContent("hour")?.toIntOrNull() ?: 0
+                val minute = context.arguments.getStringContent("minute")?.toIntOrNull() ?: 0
+                val msg = context.arguments.getStringContent("message")
+                val timeStr = "%02d:%02d".format(hour, minute)
+                if (msg.isNullOrBlank()) "设置闹钟 $timeStr" else "设置闹钟 $timeStr ($msg)"
+            }
+            "set_timer" -> {
+                val sec = context.arguments.getStringContent("seconds")?.toIntOrNull() ?: 0
+                val msg = context.arguments.getStringContent("message")
+                val timeStr = if (sec >= 60) "${sec / 60} 分钟" else "$sec 秒"
+                if (msg.isNullOrBlank()) "开启倒计时 $timeStr" else "开启倒计时 $timeStr ($msg)"
+            }
+            "show_clock" -> "打开时钟应用"
+            else -> stringResource(R.string.chat_message_tool_alarm_clock)
+        }
+    }
+
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean =
+        context.content?.getStringContent("message") != null
+
+    @Composable
+    override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
+        val message = context.content?.getStringContent("message")
+        if (message == null) {
+            DefaultToolPreview(context = context)
+            return
+        }
+        ToolDetailContainer {
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Normal,
+            )
+        }
+    }
+}
+
 object ChartDisplayToolUI : ToolUIRenderer {
     override val toolName: String = "chart_display"
 

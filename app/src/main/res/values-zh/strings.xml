@@ -1546,4 +1546,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_app_icon_create_shortcut">添加到手机桌面</string>
   <string name="setting_app_icon_shortcut_success">已请求创建桌面快捷方式，请在手机桌面查看</string>
   <string name="setting_app_icon_shortcut_not_supported">当前桌面启动器不支持固定快捷方式</string>
+  <string name="assistant_page_local_tools_alarm_clock_title">闹钟与计时</string>
+  <string name="assistant_page_local_tools_alarm_clock_desc">让 AI 为您设置系统闹钟与倒计时器</string>
+  <string name="chat_message_tool_alarm_clock">闹钟与计时</string>
 </resources>
