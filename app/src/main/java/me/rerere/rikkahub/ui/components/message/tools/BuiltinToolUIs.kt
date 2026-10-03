@@ -1,10 +1,12 @@
 package me.rerere.rikkahub.ui.components.message.tools
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -15,6 +17,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalIconButton
@@ -22,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -80,6 +85,8 @@ import me.rerere.hugeicons.stroke.Calendar03
 import me.rerere.hugeicons.stroke.CalendarAdd01
 import me.rerere.hugeicons.stroke.SmartPhone01
 import me.rerere.hugeicons.stroke.Time02
+import me.rerere.hugeicons.stroke.AlarmClock
+import me.rerere.hugeicons.stroke.Hourglass
 import me.rerere.hugeicons.stroke.VolumeHigh
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.event.AppEvent
@@ -1425,7 +1432,14 @@ object CalendarCreateToolUI : ToolUIRenderer {
 object AlarmClockToolUI : ToolUIRenderer {
     override val toolName: String = "alarm_clock"
 
-    override fun icon(context: ToolUIContext): ImageVector = HugeIcons.Time02
+    override fun icon(context: ToolUIContext): ImageVector {
+        val action = context.arguments.getStringContent("action")
+        return when (action) {
+            "set_timer" -> HugeIcons.Hourglass
+            "show_clock" -> HugeIcons.Time02
+            else -> HugeIcons.AlarmClock
+        }
+    }
 
     @Composable
     override fun title(context: ToolUIContext): String {
@@ -1449,22 +1463,477 @@ object AlarmClockToolUI : ToolUIRenderer {
         }
     }
 
-    override fun hasSemanticDetail(context: ToolUIContext): Boolean =
-        context.content?.getStringContent("message") != null
+    override fun hasSummary(context: ToolUIContext): Boolean = true
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val action = context.arguments.getStringContent("action")
+        val isError = context.content?.jsonObjectOrNull?.get("error")?.jsonPrimitiveOrNull?.booleanOrNull == true
+        val isSuccess = context.content?.jsonObjectOrNull?.get("success")?.jsonPrimitiveOrNull?.booleanOrNull == true
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            when (action) {
+                "set_alarm" -> {
+                    val hour = context.arguments.getStringContent("hour")?.toIntOrNull() ?: 0
+                    val minute = context.arguments.getStringContent("minute")?.toIntOrNull() ?: 0
+                    val msg = context.arguments.getStringContent("message")
+                    val timeStr = "%02d:%02d".format(hour, minute)
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Icon(
+                                imageVector = HugeIcons.AlarmClock,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(
+                                text = timeStr,
+                                style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            )
+                        }
+                    }
+
+                    if (!msg.isNullOrBlank()) {
+                        ToolPill(msg)
+                    }
+
+                    if (isSuccess) {
+                        Text(
+                            text = "已设定",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    } else if (isError) {
+                        Text(
+                            text = "设定失败",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+                "set_timer" -> {
+                    val sec = context.arguments.getStringContent("seconds")?.toIntOrNull() ?: 0
+                    val msg = context.arguments.getStringContent("message")
+                    val timeStr = if (sec >= 60) "${sec / 60} 分钟" else "$sec 秒"
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.6f),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Icon(
+                                imageVector = HugeIcons.Hourglass,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.tertiary,
+                            )
+                            Text(
+                                text = timeStr,
+                                style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            )
+                        }
+                    }
+
+                    if (!msg.isNullOrBlank()) {
+                        ToolPill(msg)
+                    }
+
+                    if (isSuccess) {
+                        Text(
+                            text = "运行中",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.tertiary,
+                        )
+                    } else if (isError) {
+                        Text(
+                            text = "开启失败",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+                else -> {
+                    ToolPill("系统时钟")
+                }
+            }
+        }
+    }
+
+    override fun hasSemanticDetail(context: ToolUIContext): Boolean = true
 
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
-        val message = context.content?.getStringContent("message")
-        if (message == null) {
-            DefaultToolPreview(context = context)
-            return
-        }
+        val platformContext = LocalContext.current
+        val action = context.arguments.getStringContent("action") ?: "set_alarm"
+        val messageArg = context.arguments.getStringContent("message")
+        val isError = context.content?.jsonObjectOrNull?.get("error")?.jsonPrimitiveOrNull?.booleanOrNull == true
+        val isSuccess = context.content?.jsonObjectOrNull?.get("success")?.jsonPrimitiveOrNull?.booleanOrNull == true
+        val resultMessage = context.content?.getStringContent("message")
+
         ToolDetailContainer {
-            Text(
-                text = message,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Normal,
-            )
+            // 1. 顶部 Hero 视觉展板卡片
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = when (action) {
+                        "set_timer" -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.35f)
+                        else -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                    }
+                ),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    // 动作类型与状态指示胶囊
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = when (action) {
+                                "set_timer" -> MaterialTheme.colorScheme.tertiary
+                                else -> MaterialTheme.colorScheme.primary
+                            },
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Icon(
+                                    imageVector = when (action) {
+                                        "set_timer" -> HugeIcons.Hourglass
+                                        "show_clock" -> HugeIcons.Time02
+                                        else -> HugeIcons.AlarmClock
+                                    },
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = when (action) {
+                                        "set_timer" -> MaterialTheme.colorScheme.onTertiary
+                                        else -> MaterialTheme.colorScheme.onPrimary
+                                    },
+                                )
+                                Text(
+                                    text = when (action) {
+                                        "set_timer" -> "倒计时计时器"
+                                        "show_clock" -> "系统时钟"
+                                        else -> "系统闹钟"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = when (action) {
+                                        "set_timer" -> MaterialTheme.colorScheme.onTertiary
+                                        else -> MaterialTheme.colorScheme.onPrimary
+                                    },
+                                )
+                            }
+                        }
+
+                        // 状态提示
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isError) {
+                                MaterialTheme.colorScheme.errorContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            },
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(RoundedCornerShape(3.dp))
+                                        .background(
+                                            if (isError) MaterialTheme.colorScheme.error
+                                            else MaterialTheme.colorScheme.primary
+                                        )
+                                )
+                                Text(
+                                    text = if (isError) "执行失败" else if (isSuccess) "已同步系统" else "已触发",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isError) MaterialTheme.colorScheme.onErrorContainer
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+
+                    // 核心大数字时间显示 (Hero Clock Time)
+                    when (action) {
+                        "set_alarm" -> {
+                            val hour = context.arguments.getStringContent("hour")?.toIntOrNull() ?: 0
+                            val minute = context.arguments.getStringContent("minute")?.toIntOrNull() ?: 0
+                            val timeStr = "%02d:%02d".format(hour, minute)
+
+                            Row(
+                                verticalAlignment = Alignment.Bottom,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Text(
+                                    text = timeStr,
+                                    style = MaterialTheme.typography.displayMedium.copy(
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 44.sp,
+                                    ),
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = if (hour < 12) "AM" else "PM",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(bottom = 6.dp),
+                                )
+                            }
+                        }
+                        "set_timer" -> {
+                            val sec = context.arguments.getStringContent("seconds")?.toIntOrNull() ?: 0
+                            val m = sec / 60
+                            val s = sec % 60
+                            val timeStr = if (m > 0) "%02d:%02d".format(m, s) else "${s}s"
+
+                            Row(
+                                verticalAlignment = Alignment.Bottom,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Text(
+                                    text = timeStr,
+                                    style = MaterialTheme.typography.displayMedium.copy(
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 44.sp,
+                                    ),
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = "倒计时",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.padding(bottom = 6.dp),
+                                )
+                            }
+                            Text(
+                                text = "设定总时长：$sec 秒 (${if (sec >= 60) "${sec / 60} 分钟" else ""}${if (sec % 60 > 0) "${sec % 60} 秒" else ""})",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        else -> {
+                            Icon(
+                                imageVector = HugeIcons.Time02,
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(
+                                text = "系统原生时钟",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+
+                    // 备注/标签展示
+                    if (!messageArg.isNullOrBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            modifier = Modifier.padding(top = 4.dp),
+                        ) {
+                            Text(
+                                text = "标签：$messageArg",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 2. 闹钟重复周期 (Weekly Repeat Grid - 针对 set_alarm)
+            if (action == "set_alarm") {
+                val daysList = remember(context.arguments) {
+                    context.arguments.jsonObjectOrNull?.get("days")?.jsonArray
+                        ?.mapNotNull { it.jsonPrimitiveOrNull?.intOrNull }
+                        ?: emptyList()
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f)
+                    ),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "重复周期",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            Text(
+                                text = when {
+                                    daysList.isEmpty() -> "仅响一次 (默认次日/当日)"
+                                    daysList.size == 7 -> "每天"
+                                    daysList.containsAll(listOf(2, 3, 4, 5, 6)) && daysList.size == 5 -> "工作日 (周一至周五)"
+                                    daysList.containsAll(listOf(1, 7)) && daysList.size == 2 -> "周末 (周六日)"
+                                    else -> "自定义周期"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+
+                        // 7 天圆形药丸指示器 (日 一 二 三 四 五 六)
+                        // 1 = Sunday, 2 = Monday ... 7 = Saturday
+                        val dayNames = listOf(
+                            1 to "日",
+                            2 to "一",
+                            3 to "二",
+                            4 to "三",
+                            5 to "四",
+                            6 to "五",
+                            7 to "六",
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            dayNames.forEach { (dInt, dName) ->
+                                val selected = daysList.contains(dInt)
+                                Surface(
+                                    modifier = Modifier.size(36.dp),
+                                    shape = RoundedCornerShape(18.dp),
+                                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = dName,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. 一键打开系统原生时钟直达操作
+            Button(
+                onClick = {
+                    val intent = when (action) {
+                        "set_timer" -> android.content.Intent(android.provider.AlarmClock.ACTION_SHOW_TIMERS)
+                        else -> android.content.Intent(android.provider.AlarmClock.ACTION_SHOW_ALARMS)
+                    }.apply {
+                        flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    runCatching { platformContext.startActivity(intent) }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(),
+            ) {
+                Icon(
+                    imageVector = when (action) {
+                        "set_timer" -> HugeIcons.Hourglass
+                        else -> HugeIcons.AlarmClock
+                    },
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = when (action) {
+                        "set_timer" -> "在系统时钟中查看计时器"
+                        else -> "在系统时钟中查看闹钟"
+                    },
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+
+            // 4. 返回的执行提示文本（若有）
+            if (!resultMessage.isNullOrBlank()) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f),
+                ) {
+                    Text(
+                        text = resultMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(12.dp),
+                    )
+                }
+            }
+
+            // 5. 开发者/高级参数与返回值分区（带 JSON 展开开关）
+            ToolJsonSection(
+                label = stringResource(R.string.tool_ui_arguments),
+                json = context.arguments,
+            ) {
+                JsonTreeView(context.arguments)
+            }
+            if (context.content != null) {
+                ToolJsonSection(
+                    label = stringResource(R.string.chat_message_tool_call_result),
+                    json = context.content,
+                ) {
+                    JsonTreeView(context.content)
+                }
+            }
         }
     }
 }
