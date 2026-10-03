@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Notification01
 import me.rerere.hugeicons.stroke.Settings03
+import me.rerere.hugeicons.stroke.SmartPhone01
 import me.rerere.hugeicons.stroke.Sun01
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
@@ -81,6 +82,12 @@ fun SettingPreferencesPage() {
                         leadingContent = { Icon(ForkIcons.PaintBoard, null) },
                         headlineContent = { Text(stringResource(R.string.setting_page_preferences_ui)) },
                         supportingContent = { Text(stringResource(R.string.setting_page_preferences_ui_desc)) },
+                    )
+                    item(
+                        onClick = { navController.navigate(Screen.SettingPreferencesAppIcon) },
+                        leadingContent = { Icon(HugeIcons.SmartPhone01, null) },
+                        headlineContent = { Text(stringResource(R.string.setting_page_preferences_app_icon)) },
+                        supportingContent = { Text(stringResource(R.string.setting_page_preferences_app_icon_desc)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingPreferencesNetwork) },

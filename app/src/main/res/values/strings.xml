@@ -1550,4 +1550,10 @@
   <string name="error_fast_model_provider_not_found">Provider of the fast model not found</string>
 <string name="assistant_page_clone_with_memories">Also copy memories</string>
   <string name="common_delete_confirm_message">Are you sure you want to delete "%s"? This action cannot be undone.</string>
+  <string name="setting_page_preferences_app_icon">App Icon</string>
+  <string name="setting_page_preferences_app_icon_desc">Customize app icon and add desktop shortcuts</string>
+  <string name="setting_app_icon_select_image">Select &amp; Crop Image</string>
+  <string name="setting_app_icon_create_shortcut">Add to Home Screen</string>
+  <string name="setting_app_icon_shortcut_success">Requested to add shortcut to home screen</string>
+  <string name="setting_app_icon_shortcut_not_supported">Launcher does not support pinning shortcuts</string>
 </resources>

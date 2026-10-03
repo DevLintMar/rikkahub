@@ -1540,4 +1540,10 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="error_fast_model_provider_not_found">未找到快速模型的提供商</string>
 <string name="assistant_page_clone_with_memories">同时复制记忆</string>
   <string name="common_delete_confirm_message">确定要删除“%s”吗？此操作无法撤销。</string>
+  <string name="setting_page_preferences_app_icon">应用图标</string>
+  <string name="setting_page_preferences_app_icon_desc">自定义应用图标与添加桌面快捷方式</string>
+  <string name="setting_app_icon_select_image">选择图片裁切</string>
+  <string name="setting_app_icon_create_shortcut">添加到手机桌面</string>
+  <string name="setting_app_icon_shortcut_success">已请求创建桌面快捷方式，请在手机桌面查看</string>
+  <string name="setting_app_icon_shortcut_not_supported">当前桌面启动器不支持固定快捷方式</string>
 </resources>
