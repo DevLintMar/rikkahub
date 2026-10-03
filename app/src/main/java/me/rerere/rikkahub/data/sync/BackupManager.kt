@@ -33,6 +33,9 @@ private const val TAG = "BackupManager"
 /** AI 生成图片目录：GenMediaEntity.path 存相对 "images/xxx"，故不在 FileFolders 常量表内。 */
 private const val IMAGES_FOLDER = "images"
 
+/** 自定义 Agent 目录：存放在 filesDir/agents 目录。 */
+private const val AGENTS_FOLDER = "agents"
+
 /** Shared archive format and restore lifecycle for local, WebDAV and S3 backups. */
 class BackupManager(
     private val context: Context,
@@ -65,7 +68,7 @@ class BackupManager(
                 }
                 if (includeFiles) {
                     for (folder in listOf(
-                        FileFolders.UPLOAD, FileFolders.SKILLS, FileFolders.FONTS, IMAGES_FOLDER
+                        FileFolders.UPLOAD, FileFolders.SKILLS, FileFolders.FONTS, IMAGES_FOLDER, AGENTS_FOLDER
                     )) {
                         val directory = File(context.filesDir, folder)
                         val files = if (folder == FileFolders.SKILLS) directory.walkTopDown().asSequence()
@@ -251,17 +254,6 @@ class BackupManager(
         }
     }
 
-    private fun isAttachment(name: String): Boolean {
-        val folder = name.substringBefore('/')
-        if (folder !in listOf(FileFolders.UPLOAD, FileFolders.SKILLS, FileFolders.FONTS, IMAGES_FOLDER) ||
-            '/' !in name
-        ) return false
-        val relative = name.substringAfter('/')
-        require(relative.isNotBlank()) { "Invalid backup attachment: $name" }
-        require(folder == FileFolders.SKILLS || '/' !in relative) { "Invalid backup attachment: $name" }
-        return true
-    }
-
     private fun addFile(zip: ZipOutputStream, file: File, name: String) {
         zip.putNextEntry(ZipEntry(name))
         file.inputStream().use { it.copyTo(zip) }
@@ -269,6 +261,17 @@ class BackupManager(
     }
 
     companion object {
+        internal fun isAttachment(name: String): Boolean {
+            val folder = name.substringBefore('/')
+            if (folder !in listOf(FileFolders.UPLOAD, FileFolders.SKILLS, FileFolders.FONTS, IMAGES_FOLDER, AGENTS_FOLDER) ||
+                '/' !in name
+            ) return false
+            val relative = name.substringAfter('/')
+            require(relative.isNotBlank()) { "Invalid backup attachment: $name" }
+            require(folder == FileFolders.SKILLS || '/' !in relative) { "Invalid backup attachment: $name" }
+            return true
+        }
+
         private fun pendingRestore(context: Context) = PendingRestore(
             root = File(context.noBackupFilesDir, "backup-restore"),
             databaseFile = context.getDatabasePath(SQLiteConfiguration.DATABASE_NAME),
