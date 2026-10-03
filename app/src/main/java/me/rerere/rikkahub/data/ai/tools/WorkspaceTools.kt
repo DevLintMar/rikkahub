@@ -8,6 +8,7 @@ import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -393,6 +394,9 @@ private fun createGrepTool(
         Search for text or regex in files under the assistant's bound workspace Rootfs /workspace area.
         Set 'regex'=true to treat the pattern as a regular expression (default is literal match).
         'path' is an optional base directory relative to /workspace; 'glob' is an optional file-name filter.
+        'ignore_case' controls case sensitivity (default true).
+        'output_mode' can be 'content' (default), 'files_with_matches', or 'count'.
+        'head_limit' limits the maximum number of results returned (default 250).
         Returns matching lines with file path, line number and content.
     """.trimIndent().replace("\n", " "),
     parameters = {
@@ -414,6 +418,18 @@ private fun createGrepTool(
                     put("type", "string")
                     put("description", "Optional file-name glob filter (e.g. '*.kt')")
                 })
+                put("ignore_case", buildJsonObject {
+                    put("type", "boolean")
+                    put("description", "Case insensitive search (default true)")
+                })
+                put("output_mode", buildJsonObject {
+                    put("type", "string")
+                    put("description", "Output mode: 'content' (default), 'files_with_matches', or 'count'")
+                })
+                put("head_limit", buildJsonObject {
+                    put("type", "integer")
+                    put("description", "Limit output entries (default 250)")
+                })
             },
             required = listOf("pattern"),
         )
@@ -424,27 +440,65 @@ private fun createGrepTool(
         val path = it.jsonObject.string("path").orEmpty()
         val regex = it.jsonObject["regex"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false
         val glob = it.jsonObject.string("glob")
+        val ignoreCase = it.jsonObject["ignore_case"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: true
+        val outputMode = it.jsonObject.string("output_mode") ?: "content"
+        val headLimit = it.jsonObject["head_limit"]?.jsonPrimitive?.intOrNull ?: 250
+
         val matches = workspaceRepository.grep(
             id = workspaceId, query = pattern, path = path, regex = regex,
-            ignoreCase = true, includeGlob = glob,
+            ignoreCase = ignoreCase, includeGlob = glob,
         )
-        listOf(
-            UIMessagePart.Text(
-                buildJsonObject {
-                    put("type", JsonPrimitive("workspace_grep"))
-                    put("pattern", JsonPrimitive(pattern))
-                    putJsonArray("matches") {
-                        matches.forEach { m ->
-                            add(buildJsonObject {
-                                put("path", JsonPrimitive(m.path))
-                                put("line", JsonPrimitive(m.line))
-                                put("text", JsonPrimitive(m.text))
-                            })
-                        }
-                    }
-                }.toString()
-            )
-        )
+
+        when (outputMode) {
+            "files_with_matches" -> {
+                val files = matches.map { m -> m.path }.distinct().take(headLimit)
+                listOf(
+                    UIMessagePart.Text(
+                        buildJsonObject {
+                            put("type", JsonPrimitive("workspace_grep"))
+                            put("pattern", JsonPrimitive(pattern))
+                            put("output_mode", JsonPrimitive("files_with_matches"))
+                            putJsonArray("files") {
+                                files.forEach { add(JsonPrimitive(it)) }
+                            }
+                        }.toString()
+                    )
+                )
+            }
+            "count" -> {
+                val totalCount = matches.size
+                listOf(
+                    UIMessagePart.Text(
+                        buildJsonObject {
+                            put("type", JsonPrimitive("workspace_grep"))
+                            put("pattern", JsonPrimitive(pattern))
+                            put("output_mode", JsonPrimitive("count"))
+                            put("count", JsonPrimitive(totalCount))
+                        }.toString()
+                    )
+                )
+            }
+            else -> {
+                val limited = matches.take(headLimit)
+                listOf(
+                    UIMessagePart.Text(
+                        buildJsonObject {
+                            put("type", JsonPrimitive("workspace_grep"))
+                            put("pattern", JsonPrimitive(pattern))
+                            putJsonArray("matches") {
+                                limited.forEach { m ->
+                                    add(buildJsonObject {
+                                        put("path", JsonPrimitive(m.path))
+                                        put("line", JsonPrimitive(m.line))
+                                        put("text", JsonPrimitive(m.text))
+                                    })
+                                }
+                            }
+                        }.toString()
+                    )
+                )
+            }
+        }
     },
 )
 

@@ -137,6 +137,7 @@ class ProotShellRunner(
         isDirectory && File(this, "bin/sh").isFile
 
     companion object {
+        @Volatile
         var extraEnvProvider: (() -> Map<String, String>)? = null
         private const val PROOT_EXEC = "libproot_exec.so"
         private const val PROOT_LOADER = "libproot_loader.so"

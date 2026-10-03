@@ -112,6 +112,7 @@ class WorkspaceFileSystem(
                 .filter { Files.isRegularFile(it) || Files.isDirectory(it) }
                 .filter { !it.toFile().name.startsWith(".l2s.") }
                 .filter { matcher.matches(root.toPath().relativize(it).normalizeForMatch()) }
+                .sortedByDescending { it.toFile().lastModified() }
                 .take(config.maxListEntries)
                 .map { it.toFile().toEntry(root) }
                 .toList()

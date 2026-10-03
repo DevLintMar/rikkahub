@@ -439,7 +439,9 @@ fun <T : SearchServiceOptions> T.withSingleKey(key: String): T = when (this) {
     is SearchServiceOptions.TinyfishOptions -> copy(apiKey = key)
     is SearchServiceOptions.SerperOptions -> copy(apiKey = key)
     is SearchServiceOptions.DoubaoOptions -> copy(apiKey = key)
-    else -> this
+    is SearchServiceOptions.SearXNGOptions,
+    is SearchServiceOptions.CustomJsOptions,
+    is SearchServiceOptions.BingLocalOptions -> this
 } as T
 
 private fun Throwable.isRetryable(): Boolean {
