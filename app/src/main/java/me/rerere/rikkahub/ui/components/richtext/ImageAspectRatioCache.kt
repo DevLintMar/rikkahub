@@ -22,6 +22,8 @@ package me.rerere.rikkahub.ui.components.richtext
 internal object ImageAspectRatioCache {
 
     private const val MAX_ENTRIES = 256
+    private const val MIN_RATIO = 0.15f
+    private const val MAX_RATIO = 6.0f
 
     // accessOrder = true：命中即刷新为最近使用；迭代顺序首位就是最久未用的
     private val entries = LinkedHashMap<String, Float>(16, 0.75f, true)
@@ -34,6 +36,16 @@ internal object ImageAspectRatioCache {
     }
 
     /**
+     * 主动清除指定 model 的宽高比记录。
+     * 当图片加载失败、URL 失效或被逐出时调用，避免失效 URL 继续撑开错误比例。
+     */
+    @Synchronized
+    fun remove(model: String?) {
+        if (model.isNullOrEmpty()) return
+        entries.remove(model)
+    }
+
+    /**
      * 记录一次成功加载。
      *
      * @param width  解码后的实际宽度（Coil 保比例缩放后的值）
@@ -42,9 +54,10 @@ internal object ImageAspectRatioCache {
     @Synchronized
     fun put(model: String?, width: Int, height: Int) {
         if (model.isNullOrEmpty() || width <= 0 || height <= 0) return
-        val ratio = width.toFloat() / height.toFloat()
+        val rawRatio = width.toFloat() / height.toFloat()
         // 过滤 NaN / Inf / 0，避免把异常比例写进去撑坏布局
-        if (!ratio.isFinite() || ratio <= 0f) return
+        if (!rawRatio.isFinite() || rawRatio <= 0f) return
+        val ratio = rawRatio.coerceIn(MIN_RATIO, MAX_RATIO)
         entries[model] = ratio
 
         // 显式淘汰最久未用的：不用 removeEldestEntry 覆写，少一层平台类型推断的坑

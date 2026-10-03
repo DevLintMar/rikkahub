@@ -2,6 +2,24 @@ package me.rerere.rikkahub.ui.components.richtext
 
 import android.os.SystemClock
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.draw.clip
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Image02
+import me.rerere.hugeicons.stroke.Refresh01
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -10,6 +28,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.DefaultAlpha
 import androidx.compose.ui.layout.ContentScale
@@ -55,6 +74,8 @@ fun ZoomableAsyncImage(
     var cachedAspectRatio by remember(model) {
         mutableStateOf<Float?>(ImageAspectRatioCache.get(model))
     }
+    var hasError by remember(model) { mutableStateOf(false) }
+    var retryCount by remember(model) { mutableIntStateOf(0) }
     // remember：item 存活期间父级重组不再重建 ImageRequest → Coil 状态机不重启（内存缓存命中直接复用绘制结果）
     val coilModel = remember(model, export, darkMode, cachedAspectRatio) {
         val displayMetrics = context.resources.displayMetrics
@@ -97,8 +118,56 @@ fun ZoomableAsyncImage(
     // debug 诊断：记录加载起点，onSuccess 时输出缓存来源与耗时（定位滚动卡顿是否图片解码）
     var loadStartMs by remember(model) { mutableLongStateOf(0L) }
     var lastImgLogMs by remember(model) { mutableLongStateOf(0L) }
-    AsyncImage(
-        model = coilModel,
+    if (hasError) {
+        // 优雅错误占位卡片：替代几千像素空白黑洞，提供微字提示与点击重试
+        Surface(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(80.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .clickable {
+                    hasError = false
+                    retryCount++
+                },
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            tonalElevation = 1.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    imageVector = HugeIcons.Image02,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.size(24.dp)
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "图片加载失败",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "点击重新加载",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+                Icon(
+                    imageVector = HugeIcons.Refresh01,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    } else {
+        AsyncImage(
+            model = coilModel,
         contentDescription = contentDescription,
         modifier = sizedModifier
             .shimmer(isLoading = loading, animate = false)
@@ -114,6 +183,7 @@ fun ZoomableAsyncImage(
         },
         onSuccess = { state ->
             loading = false
+            hasError = false
             if (sizeFromCachedAspectRatio && cachedAspectRatio == null) {
                 val image = state.result.image
                 if (image.width > 0 && image.height > 0) {
@@ -139,8 +209,13 @@ fun ZoomableAsyncImage(
         },
         onError = {
             loading = false
+            hasError = true
+            // 发生错误（如 404/网络异常）时，立即从缓存逐出并重置本地比例，杜绝幽灵高度缓存撑开几千像素空白黑洞
+            cachedAspectRatio = null
+            ImageAspectRatioCache.remove(model)
         },
     )
+    }
     if (showImageViewer) {
         ImagePreviewDialog(images = listOf(model ?: "")) {
             showImageViewer = false

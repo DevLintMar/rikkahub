@@ -20,6 +20,11 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import androidx.compose.runtime.remember
+import coil3.request.ImageRequest
+import coil3.request.allowHardware
+
+import coil3.size.Precision
 import coil3.compose.rememberAsyncImagePainter
 import com.dokar.sonner.ToastType
 import com.jvziyaoyao.scale.image.pager.ImagePager
@@ -53,7 +58,15 @@ fun ImagePreviewDialog(
                 modifier = Modifier.fillMaxSize(),
                 pagerState = state,
                 imageLoader = { index ->
-                    val painter = rememberAsyncImagePainter(images[index])
+                    val request = remember(images[index]) {
+                        ImageRequest.Builder(context)
+                            .data(images[index])
+                            .size(coil3.size.Size.ORIGINAL)
+                            .precision(coil3.size.Precision.EXACT)
+                            .allowHardware(false)
+                            .build()
+                    }
+                    val painter = rememberAsyncImagePainter(request)
                     val size = painter.intrinsicSize
                     val safeSize = if (size.isSpecified && size.width > 0f && size.height > 0f) {
                         size

@@ -39,7 +39,6 @@ class ImageAspectRatioCacheTest {
         ImageAspectRatioCache.put("a", width = 200, height = 100)
 
         // 宽 200 高 100 → 宽/高 = 2（横图 = 2:1）。
-        // 方向反了的话竖图会被锁成横向的框，图片缩进去就是大片留白 —— 2026-09-19 的真实事故。
         assertEquals(2f, ImageAspectRatioCache.get("a")!!, 1e-6f)
     }
 
@@ -94,5 +93,29 @@ class ImageAspectRatioCacheTest {
         ImageAspectRatioCache.put("a", 1024, 1024)
 
         assertEquals(1f, ImageAspectRatioCache.get("a")!!, 1e-6f)
+    }
+
+    @Test
+    fun `remove clears specific model from cache`() {
+        ImageAspectRatioCache.put("to-remove", 300, 200)
+        assertEquals(1.5f, ImageAspectRatioCache.get("to-remove")!!, 1e-6f)
+
+        ImageAspectRatioCache.remove("to-remove")
+        assertNull(ImageAspectRatioCache.get("to-remove"))
+
+        // remove null or empty is safe no-op
+        ImageAspectRatioCache.remove(null)
+        ImageAspectRatioCache.remove("")
+    }
+
+    @Test
+    fun `extreme aspect ratios are clamped between 0_15 and 6_0`() {
+        // 极长图: 100 x 2000 -> 原始比例 0.05 -> 应被 clamp 到 0.15f
+        ImageAspectRatioCache.put("super-tall", 100, 2000)
+        assertEquals(0.15f, ImageAspectRatioCache.get("super-tall")!!, 1e-6f)
+
+        // 极宽图: 2000 x 100 -> 原始比例 20.0 -> 应被 clamp 到 6.0f
+        ImageAspectRatioCache.put("super-wide", 2000, 100)
+        assertEquals(6.0f, ImageAspectRatioCache.get("super-wide")!!, 1e-6f)
     }
 }
