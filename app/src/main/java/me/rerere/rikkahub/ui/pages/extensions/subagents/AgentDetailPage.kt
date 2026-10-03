@@ -10,6 +10,27 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.draw.clip
+import me.rerere.ai.core.ReasoningLevel
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Idea
+import me.rerere.hugeicons.stroke.Idea01
+import me.rerere.rikkahub.ui.components.ui.icons.ReasoningHigh
+import me.rerere.rikkahub.ui.components.ui.icons.ReasoningLow
+import me.rerere.rikkahub.ui.components.ui.icons.ReasoningMedium
+import kotlin.math.roundToInt
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -296,6 +317,10 @@ fun AgentDetailPage(agentName: String = "") {
                         toaster.show(nameRequiredMsg, type = ToastType.Warning)
                         return@Button
                     }
+                    if (!Regex("^[a-zA-Z0-9_-]+$").matches(name)) {
+                        toaster.show("智能体名称仅支持英文字母、数字、下划线与连字符", type = ToastType.Warning)
+                        return@Button
+                    }
                     isSaving = true
                     vm.save(
                         name = name,
@@ -333,46 +358,131 @@ private fun EffortSelector(
     effort: String?,
     onEffortChange: (String?) -> Unit,
 ) {
-    val options = listOf(null, "low", "medium", "high", "xhigh")
-    val labels = mapOf(
-        null to stringResource(R.string.sub_agents_detail_effort_inherit),
-        "low" to "Low",
-        "medium" to "Medium",
-        "high" to "High",
-        "xhigh" to "X-High",
-    )
-    var expanded by remember { mutableStateOf(false) }
+    val inherit = effort == null
+    val currentLevel = remember(effort) {
+        ReasoningLevel.entries.firstOrNull { it.effort.equals(effort, ignoreCase = true) }
+            ?: ReasoningLevel.AUTO
+    }
+    val levels = remember { ReasoningLevel.entries }
+    val levelCount = levels.size
+    val currentIndex = levels.indexOf(currentLevel).coerceAtLeast(0)
+    var sliderValue by remember(currentIndex) { mutableFloatStateOf(currentIndex.toFloat()) }
 
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it },
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        )
     ) {
-        OutlinedTextField(
-            value = labels[effort] ?: "",
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(stringResource(R.string.sub_agents_detail_effort)) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                // material3 1.5.0-alpha27：menuAnchor 必须显式给 MenuAnchorType
-                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
-        )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            options.forEach { value ->
-                DropdownMenuItem(
-                    text = { Text(labels[value] ?: "") },
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.sub_agents_detail_effort),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        text = if (inherit) stringResource(R.string.sub_agents_detail_effort_inherit) else currentLevel.effortLabel(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (inherit) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary,
+                    )
+                }
+                FilterChip(
+                    selected = inherit,
                     onClick = {
-                        onEffortChange(value)
-                        expanded = false
+                        if (inherit) {
+                            onEffortChange(currentLevel.effort)
+                        } else {
+                            onEffortChange(null)
+                        }
                     },
+                    label = { Text(stringResource(R.string.sub_agents_detail_effort_inherit)) }
                 )
+            }
+
+            if (!inherit) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    val iconColor by animateColorAsState(
+                        if (currentLevel.isEnabled) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurface
+                    )
+                    Icon(
+                        imageVector = when (currentLevel) {
+                            ReasoningLevel.OFF -> HugeIcons.Idea
+                            ReasoningLevel.AUTO -> HugeIcons.Idea01
+                            ReasoningLevel.LOW -> ReasoningLow
+                            ReasoningLevel.MEDIUM -> ReasoningMedium
+                            ReasoningLevel.HIGH -> ReasoningHigh
+                            ReasoningLevel.XHIGH -> ReasoningHigh
+                            ReasoningLevel.MAX -> ReasoningHigh
+                        },
+                        contentDescription = null,
+                        modifier = Modifier.size(28.dp),
+                        tint = iconColor,
+                    )
+                    Slider(
+                        value = sliderValue,
+                        onValueChange = { sliderValue = it },
+                        onValueChangeFinished = {
+                            val snappedIndex = sliderValue.roundToInt().coerceIn(0, levelCount - 1)
+                            sliderValue = snappedIndex.toFloat()
+                            onEffortChange(levels[snappedIndex].effort)
+                        },
+                        valueRange = 0f..(levelCount - 1).toFloat(),
+                        steps = levelCount - 2,
+                        modifier = Modifier.weight(1f),
+                        thumb = {
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.onPrimary)
+                                )
+                            }
+                        },
+                        track = { sliderState ->
+                            SliderDefaults.Track(
+                                sliderState = sliderState,
+                                drawStopIndicator = null,
+                                thumbTrackGapSize = 0.dp,
+                            )
+                        }
+                    )
+                }
             }
         }
     }
+}
+
+@Composable
+private fun ReasoningLevel.effortLabel(): String = when (this) {
+    ReasoningLevel.OFF -> stringResource(R.string.reasoning_off)
+    ReasoningLevel.AUTO -> stringResource(R.string.reasoning_auto)
+    ReasoningLevel.LOW -> stringResource(R.string.reasoning_light)
+    ReasoningLevel.MEDIUM -> stringResource(R.string.reasoning_medium)
+    ReasoningLevel.HIGH -> stringResource(R.string.reasoning_heavy)
+    ReasoningLevel.XHIGH -> stringResource(R.string.reasoning_xhigh)
+    ReasoningLevel.MAX -> stringResource(R.string.reasoning_max)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

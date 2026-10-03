@@ -20,6 +20,8 @@ import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -173,10 +175,22 @@ private fun AgentCard(
                     .padding(start = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                Text(
-                    text = agent.name,
-                    style = MaterialTheme.typography.titleSmallEmphasized,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        text = agent.name,
+                        style = MaterialTheme.typography.titleSmallEmphasized,
+                    )
+                    if (agent.name.contains(":")) {
+                        SuggestionChip(
+                            onClick = {},
+                            label = { Text("技能内置", style = MaterialTheme.typography.labelSmall) },
+                            modifier = Modifier.height(24.dp)
+                        )
+                    }
+                }
                 Text(
                     text = agent.description,
                     style = MaterialTheme.typography.bodySmall,
@@ -201,6 +215,7 @@ private fun AgentCard(
                 onExpandedChange = { menuExpanded = it },
                 onEdit = onClick,
                 onDelete = onDelete,
+                canDelete = !agent.name.contains(":"),
             )
         }
     }
@@ -212,6 +227,7 @@ private fun BoxWithMenu(
     onExpandedChange: (Boolean) -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
+    canDelete: Boolean = true,
 ) {
     androidx.compose.foundation.layout.Box {
         IconButton(onClick = { onExpandedChange(true) }) {
@@ -232,20 +248,22 @@ private fun BoxWithMenu(
                     onEdit()
                 },
             )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) },
-                leadingIcon = {
-                    Icon(
-                        HugeIcons.Delete01,
-                        null,
-                        tint = MaterialTheme.colorScheme.error,
-                    )
-                },
-                onClick = {
-                    onExpandedChange(false)
-                    onDelete()
-                },
-            )
+            if (canDelete) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) },
+                    leadingIcon = {
+                        Icon(
+                            HugeIcons.Delete01,
+                            null,
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    },
+                    onClick = {
+                        onExpandedChange(false)
+                        onDelete()
+                    },
+                )
+            }
         }
     }
 }

@@ -168,6 +168,7 @@ internal fun buildSubAgentTool(
                 modelOverride = modelOverride,
                 tools = filtered,
                 systemPrompt = systemPrompt,
+                reasoningEffort = agentDef.effort,
             )
             val payload = buildJsonObject {
                 put("type", JsonPrimitive("sub_agent"))
@@ -189,6 +190,7 @@ internal fun buildSubAgentTool(
                 modelOverride = modelOverride,
                 tools = filtered,
                 systemPrompt = systemPrompt,
+                reasoningEffort = agentDef.effort,
             )
             val payload = buildJsonObject {
                 put("type", JsonPrimitive("sub_agent"))

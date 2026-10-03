@@ -161,6 +161,7 @@ class SubAgentRuntime(
         modelOverride: Uuid? = null,
         tools: List<Tool> = emptyList(),
         systemPrompt: String? = null,
+        reasoningEffort: String? = null,
     ): SubAgentResult {
         try {
         val settings = settingsStore.settingsFlow.first()
@@ -193,13 +194,19 @@ class SubAgentRuntime(
 
         // 参考主 agent 传入完整的 TextGenerationParams
         val assistant = settings.getCurrentAssistant()
+        val parsedReasoningLevel = reasoningEffort?.let { eff ->
+            me.rerere.ai.core.ReasoningLevel.entries.firstOrNull { it.effort.equals(eff, ignoreCase = true) }
+                ?: runCatching { me.rerere.ai.core.ReasoningLevel.valueOf(eff.uppercase()) }.getOrNull()
+        }
+        val effectiveReasoningLevel = parsedReasoningLevel ?: assistant.reasoningLevel
+
         val params = TextGenerationParams(
             model = model,
             temperature = assistant.temperature,
             topP = assistant.topP,
             maxTokens = assistant.maxTokens,
             tools = tools,
-            reasoningLevel = assistant.reasoningLevel,
+            reasoningLevel = effectiveReasoningLevel,
             // 与主循环一样带上会话 id（provider 侧映射成 X-Session-ID 等请求头），
             // 同一次子代理任务的多轮请求因此落在同一会话上，prompt cache 能命中
             sessionId = Uuid.random().toString(),
@@ -302,6 +309,7 @@ class SubAgentRuntime(
         modelOverride: Uuid? = null,
         tools: List<Tool> = emptyList(),
         systemPrompt: String? = null,
+        reasoningEffort: String? = null,
     ): AsyncSubAgentHandle {
         val taskId = "sub_${Uuid.random().toString().take(8)}"
         registry.register(
@@ -330,6 +338,7 @@ class SubAgentRuntime(
                     modelOverride = modelOverride,
                     tools = tools,
                     systemPrompt = systemPrompt,
+                    reasoningEffort = reasoningEffort,
                 )
                 finish(
                     taskId = taskId,
