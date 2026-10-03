@@ -1452,17 +1452,94 @@ object AlarmClockToolUI : ToolUIRenderer {
                 val timeStr = "%02d:%02d".format(hour, minute)
                 if (msg.isNullOrBlank()) "设置闹钟 $timeStr" else "设置闹钟 $timeStr ($msg)"
             }
-            "set_timer" -> {
-                val sec = context.arguments.getStringContent("seconds")?.toIntOrNull() ?: 0
-                if (sec >= 60) "${sec / 60}分钟" else "${sec}秒"
-            }
+            "set_timer" -> "倒计时计时器"
             "show_clock" -> "打开时钟应用"
             else -> stringResource(R.string.chat_message_tool_alarm_clock)
         }
     }
 
-    // 倒计时与闹钟在调用链里保持极简，不展开多余冗余摘要（倒计时只显示图标与时长）
-    override fun hasSummary(context: ToolUIContext): Boolean = false
+    override fun hasSummary(context: ToolUIContext): Boolean = true
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val action = context.arguments.getStringContent("action")
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            when (action) {
+                "set_alarm" -> {
+                    val hour = context.arguments.getStringContent("hour")?.toIntOrNull() ?: 0
+                    val minute = context.arguments.getStringContent("minute")?.toIntOrNull() ?: 0
+                    val msg = context.arguments.getStringContent("message")
+                    val timeStr = "%02d:%02d".format(hour, minute)
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Icon(
+                                imageVector = HugeIcons.AlarmClock,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(
+                                text = timeStr,
+                                style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            )
+                        }
+                    }
+
+                    if (!msg.isNullOrBlank()) {
+                        ToolPill(msg)
+                    }
+                }
+                "set_timer" -> {
+                    val sec = context.arguments.getStringContent("seconds")?.toIntOrNull() ?: 0
+                    val timeStr = if (sec >= 60) "${sec / 60}分钟" else "${sec}秒"
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.6f),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Icon(
+                                imageVector = HugeIcons.Hourglass,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.tertiary,
+                            )
+                            Text(
+                                text = timeStr,
+                                style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            )
+                        }
+                    }
+                }
+                else -> {
+                    ToolPill("系统时钟")
+                }
+            }
+        }
+    }
 
     override fun hasSemanticDetail(context: ToolUIContext): Boolean = true
 
@@ -1680,7 +1757,7 @@ object AlarmClockToolUI : ToolUIRenderer {
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f)
+                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
                     ),
                 ) {
                     Column(
