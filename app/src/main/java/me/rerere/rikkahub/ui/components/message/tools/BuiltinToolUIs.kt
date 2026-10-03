@@ -1454,132 +1454,15 @@ object AlarmClockToolUI : ToolUIRenderer {
             }
             "set_timer" -> {
                 val sec = context.arguments.getStringContent("seconds")?.toIntOrNull() ?: 0
-                val msg = context.arguments.getStringContent("message")
-                val timeStr = if (sec >= 60) "${sec / 60} 分钟" else "$sec 秒"
-                if (msg.isNullOrBlank()) "开启倒计时 $timeStr" else "开启倒计时 $timeStr ($msg)"
+                if (sec >= 60) "${sec / 60}分钟" else "${sec}秒"
             }
             "show_clock" -> "打开时钟应用"
             else -> stringResource(R.string.chat_message_tool_alarm_clock)
         }
     }
 
-    override fun hasSummary(context: ToolUIContext): Boolean = true
-
-    @Composable
-    override fun Summary(context: ToolUIContext) {
-        val action = context.arguments.getStringContent("action")
-        val isError = context.content?.jsonObjectOrNull?.get("error")?.jsonPrimitiveOrNull?.booleanOrNull == true
-        val isSuccess = context.content?.jsonObjectOrNull?.get("success")?.jsonPrimitiveOrNull?.booleanOrNull == true
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            when (action) {
-                "set_alarm" -> {
-                    val hour = context.arguments.getStringContent("hour")?.toIntOrNull() ?: 0
-                    val minute = context.arguments.getStringContent("minute")?.toIntOrNull() ?: 0
-                    val msg = context.arguments.getStringContent("message")
-                    val timeStr = "%02d:%02d".format(hour, minute)
-
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            Icon(
-                                imageVector = HugeIcons.AlarmClock,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                            Text(
-                                text = timeStr,
-                                style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            )
-                        }
-                    }
-
-                    if (!msg.isNullOrBlank()) {
-                        ToolPill(msg)
-                    }
-
-                    if (isSuccess) {
-                        Text(
-                            text = "已设定",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                    } else if (isError) {
-                        Text(
-                            text = "设定失败",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-                }
-                "set_timer" -> {
-                    val sec = context.arguments.getStringContent("seconds")?.toIntOrNull() ?: 0
-                    val msg = context.arguments.getStringContent("message")
-                    val timeStr = if (sec >= 60) "${sec / 60} 分钟" else "$sec 秒"
-
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.6f),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            Icon(
-                                imageVector = HugeIcons.Hourglass,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.tertiary,
-                            )
-                            Text(
-                                text = timeStr,
-                                style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer,
-                            )
-                        }
-                    }
-
-                    if (!msg.isNullOrBlank()) {
-                        ToolPill(msg)
-                    }
-
-                    if (isSuccess) {
-                        Text(
-                            text = "运行中",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.tertiary,
-                        )
-                    } else if (isError) {
-                        Text(
-                            text = "开启失败",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-                }
-                else -> {
-                    ToolPill("系统时钟")
-                }
-            }
-        }
-    }
+    // 倒计时与闹钟在调用链里保持极简，不展开多余冗余摘要（倒计时只显示图标与时长）
+    override fun hasSummary(context: ToolUIContext): Boolean = false
 
     override fun hasSemanticDetail(context: ToolUIContext): Boolean = true
 
@@ -1590,7 +1473,6 @@ object AlarmClockToolUI : ToolUIRenderer {
         val messageArg = context.arguments.getStringContent("message")
         val isError = context.content?.jsonObjectOrNull?.get("error")?.jsonPrimitiveOrNull?.booleanOrNull == true
         val isSuccess = context.content?.jsonObjectOrNull?.get("success")?.jsonPrimitiveOrNull?.booleanOrNull == true
-        val resultMessage = context.content?.getStringContent("message")
 
         ToolDetailContainer {
             // 1. 顶部 Hero 视觉展板卡片
@@ -1901,38 +1783,6 @@ object AlarmClockToolUI : ToolUIRenderer {
                     },
                     style = MaterialTheme.typography.labelLarge,
                 )
-            }
-
-            // 4. 返回的执行提示文本（若有）
-            if (!resultMessage.isNullOrBlank()) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f),
-                ) {
-                    Text(
-                        text = resultMessage,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(12.dp),
-                    )
-                }
-            }
-
-            // 5. 开发者/高级参数与返回值分区（带 JSON 展开开关）
-            ToolJsonSection(
-                label = stringResource(R.string.tool_ui_arguments),
-                json = context.arguments,
-            ) {
-                JsonTreeView(context.arguments)
-            }
-            if (context.content != null) {
-                ToolJsonSection(
-                    label = stringResource(R.string.chat_message_tool_call_result),
-                    json = context.content,
-                ) {
-                    JsonTreeView(context.content)
-                }
             }
         }
     }
