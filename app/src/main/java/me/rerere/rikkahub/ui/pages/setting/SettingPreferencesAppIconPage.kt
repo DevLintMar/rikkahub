@@ -66,7 +66,19 @@ fun SettingPreferencesAppIconPage() {
     val context = LocalContext.current
     val toaster = LocalToaster.current
 
-    val customIconFile = remember { File(context.filesDir, "custom_app_icon.png") }
+    val customIconFile = remember {
+        val legacy = File(context.filesDir, "custom_app_icon.png")
+        val imagesDir = File(context.filesDir, "images")
+        if (!imagesDir.exists()) imagesDir.mkdirs()
+        val target = File(imagesDir, "custom_app_icon.png")
+        if (legacy.exists() && !target.exists()) {
+            runCatching {
+                legacy.copyTo(target, overwrite = true)
+                legacy.delete()
+            }
+        }
+        target
+    }
     var iconRevision by remember { mutableStateOf(System.currentTimeMillis()) }
 
     val (_, launchCrop) = useCropLauncher(

@@ -1,5 +1,7 @@
 package me.rerere.rikkahub.ui.pages.setting
 
+import kotlinx.coroutines.delay
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -23,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,8 +71,19 @@ private const val PROXY_TEST_URL = "https://www.google.com/generate_204"
 fun SettingPreferencesNetworkPage(vm: SettingVM = koinViewModel()) {
     val httpClient = koinInject<OkHttpClient>()
     val settings by vm.settings.collectAsStateWithLifecycle()
-    var userAgent by remember(settings.networkSetting.userAgent) {
+    var userAgentDraft by remember(settings.networkSetting.userAgent) {
         mutableStateOf(settings.networkSetting.userAgent)
+    }
+
+    LaunchedEffect(userAgentDraft) {
+        if (userAgentDraft != settings.networkSetting.userAgent) {
+            delay(500)
+            vm.updateSettings(
+                settings.copy(
+                    networkSetting = settings.networkSetting.copy(userAgent = userAgentDraft),
+                )
+            )
+        }
     }
     var proxyUrl by remember(settings.networkSetting.proxyUrl) {
         mutableStateOf(settings.networkSetting.proxyUrl)
@@ -93,11 +107,11 @@ fun SettingPreferencesNetworkPage(vm: SettingVM = koinViewModel()) {
     val toaster = LocalToaster.current
     var proxyTesting by remember { mutableStateOf(false) }
 
-    fun updateUserAgent(value: String) {
-        userAgent = value
+    fun resetUserAgent() {
+        userAgentDraft = ""
         vm.updateSettings(
             settings.copy(
-                networkSetting = settings.networkSetting.copy(userAgent = value),
+                networkSetting = settings.networkSetting.copy(userAgent = ""),
             )
         )
     }
@@ -319,8 +333,8 @@ fun SettingPreferencesNetworkPage(vm: SettingVM = koinViewModel()) {
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 OutlinedTextField(
-                                    value = userAgent,
-                                    onValueChange = ::updateUserAgent,
+                                    value = userAgentDraft,
+                                    onValueChange = { userAgentDraft = it },
                                     modifier = Modifier.fillMaxWidth(),
                                     label = {
                                         Text(stringResource(R.string.setting_page_preferences_network_user_agent))
@@ -337,8 +351,8 @@ fun SettingPreferencesNetworkPage(vm: SettingVM = koinViewModel()) {
                                     singleLine = true,
                                 )
                                 TextButton(
-                                    onClick = { updateUserAgent("") },
-                                    enabled = userAgent.isNotEmpty(),
+                                    onClick = ::resetUserAgent,
+                                    enabled = userAgentDraft.isNotEmpty(),
                                 ) {
                                     Text(stringResource(R.string.setting_model_page_reset_to_default))
                                 }

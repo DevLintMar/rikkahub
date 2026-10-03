@@ -480,8 +480,8 @@ class ConversationRepository(
             if (filtered.size >= offset + limit + 1) return@repeat
             fetchLimit *= 2
         }
+        // 保持 RRF 倒数排名融合得分降序输出，最相关的消息排在最前面
         val all = filtered.mapNotNull { buildConversationSearchHit(it) }
-            .sortedByDescending { it.date } // 按日期新 → 旧
         return ConversationSearchPage(
             hits = all.drop(offset).take(limit),
             hasMore = offset + limit < all.size,
@@ -509,9 +509,9 @@ class ConversationRepository(
             }
         } else emptyList()
 
+        // 保持 RRF 倒数排名融合得分降序输出，最相关的消息排在最前面
         val all = rrfFuseScored(fts, semantic, k = 60)
             .mapNotNull { buildConversationSearchHit(it) }
-            .sortedByDescending { it.date } // 按日期新 → 旧
 
         return ConversationSearchPage(
             hits = all.drop(offset).take(limit),

@@ -1,5 +1,8 @@
 package me.rerere.rikkahub.ui.pages.setting
 
+import kotlinx.coroutines.delay
+import androidx.compose.runtime.LaunchedEffect
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -105,6 +108,14 @@ private fun PromptSettingItem(
     onUpdateReasoningLevel: ((ReasoningLevel) -> Unit)? = null,
 ) {
     var showEditor by remember { mutableStateOf(false) }
+    var draftPrompt by remember(promptValue) { mutableStateOf(promptValue) }
+
+    LaunchedEffect(draftPrompt) {
+        if (draftPrompt != promptValue) {
+            delay(500)
+            onPromptChange(draftPrompt)
+        }
+    }
 
     CardGroup(title = { Text(title) }) {
         item(
@@ -133,7 +144,12 @@ private fun PromptSettingItem(
 
     if (showEditor) {
         ModalBottomSheet(
-            onDismissRequest = { showEditor = false },
+            onDismissRequest = {
+                if (draftPrompt != promptValue) {
+                    onPromptChange(draftPrompt)
+                }
+                showEditor = false
+            },
         ) {
             Column(
                 modifier = Modifier
@@ -152,12 +168,14 @@ private fun PromptSettingItem(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 OutlinedTextField(
-                    value = promptValue,
-                    onValueChange = onPromptChange,
+                    value = draftPrompt,
+                    onValueChange = { draftPrompt = it },
                     modifier = Modifier.fillMaxWidth(),
                     maxLines = 15,
                 )
-                TextButton(onClick = onResetPrompt) {
+                TextButton(onClick = {
+                    onResetPrompt()
+                }) {
                     Text(stringResource(R.string.setting_model_page_reset_to_default))
                 }
             }

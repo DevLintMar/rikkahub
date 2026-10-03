@@ -56,6 +56,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.debounce
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -110,6 +111,7 @@ import org.koin.core.parameter.parametersOf
 import sh.calvin.reorderable.ReorderableColumn
 import kotlin.uuid.Uuid
 
+@OptIn(kotlinx.coroutines.FlowPreview::class)
 @Composable
 fun AssistantPromptPage(id: String) {
     val vm: AssistantDetailVM = koinViewModel(
@@ -215,13 +217,15 @@ private fun AssistantPromptContent(
                     initialText = assistant.systemPrompt,
                 )
                 LaunchedEffect(Unit) {
-                    snapshotFlow { systemPromptValue.text }.collect {
-                        onUpdate(
-                            assistant.copy(
-                                systemPrompt = it.toString()
+                    snapshotFlow { systemPromptValue.text }
+                        .debounce(500)
+                        .collect {
+                            onUpdate(
+                                assistant.copy(
+                                    systemPrompt = it.toString()
+                                )
                             )
-                        )
-                    }
+                        }
                 }
 
                 TextArea(

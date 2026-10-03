@@ -33,4 +33,18 @@ class RrfFusionTest {
         val semantic = listOf(res("a"), res("b"))
         assertEquals(listOf("a", "b"), rrfFuse(emptyList(), semantic).map { it.messageId })
     }
+
+    @Test
+    fun `rrfFuseScored maintains descending order by fused score`() {
+        val fts = listOf(res("low-fts-only"), res("high-dual"))
+        val semantic = listOf(res("high-dual"), res("low-semantic-only"))
+        val scored = rrfFuseScored(fts, semantic, k = 60)
+
+        assertEquals("high-dual", scored.first().messageId)
+        for (i in 0 until scored.size - 1) {
+            assert(scored[i].score >= scored[i + 1].score) {
+                "Expected score ${scored[i].score} >= ${scored[i + 1].score}"
+            }
+        }
+    }
 }
