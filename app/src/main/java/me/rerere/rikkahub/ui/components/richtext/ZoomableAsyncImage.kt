@@ -22,6 +22,7 @@ import me.rerere.hugeicons.stroke.Image02
 import me.rerere.hugeicons.stroke.Refresh01
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -33,11 +34,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.DefaultAlpha
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.net.toUri
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.request.crossfade
 import coil3.request.placeholder
+import coil3.size.Dimension
+import coil3.size.Precision
+import kotlinx.coroutines.delay
 import me.rerere.common.android.Logging
 import me.rerere.rikkahub.BuildConfig
 import me.rerere.rikkahub.R
@@ -71,40 +76,75 @@ fun ZoomableAsyncImage(
     val darkMode = LocalDarkMode.current
     val placeholder = if (darkMode) R.drawable.placeholder_dark else R.drawable.placeholder
     val export = LocalExportContext.current
-    var cachedAspectRatio by remember(model) {
-        mutableStateOf<Float?>(ImageAspectRatioCache.get(model))
-    }
+    val workspaceResolver = LocalWorkspaceFileProvider.current
+
     var hasError by remember(model) { mutableStateOf(false) }
     var retryCount by remember(model) { mutableIntStateOf(0) }
-    // remember：item 存活期间父级重组不再重建 ImageRequest → Coil 状态机不重启（内存缓存命中直接复用绘制结果）
-    val coilModel = remember(model, export, darkMode, cachedAspectRatio) {
+
+    // 动态解析实际加载路径：优先通过 LocalWorkspaceFileProvider 把工作区虚拟路径还原为真实 File URI。
+    // 若文件在初次渲染时尚未落盘，保留原 model 并触发轻量后台探测自愈。
+    var resolvedModel by remember(model, retryCount) {
+        val initial = if (!model.isNullOrBlank() && workspaceResolver != null) {
+            workspaceResolver(model)?.takeIf { it.isFile }?.toUri()?.toString() ?: model
+        } else {
+            model
+        }
+        mutableStateOf(initial)
+    }
+
+    // 时序自愈：针对 AI 正在执行写入、文件落盘存在毫秒级时差的工作区图片，延迟短轮询探测
+    LaunchedEffect(model, retryCount) {
+        if (!model.isNullOrBlank() && workspaceResolver != null && resolvedModel == model) {
+            if (model.startsWith("/") || model.startsWith("file:///workspace") || model.startsWith("file:///upload")) {
+                for (d in listOf(300L, 800L, 1800L)) {
+                    delay(d)
+                    val found = workspaceResolver(model)?.takeIf { it.isFile }?.toUri()?.toString()
+                    if (found != null && found != resolvedModel) {
+                        resolvedModel = found
+                        hasError = false
+                        break
+                    }
+                }
+            }
+        }
+    }
+
+    var cachedAspectRatio by remember(resolvedModel, model) {
+        mutableStateOf<Float?>(ImageAspectRatioCache.get(resolvedModel) ?: ImageAspectRatioCache.get(model))
+    }
+
+    // remember：item 存活期间父级重组不再重建 ImageRequest；retryCount 改变时主动重建触发重新请求
+    val coilModel = remember(resolvedModel, retryCount, export, darkMode, cachedAspectRatio) {
         val displayMetrics = context.resources.displayMetrics
         val screenWidth = displayMetrics.widthPixels.coerceAtLeast(1080)
-        // 动态计算解码尺寸上限：避免长图（如 1000x10000）按 1024x1024 Fit 裁剪导致宽度被压缩至 100px 造成严重模糊。
-        // 长图以屏幕物理宽度为短边基准，高度允许延伸至 4096px 纹理上限；超大宽图则宽上限 2048px。
-        val (targetWidth, targetHeight) = if (cachedAspectRatio != null && cachedAspectRatio!! > 0f) {
-            val ratio = cachedAspectRatio!!
+
+        val builder = ImageRequest.Builder(context)
+            .data(resolvedModel)
+            .placeholder(placeholder)
+            .crossfade(false)
+            .precision(coil3.size.Precision.INEXACT)
+
+        val ratio = cachedAspectRatio
+        if (ratio != null && ratio > 0f) {
             if (ratio < 1f) {
-                // 竖长图：保证宽度至少达到屏幕物理分辨率，高度受限在 4096px 纹理上限以内
-                val h = (screenWidth / ratio).toInt().coerceIn(screenWidth, 4096)
-                screenWidth to h
+                // 竖长图（高 > 宽）：彻底解除高度限制，仅以屏幕物理像素宽度为基准点对点采样解码！
+                // 严禁传入 4096px 等硬高度上限，否则 Coil 在默认 FIT 模式下会反向等比压窄宽度至 200px 造成严重缩略与模糊！
+                builder.size(coil3.size.Size(Dimension(screenWidth), Dimension.Undefined))
+                // 超长图（高宽比超过 2:1）走软件解码，避免超出 GPU 纹理限制
+                builder.allowHardware(!export && ratio >= 0.5f)
             } else {
                 // 横长图 / 方图：高度保证 1080px，宽度自适应至至多 2048px
                 val w = (1080 * ratio).toInt().coerceIn(1080, 2048)
-                w to 1080
+                builder.size(w, 1080)
+                builder.allowHardware(!export)
             }
         } else {
-            // 未知比例时（首次加载）：宽度至少 1440px，高度上限 4096px，确保长图首次解码不模糊
-            screenWidth.coerceAtLeast(1440) to 4096
+            // 未知比例时（首次加载）：宽度设定为屏幕物理宽度，高度保持 Undefined 无界，确保长图首次解码不模糊
+            builder.size(coil3.size.Size(Dimension(screenWidth), Dimension.Undefined))
+            builder.allowHardware(false)
         }
 
-        ImageRequest.Builder(context)
-            .data(model)
-            .placeholder(placeholder)
-            .crossfade(false)
-            .allowHardware(!export)
-            .size(targetWidth, targetHeight)
-            .build()
+        builder.build()
     }
     // aspectRatio 放在链尾（最贴近 AsyncImage）：它会给子项 Constraints.fixed，
     // 从而让占位图的内在尺寸不再参与布局 —— 否则 1024×1024 的占位图会先撑成正方形。
@@ -116,8 +156,8 @@ fun ZoomableAsyncImage(
     }
     var loading by remember { mutableStateOf(false) }
     // debug 诊断：记录加载起点，onSuccess 时输出缓存来源与耗时（定位滚动卡顿是否图片解码）
-    var loadStartMs by remember(model) { mutableLongStateOf(0L) }
-    var lastImgLogMs by remember(model) { mutableLongStateOf(0L) }
+    var loadStartMs by remember(resolvedModel) { mutableLongStateOf(0L) }
+    var lastImgLogMs by remember(resolvedModel) { mutableLongStateOf(0L) }
     if (hasError) {
         // 优雅错误占位卡片：替代几千像素空白黑洞，提供微字提示与点击重试
         Surface(
@@ -128,6 +168,13 @@ fun ZoomableAsyncImage(
                 .clickable {
                     hasError = false
                     retryCount++
+                    // 点击重试时重新探测工作区宿主文件，若已落盘立即自愈
+                    if (!model.isNullOrBlank() && workspaceResolver != null) {
+                        val fresh = workspaceResolver(model)?.takeIf { it.isFile }?.toUri()?.toString()
+                        if (fresh != null) {
+                            resolvedModel = fresh
+                        }
+                    }
                 },
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
             tonalElevation = 1.dp
@@ -187,8 +234,9 @@ fun ZoomableAsyncImage(
             if (sizeFromCachedAspectRatio && cachedAspectRatio == null) {
                 val image = state.result.image
                 if (image.width > 0 && image.height > 0) {
+                    ImageAspectRatioCache.put(resolvedModel, image.width, image.height)
                     ImageAspectRatioCache.put(model, image.width, image.height)
-                    cachedAspectRatio = ImageAspectRatioCache.get(model)
+                    cachedAspectRatio = ImageAspectRatioCache.get(resolvedModel) ?: ImageAspectRatioCache.get(model)
                 }
             }
             if (BuildConfig.DEBUG) {
@@ -212,12 +260,13 @@ fun ZoomableAsyncImage(
             hasError = true
             // 发生错误（如 404/网络异常）时，立即从缓存逐出并重置本地比例，杜绝幽灵高度缓存撑开几千像素空白黑洞
             cachedAspectRatio = null
+            ImageAspectRatioCache.remove(resolvedModel)
             ImageAspectRatioCache.remove(model)
         },
     )
     }
     if (showImageViewer) {
-        ImagePreviewDialog(images = listOf(model ?: "")) {
+        ImagePreviewDialog(images = listOf(resolvedModel ?: model ?: "")) {
             showImageViewer = false
         }
     }

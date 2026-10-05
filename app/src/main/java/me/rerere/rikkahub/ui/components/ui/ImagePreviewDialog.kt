@@ -21,6 +21,8 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.core.net.toUri
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
 
@@ -28,11 +30,13 @@ import coil3.size.Precision
 import coil3.compose.rememberAsyncImagePainter
 import com.dokar.sonner.ToastType
 import com.jvziyaoyao.scale.image.pager.ImagePager
+import com.jvziyaoyao.scale.image.viewer.AnyComposable
 import com.jvziyaoyao.scale.zoomable.pager.rememberZoomablePagerState
 import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Download01
 import me.rerere.rikkahub.data.files.FilesManager
+import me.rerere.rikkahub.ui.components.richtext.LocalWorkspaceFileProvider
 import me.rerere.rikkahub.ui.context.LocalToaster
 import org.koin.compose.koinInject
 
@@ -58,9 +62,18 @@ fun ImagePreviewDialog(
                 modifier = Modifier.fillMaxSize(),
                 pagerState = state,
                 imageLoader = { index ->
-                    val request = remember(images[index]) {
+                    val rawUrl = images[index]
+                    val workspaceResolver = LocalWorkspaceFileProvider.current
+                    val realUrl = remember(rawUrl) {
+                        if (workspaceResolver != null) {
+                            workspaceResolver(rawUrl)?.takeIf { it.isFile }?.toUri()?.toString() ?: rawUrl
+                        } else {
+                            rawUrl
+                        }
+                    }
+                    val request = remember(realUrl) {
                         ImageRequest.Builder(context)
-                            .data(images[index])
+                            .data(realUrl)
                             .size(coil3.size.Size.ORIGINAL)
                             .precision(coil3.size.Precision.EXACT)
                             .allowHardware(false)
@@ -75,6 +88,38 @@ fun ImagePreviewDialog(
                     }
                     return@ImagePager Pair(painter, safeSize)
                 },
+                proceedPresentation = { model, size, processor, imageLoading ->
+                    if (model != null && size != null) {
+                        ZoomablePolicy(intrinsicSize = size) { zoomState ->
+                            // 针对竖长图自适应满宽展示与顶部对齐，消灭 image-viewer 默认高度适配导致的牙签细条缩略缺陷
+                            LaunchedEffect(zoomState, size, zoomState.containerSize.value) {
+                                val container = zoomState.containerSize.value
+                                if (container.width > 0f && container.height > 0f && size.width > 0f && size.height > 0f) {
+                                    val containerRatio = container.width / container.height
+                                    val contentRatio = size.width / size.height
+                                    if (contentRatio < containerRatio) {
+                                        // 竖长图（高宽比超过屏幕高宽比）：将初始显示宽度缩放至满宽（Fit Width）
+                                        val fitWidthScale = containerRatio / contentRatio
+                                        zoomState.scale.snapTo(fitWidthScale)
+                                        // 初始顶部对齐：让用户从长图最顶端开始阅读
+                                        val realHeight = container.height * fitWidthScale
+                                        val topOffsetY = (realHeight - container.height) / 2f
+                                        zoomState.offsetY.snapTo(topOffsetY)
+                                        zoomState.offsetX.snapTo(0f)
+                                    }
+                                }
+                            }
+                            processor.Deploy(model = model, state = zoomState)
+                        }
+                        size.isSpecified
+                    } else if (model != null && model is AnyComposable && size == null) {
+                        model.composable.invoke()
+                        true
+                    } else {
+                        imageLoading?.invoke()
+                        false
+                    }
+                }
             )
 
             Row(

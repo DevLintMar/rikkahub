@@ -59,6 +59,16 @@ class WorkspaceFileUrlResolverTest {
     }
 
     @Test
+    fun `无 workspaceId 时若文件已存在于某个工作区则自动自愈解析`() {
+        val target = canonical("workspaces/w2/files/chart.png")
+        target.parentFile?.mkdirs()
+        target.writeText("image-data")
+
+        val result = WorkspaceFileUrlResolver.resolveFile(filesDir, null, "file:///workspace/chart.png")
+        assertEquals(target, result)
+    }
+
+    @Test
     fun `Rootfs 其它绝对路径落到 linux 区`() {
         assertEquals(
             canonical("workspaces/w1/linux/tmp/chart.png"),

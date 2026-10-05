@@ -109,13 +109,17 @@ class ImageAspectRatioCacheTest {
     }
 
     @Test
-    fun `extreme aspect ratios are clamped between 0_15 and 6_0`() {
-        // 极长图: 100 x 2000 -> 原始比例 0.05 -> 应被 clamp 到 0.15f
-        ImageAspectRatioCache.put("super-tall", 100, 2000)
-        assertEquals(0.15f, ImageAspectRatioCache.get("super-tall")!!, 1e-6f)
+    fun `extreme aspect ratios are clamped between 0_01 and 50_0`() {
+        // 普通超长图: 100 x 2000 -> 原始比例 0.05 -> 应精准保留 0.05f 不被强制截断
+        ImageAspectRatioCache.put("tall", 100, 2000)
+        assertEquals(0.05f, ImageAspectRatioCache.get("tall")!!, 1e-6f)
 
-        // 极宽图: 2000 x 100 -> 原始比例 20.0 -> 应被 clamp 到 6.0f
-        ImageAspectRatioCache.put("super-wide", 2000, 100)
-        assertEquals(6.0f, ImageAspectRatioCache.get("super-wide")!!, 1e-6f)
+        // 极限超长图: 1 x 1000 -> 原始比例 0.001 -> 应被安全限制在 0.01f
+        ImageAspectRatioCache.put("super-tall", 1, 1000)
+        assertEquals(0.01f, ImageAspectRatioCache.get("super-tall")!!, 1e-6f)
+
+        // 极限超宽图: 1000 x 1 -> 原始比例 1000.0 -> 应被安全限制在 50.0f
+        ImageAspectRatioCache.put("super-wide", 1000, 1)
+        assertEquals(50.0f, ImageAspectRatioCache.get("super-wide")!!, 1e-6f)
     }
 }

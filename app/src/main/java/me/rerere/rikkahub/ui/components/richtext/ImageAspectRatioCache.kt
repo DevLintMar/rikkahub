@@ -22,8 +22,8 @@ package me.rerere.rikkahub.ui.components.richtext
 internal object ImageAspectRatioCache {
 
     private const val MAX_ENTRIES = 256
-    private const val MIN_RATIO = 0.15f
-    private const val MAX_RATIO = 6.0f
+    private const val MIN_RATIO = 0.01f
+    private const val MAX_RATIO = 50.0f
 
     // accessOrder = true：命中即刷新为最近使用；迭代顺序首位就是最久未用的
     private val entries = LinkedHashMap<String, Float>(16, 0.75f, true)

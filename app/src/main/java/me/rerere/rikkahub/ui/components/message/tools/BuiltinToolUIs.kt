@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -1452,7 +1453,7 @@ object AlarmClockToolUI : ToolUIRenderer {
                 val timeStr = "%02d:%02d".format(hour, minute)
                 if (msg.isNullOrBlank()) "设置闹钟 $timeStr" else "设置闹钟 $timeStr ($msg)"
             }
-            "set_timer" -> "倒计时计时器"
+            "set_timer" -> "倒计时"
             "show_clock" -> "打开时钟应用"
             else -> stringResource(R.string.chat_message_tool_alarm_clock)
         }
@@ -1508,7 +1509,7 @@ object AlarmClockToolUI : ToolUIRenderer {
                 }
                 "set_timer" -> {
                     val sec = context.arguments.getStringContent("seconds")?.toIntOrNull() ?: 0
-                    val timeStr = if (sec >= 60) "${sec / 60}分钟" else "${sec}秒"
+                    val timeStr = formatTimerDuration(sec)
 
                     Surface(
                         shape = RoundedCornerShape(8.dp),
@@ -1527,6 +1528,7 @@ object AlarmClockToolUI : ToolUIRenderer {
                             )
                             Text(
                                 text = timeStr,
+                                modifier = Modifier.offset(y = (-1).dp),
                                 style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -1603,7 +1605,7 @@ object AlarmClockToolUI : ToolUIRenderer {
                                 )
                                 Text(
                                     text = when (action) {
-                                        "set_timer" -> "倒计时计时器"
+                                        "set_timer" -> "倒计时"
                                         "show_clock" -> "系统时钟"
                                         else -> "系统闹钟"
                                     },
@@ -2381,6 +2383,24 @@ object SubAgentToolUI : ToolUIRenderer {
             if (!result.isNullOrBlank()) {
                 ToolTerminalOutput(result)
             }
+        }
+    }
+}
+
+private fun formatTimerDuration(seconds: Int): String {
+    val h = seconds / 3600
+    val m = (seconds % 3600) / 60
+    val s = seconds % 60
+    return buildString {
+        if (h > 0) {
+            append("${h}h")
+            if (m > 0) append(" ${m}m")
+            if (s > 0) append(" ${s}s")
+        } else if (m > 0) {
+            append("${m}m")
+            if (s > 0) append(" ${s}s")
+        } else {
+            append("${s}s")
         }
     }
 }
