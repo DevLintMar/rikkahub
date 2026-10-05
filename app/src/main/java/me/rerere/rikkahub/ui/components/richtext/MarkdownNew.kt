@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -978,25 +979,39 @@ private fun AnnotatedString.Builder.appendHtmlInlineElement(
         }
 
         "span" -> {
-            if (element.hasClass("math") && element.attr("inline") == "true") {
+            if (element.hasClass("math")) {
                 val formula = element.text()
+                val isInline = element.attr("inline") == "true"
                 if (enableLatexRendering) {
                     appendInlineContent(formula, "[Latex]")
                     val metrics = with(density) {
-                        assumeLatexSize(latex = formula, fontSizePx = style.fontSize.toPx())
+                        assumeLatexSize(latex = formula, fontSizePx = style.fontSize.toPx(), displayMode = !isInline)
                     }
                     val placeholderWidth = metrics?.let { with(density) { it.widthPx.toSp() } }
                     val placeholderHeight = metrics?.let { with(density) { (it.heightPx + it.depthPx).toSp() } }
+                    val depthOffset = metrics?.let { with(density) { it.depthPx.toDp() } } ?: 0.dp
                     inlineContents.putIfAbsent(
                         formula,
                         InlineTextContent(
                             placeholder = Placeholder(
                                 width = placeholderWidth ?: 0.sp,
                                 height = placeholderHeight ?: 0.sp,
-                                placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
+                                placeholderVerticalAlign = PlaceholderVerticalAlign.AboveBaseline,
                             ),
                             children = {
-                                MathInline(latex = formula, modifier = Modifier, fontSize = style.fontSize)
+                                if (isInline) {
+                                    MathInline(
+                                        latex = formula,
+                                        modifier = Modifier.offset(y = depthOffset),
+                                        fontSize = style.fontSize,
+                                    )
+                                } else {
+                                    MathBlock(
+                                        latex = formula,
+                                        modifier = Modifier.offset(y = depthOffset),
+                                        fontSize = style.fontSize,
+                                    )
+                                }
                             },
                         ),
                     )

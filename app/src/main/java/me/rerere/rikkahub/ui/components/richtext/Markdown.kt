@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -93,7 +94,9 @@ import androidx.compose.ui.util.fastForEach
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.mapLatest
@@ -230,21 +233,40 @@ private fun MarkdownPreview() {
     }
 }
 
-private data class MarkdownParseResult(
+internal data class MarkdownParseResult(
     val preprocessed: String,
     val astTree: ASTNode,
     val hasHtml: Boolean,
 )
 
-private fun ASTNode.containsHtml(): Boolean {
-    if (type == MarkdownElementTypes.HTML_BLOCK || type == MarkdownTokenTypes.HTML_TAG) return true
-    return children.any { it.containsHtml() }
+private val BENIGN_HTML_TAG_NAMES = setOf("br", "hr")
+
+private fun isBenignHtmlTag(rawTag: String): Boolean {
+    val clean = rawTag
+        .trim()
+        .removePrefix("<")
+        .removePrefix("/")
+        .removeSuffix(">")
+        .removeSuffix("/")
+        .trim()
+        .lowercase()
+        .takeWhile { !it.isWhitespace() }
+    return clean in BENIGN_HTML_TAG_NAMES
 }
 
-private fun parseMarkdown(content: String): MarkdownParseResult {
+internal fun ASTNode.containsRealHtml(text: String): Boolean {
+    if (type == MarkdownElementTypes.HTML_BLOCK) return true
+    if (type == MarkdownTokenTypes.HTML_TAG) {
+        val raw = getTextInNode(text)
+        if (!isBenignHtmlTag(raw)) return true
+    }
+    return children.any { it.containsRealHtml(text) }
+}
+
+internal fun parseMarkdown(content: String): MarkdownParseResult {
     val preprocessed = preProcess(content)
     val astTree = parser.buildMarkdownTreeFromString(preprocessed)
-    return MarkdownParseResult(preprocessed, astTree, astTree.containsHtml())
+    return MarkdownParseResult(preprocessed, astTree, astTree.containsRealHtml(preprocessed))
 }
 
 /**
@@ -443,9 +465,11 @@ fun MarkdownBlock(
         // 监听内容变化，重新解析AST树
         // 这里在后台线程解析AST树, 防止频繁更新的时候掉帧
         val updatedContent by rememberUpdatedState(content)
+        @OptIn(FlowPreview::class)
         LaunchedEffect(Unit) {
             snapshotFlow { updatedContent }
                 .distinctUntilChanged()
+                .debounce(50L)
                 .mapLatest { parseMarkdownCached(it) }
                 .catch { exception -> exception.printStackTrace() }
                 .flowOn(Dispatchers.Default)
@@ -1188,11 +1212,17 @@ private fun Paragraph(
     // 后者不支持 intrinsic 测量，在 NavDisplay 的 LookaheadScope 下会让父级
     // ListItem/Column 查询 minIntrinsicHeight 时抛 "Asking for intrinsic
     // measurements of SubcomposeLayout layouts is not supported" 崩溃。
-    var maxWidthPx by remember { mutableFloatStateOf(0f) }
-    val effectiveMaxWidthPx = if (maxWidthPx > 0f) maxWidthPx else Float.MAX_VALUE
+    val displayMetrics = LocalContext.current.resources.displayMetrics
+    val estimatedWidthPx = remember(displayMetrics, density) {
+        val screenWidthPx = displayMetrics.widthPixels.toFloat()
+        val safePaddingPx = with(density) { 32.dp.toPx() }
+        (screenWidthPx - safePaddingPx).coerceAtLeast(300f)
+    }
+    var maxWidthPx by remember { mutableFloatStateOf(estimatedWidthPx) }
+    val effectiveMaxWidthPx = maxWidthPx
     val primaryArgb = colorScheme.primary.toArgb()
 
-    FlowRow(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .onSizeChanged { maxWidthPx = it.width.toFloat() }
@@ -1630,28 +1660,30 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                     // 优先使用预解析的 DisplayList（解析一次，测量 Placeholder + 渲染复用）
                     val parsedDisplayList = if (formulaDisplayLists != null && resolvedColor != Color.Unspecified) {
                         formulaDisplayLists.getOrPut(key) {
-                            runCatching {
-                                RaTeXEngine.parseBlocking(segment, displayMode = false, color = resolvedColor)
-                            }.getOrNull()
+                            getOrCreateDisplayList(segment, displayMode = false, color = resolvedColor)
                         }
                     } else {
-                        // 无缓存路径（兜底）：仍用 assumeLatexSize 测尺寸
-                        null
+                        getOrCreateDisplayList(segment, displayMode = false, color = resolvedColor)
                     }
 
                     if (parsedDisplayList != null) {
                         val m = parsedDisplayList.measure(fontSizePx)
                         val placeholderWidth = with(density) { m.widthPx.toSp() }
                         val placeholderHeight = with(density) { (m.heightPx + m.depthPx).toSp() }
+                        val depthOffset = with(density) { m.depthPx.toDp() }
                         inlineContents[key] =
                             InlineTextContent(
                                 placeholder = Placeholder(
                                     width = placeholderWidth,
                                     height = placeholderHeight,
-                                    placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
+                                    placeholderVerticalAlign = PlaceholderVerticalAlign.AboveBaseline,
                                 ),
                                 children = {
-                                    MathInline(latex = segment, modifier = Modifier, displayList = parsedDisplayList)
+                                    MathInline(
+                                        latex = segment,
+                                        modifier = Modifier.offset(y = depthOffset),
+                                        displayList = parsedDisplayList,
+                                    )
                                 }
                             )
                     } else {
@@ -1661,7 +1693,7 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                                 placeholder = Placeholder(
                                     width = 0.sp,
                                     height = 0.sp,
-                                    placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
+                                    placeholderVerticalAlign = PlaceholderVerticalAlign.AboveBaseline,
                                 ),
                                 children = {
                                     MathInline(latex = segment, modifier = Modifier)
