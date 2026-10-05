@@ -303,31 +303,32 @@ private fun ChatListNormal(
             covered = false
             return@LaunchedEffect
         }
-        withTimeoutOrNull(8000) {
-            var priorityReady = false
-            // 预热：此时 conversation 已是真实内容快照；与稳定采样并发，受同一 8s 上限；异常不阻塞遮罩释放
-            launch(Dispatchers.Default) {
-                try {
-                    prewarmConversation(
-                        context = context,
-                        conversation = conversation,
-                        assistant = assistant,
-                        highlighter = highlighter,
-                        priorityCount = 4,
-                        onPriorityReady = {
-                            priorityReady = true
-                        }
-                    )
-                } catch (e: kotlinx.coroutines.CancellationException) {
-                    throw e                    // 超时取消必须向上传播，不能吞
-                } catch (_: Exception) {
-                    // 预热失败不阻塞遮罩释放
-                }
+        // 关键：预热由外部 scope 启动，解耦结构化并发；必须确保最新10条预热完成 (priorityReady)
+        var priorityReady = false
+        val prewarmJob = scope.launch(Dispatchers.Default) {
+            try {
+                prewarmConversation(
+                    context = context,
+                    conversation = conversation,
+                    assistant = assistant,
+                    highlighter = highlighter,
+                    priorityCount = 10,
+                    onPriorityReady = {
+                        priorityReady = true
+                    }
+                )
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e                    // 超时取消必须向上传播，不能吞
+            } catch (_: Exception) {
+                priorityReady = true
             }
+        }
+
+        withTimeoutOrNull(8000) {
             // minor5: 先等一帧，让 ChatPage 的 requestScrollToItem（延迟到下一帧的滚动）有机会开始，
             // 避免它在稳定采样判稳后才启动导致遮罩提前 1 帧露出
             withFrameNanos {}
-            // 稳定采样：有内容、停止滚动、连续 3 次签名一致
+            // 稳定采样：有内容、停止滚动、连续 3 次签名一致，且必须等最新10条预热完全就绪
             var stable = 0
             var lastSignature: List<Any?>? = null
             while (stable < 3 || !priorityReady) {
@@ -337,7 +338,7 @@ private fun ChatListNormal(
                 if (signature == lastSignature) stable++ else { lastSignature = signature; stable = 1 }
             }
         }
-        covered = false   // 稳定或超时都会执行，遮罩绝不卡死
+        covered = false   // 确保最新10条预热完成且列表稳定后，才揭开遮罩！
     }
 
     val modelById = remember(settings.providers) {
@@ -620,31 +621,15 @@ private fun ChatListNormal(
         AnimatedVisibility(
             visible = covered,
             modifier = Modifier.fillMaxSize(),
-            exit = fadeOut(tween(250)),
+            exit = fadeOut(tween(300)),
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)),
+                    .background(MaterialTheme.colorScheme.background),
                 contentAlignment = Alignment.Center,
             ) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.85f),
-                    tonalElevation = 6.dp,
-                    shadowElevation = 2.dp,
-                ) {
-                    Box(
-                        modifier = Modifier.padding(14.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            strokeWidth = 2.5.dp,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                }
+                CircularProgressIndicator(modifier = Modifier.size(48.dp), strokeWidth = 5.dp)
             }
         }
     }

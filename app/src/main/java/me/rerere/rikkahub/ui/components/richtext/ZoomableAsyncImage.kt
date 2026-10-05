@@ -1,6 +1,9 @@
 package me.rerere.rikkahub.ui.components.richtext
 
+import android.net.Uri
 import android.os.SystemClock
+import coil3.imageLoader
+import java.io.File
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -51,6 +54,47 @@ import me.rerere.rikkahub.ui.components.ui.LocalExportContext
 import me.rerere.rikkahub.ui.modifier.shimmer
 import me.rerere.rikkahub.ui.theme.LocalDarkMode
 
+private fun resolveActualImageSource(
+    model: String?,
+    workspaceResolver: ((String) -> File?)?,
+): Any? {
+    if (model.isNullOrBlank()) return null
+
+    // 1. 宿主物理文件优先：去掉 file:// 后直接检查物理文件是否存在且非空
+    val hostPath = if (model.startsWith("file://")) {
+        Uri.parse(model).path ?: model.removePrefix("file://")
+    } else if (model.startsWith("/")) {
+        model
+    } else null
+
+    if (hostPath != null) {
+        val file = File(hostPath)
+        if (file.exists() && file.isFile && file.length() > 0) {
+            return file
+        }
+    }
+
+    // 2. 工作区沙箱路径解析器
+    if (workspaceResolver != null) {
+        var resolved = workspaceResolver(model)?.takeIf { it.isFile && it.length() > 0 }
+        // 兼容 file://workspace/... 补齐三个斜杠
+        if (resolved == null && model.startsWith("file://") && !model.startsWith("file:///")) {
+            val fixed = "file:///" + model.removePrefix("file://")
+            resolved = workspaceResolver(fixed)?.takeIf { it.isFile && it.length() > 0 }
+        }
+        // 兼容相对路径如 ./chart.png 或 chart.png
+        if (resolved == null && !model.startsWith("/") && !model.contains("://")) {
+            val fixed = "/workspace/${model.removePrefix("./")}"
+            resolved = workspaceResolver(fixed)?.takeIf { it.isFile && it.length() > 0 }
+        }
+        if (resolved != null) {
+            return resolved
+        }
+    }
+
+    return model
+}
+
 @Composable
 fun ZoomableAsyncImage(
     model: String?,
@@ -81,48 +125,52 @@ fun ZoomableAsyncImage(
     var hasError by remember(model) { mutableStateOf(false) }
     var retryCount by remember(model) { mutableIntStateOf(0) }
 
-    // 动态解析实际加载路径：优先通过 LocalWorkspaceFileProvider 把工作区虚拟路径还原为真实 File URI。
-    // 若文件在初次渲染时尚未落盘，保留原 model 并触发轻量后台探测自愈。
-    var resolvedModel by remember(model, retryCount) {
-        val initial = if (!model.isNullOrBlank() && workspaceResolver != null) {
-            workspaceResolver(model)?.takeIf { it.isFile }?.toUri()?.toString() ?: model
-        } else {
-            model
-        }
+    // 动态解析实际加载数据源：物理文件返回 java.io.File，沙箱路径通过 resolver 还原，网络路径保持 String
+    var resolvedSource by remember(model, retryCount) {
+        val initial = resolveActualImageSource(model, workspaceResolver) ?: model
         mutableStateOf(initial)
     }
 
-    // 时序自愈：针对 AI 正在执行写入、文件落盘存在毫秒级时差的工作区图片，延迟短轮询探测
+    // 时序自愈：针对 AI 正在执行写入、文件落盘存在时差的工作区图片，延迟短轮询探测
     LaunchedEffect(model, retryCount) {
-        if (!model.isNullOrBlank() && workspaceResolver != null && resolvedModel == model) {
-            if (model.startsWith("/") || model.startsWith("file:///workspace") || model.startsWith("file:///upload")) {
-                for (d in listOf(300L, 800L, 1800L)) {
-                    delay(d)
-                    val found = workspaceResolver(model)?.takeIf { it.isFile }?.toUri()?.toString()
-                    if (found != null && found != resolvedModel) {
-                        resolvedModel = found
-                        hasError = false
-                        break
-                    }
+        if (!model.isNullOrBlank() && workspaceResolver != null && resolvedSource == model) {
+            for (d in listOf(300L, 800L, 1800L)) {
+                delay(d)
+                val found = resolveActualImageSource(model, workspaceResolver)
+                if (found != null && found != resolvedSource) {
+                    resolvedSource = found
+                    hasError = false
+                    break
                 }
             }
         }
     }
 
-    var cachedAspectRatio by remember(resolvedModel, model) {
-        mutableStateOf<Float?>(ImageAspectRatioCache.get(resolvedModel) ?: ImageAspectRatioCache.get(model))
+    val modelKey = when (val s = resolvedSource) {
+        is File -> s.absolutePath
+        else -> s?.toString()
+    }
+
+    var cachedAspectRatio by remember(modelKey, model) {
+        mutableStateOf<Float?>(ImageAspectRatioCache.get(modelKey) ?: ImageAspectRatioCache.get(model))
     }
 
     // remember：item 存活期间父级重组不再重建 ImageRequest；retryCount 改变时主动重建触发重新请求
-    val coilModel = remember(resolvedModel, retryCount, export, darkMode, cachedAspectRatio) {
+    val coilModel = remember(resolvedSource, retryCount, export, darkMode, cachedAspectRatio) {
         val displayMetrics = context.resources.displayMetrics
         val screenWidth = displayMetrics.widthPixels.coerceAtLeast(1080)
 
         val builder = ImageRequest.Builder(context)
-            .data(resolvedModel)
+            .data(resolvedSource)
             .placeholder(placeholder)
             .crossfade(false)
             .precision(coil3.size.Precision.INEXACT)
+
+        if (retryCount > 0) {
+            // 用户点击重新加载时，禁用缓存读取，强制重新解码
+            builder.memoryCachePolicy(coil3.request.CachePolicy.WRITE_ONLY)
+            builder.diskCachePolicy(coil3.request.CachePolicy.WRITE_ONLY)
+        }
 
         val ratio = cachedAspectRatio
         if (ratio != null && ratio > 0f) {
@@ -156,8 +204,8 @@ fun ZoomableAsyncImage(
     }
     var loading by remember { mutableStateOf(false) }
     // debug 诊断：记录加载起点，onSuccess 时输出缓存来源与耗时（定位滚动卡顿是否图片解码）
-    var loadStartMs by remember(resolvedModel) { mutableLongStateOf(0L) }
-    var lastImgLogMs by remember(resolvedModel) { mutableLongStateOf(0L) }
+    var loadStartMs by remember(resolvedSource) { mutableLongStateOf(0L) }
+    var lastImgLogMs by remember(resolvedSource) { mutableLongStateOf(0L) }
     if (hasError) {
         // 优雅错误占位卡片：替代几千像素空白黑洞，提供微字提示与点击重试
         Surface(
@@ -168,12 +216,12 @@ fun ZoomableAsyncImage(
                 .clickable {
                     hasError = false
                     retryCount++
-                    // 点击重试时重新探测工作区宿主文件，若已落盘立即自愈
-                    if (!model.isNullOrBlank() && workspaceResolver != null) {
-                        val fresh = workspaceResolver(model)?.takeIf { it.isFile }?.toUri()?.toString()
-                        if (fresh != null) {
-                            resolvedModel = fresh
-                        }
+                    // 彻底清除 Coil 内存缓存
+                    context.imageLoader.memoryCache?.clear()
+                    // 重新探测工作区宿主物理文件，若已落盘立即自愈
+                    val fresh = resolveActualImageSource(model, workspaceResolver)
+                    if (fresh != null) {
+                        resolvedSource = fresh
                     }
                 },
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
@@ -234,9 +282,9 @@ fun ZoomableAsyncImage(
             if (sizeFromCachedAspectRatio && cachedAspectRatio == null) {
                 val image = state.result.image
                 if (image.width > 0 && image.height > 0) {
-                    ImageAspectRatioCache.put(resolvedModel, image.width, image.height)
+                    ImageAspectRatioCache.put(modelKey, image.width, image.height)
                     ImageAspectRatioCache.put(model, image.width, image.height)
-                    cachedAspectRatio = ImageAspectRatioCache.get(resolvedModel) ?: ImageAspectRatioCache.get(model)
+                    cachedAspectRatio = ImageAspectRatioCache.get(modelKey) ?: ImageAspectRatioCache.get(model)
                 }
             }
             if (BuildConfig.DEBUG) {
@@ -260,13 +308,17 @@ fun ZoomableAsyncImage(
             hasError = true
             // 发生错误（如 404/网络异常）时，立即从缓存逐出并重置本地比例，杜绝幽灵高度缓存撑开几千像素空白黑洞
             cachedAspectRatio = null
-            ImageAspectRatioCache.remove(resolvedModel)
+            ImageAspectRatioCache.remove(modelKey)
             ImageAspectRatioCache.remove(model)
         },
     )
     }
     if (showImageViewer) {
-        ImagePreviewDialog(images = listOf(resolvedModel ?: model ?: "")) {
+        val previewTarget = when (val s = resolvedSource) {
+            is File -> s.toURI().toString()
+            else -> s?.toString() ?: model ?: ""
+        }
+        ImagePreviewDialog(images = listOf(previewTarget)) {
             showImageViewer = false
         }
     }
