@@ -227,7 +227,8 @@ private fun ChatListNormal(
     var isRecentScroll by remember { mutableStateOf(false) }
     val conversationUpdated by rememberUpdatedState(conversation)
     val density = LocalDensity.current
-    val activity = LocalContext.current as? me.rerere.rikkahub.RouteActivity
+    val context = LocalContext.current
+    val activity = context as? me.rerere.rikkahub.RouteActivity
 
     DisposableEffect(Unit) {
         val listener: (Boolean) -> Boolean = { isVolumeUp ->
@@ -303,10 +304,20 @@ private fun ChatListNormal(
             return@LaunchedEffect
         }
         withTimeoutOrNull(8000) {
+            var priorityReady = false
             // 预热：此时 conversation 已是真实内容快照；与稳定采样并发，受同一 8s 上限；异常不阻塞遮罩释放
             launch(Dispatchers.Default) {
                 try {
-                    prewarmConversation(conversation, assistant, highlighter)
+                    prewarmConversation(
+                        context = context,
+                        conversation = conversation,
+                        assistant = assistant,
+                        highlighter = highlighter,
+                        priorityCount = 4,
+                        onPriorityReady = {
+                            priorityReady = true
+                        }
+                    )
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e                    // 超时取消必须向上传播，不能吞
                 } catch (_: Exception) {
@@ -319,7 +330,7 @@ private fun ChatListNormal(
             // 稳定采样：有内容、停止滚动、连续 3 次签名一致
             var stable = 0
             var lastSignature: List<Any?>? = null
-            while (stable < 3) {
+            while (stable < 3 || !priorityReady) {
                 delay(32)
                 val info = state.layoutInfo
                 val signature = listOf(info.totalItemsCount, info.visibleItemsInfo.firstOrNull()?.index, state.isScrollInProgress)
@@ -340,15 +351,27 @@ private fun ChatListNormal(
         modifier = Modifier
             .fillMaxSize(),
     ) {
+        // 跟踪用户是否主动向上滚动阅读（如果是，则暂停自动滚动，避免抢夺手势）
+        var userScrolledUp by remember(conversation.id) { mutableStateOf(false) }
+
+        LaunchedEffect(state) {
+            snapshotFlow { state.isScrollInProgress to state.canScrollForward }
+                .collect { (inProgress, canScrollForward) ->
+                    if (inProgress && canScrollForward) {
+                        userScrolledUp = true
+                    } else if (!canScrollForward) {
+                        userScrolledUp = false
+                    }
+                }
+        }
+
         // 自动滚动到底部
         if (settings.displaySetting.enableAutoScroll) {
-            LaunchedEffect(state) {
+            LaunchedEffect(state, loadingState) {
                 snapshotFlow { state.layoutInfo.visibleItemsInfo }.collect { visibleItemsInfo ->
-                    // println("is bottom = ${visibleItemsInfo.isAtBottom()}, scroll = ${state.isScrollInProgress}, can_scroll = ${state.canScrollForward}, loading = $loading")
-                    if (!state.isScrollInProgress && loadingState) {
+                    if (!userScrolledUp && !state.isScrollInProgress && loadingState) {
                         if (visibleItemsInfo.isAtBottom()) {
                             state.requestScrollToItem(conversationUpdated.messageNodes.lastIndex + 10)
-                            // Log.i(TAG, "ChatList: scroll to ${conversationUpdated.messageNodes.lastIndex}")
                         }
                     }
                 }
@@ -579,7 +602,8 @@ private fun ChatListNormal(
                 show = isRecentScroll && !state.isScrollInProgress && settings.displaySetting.showMessageJumper && !captureProgress,
                 onLeft = settings.displaySetting.messageJumperOnLeft,
                 scope = scope,
-                state = state
+                state = state,
+                onScrollToBottom = { userScrolledUp = false }
             )
 
             // Suggestion
@@ -596,15 +620,31 @@ private fun ChatListNormal(
         AnimatedVisibility(
             visible = covered,
             modifier = Modifier.fillMaxSize(),
-            exit = fadeOut(tween(300)),
+            exit = fadeOut(tween(250)),
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background),
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)),
                 contentAlignment = Alignment.Center,
             ) {
-                CircularProgressIndicator(modifier = Modifier.size(48.dp), strokeWidth = 5.dp)
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.85f),
+                    tonalElevation = 6.dp,
+                    shadowElevation = 2.dp,
+                ) {
+                    Box(
+                        modifier = Modifier.padding(14.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.5.dp,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
             }
         }
     }
@@ -832,7 +872,8 @@ private fun BoxScope.MessageJumper(
     show: Boolean,
     onLeft: Boolean,
     scope: CoroutineScope,
-    state: LazyListState
+    state: LazyListState,
+    onScrollToBottom: (() -> Unit)? = null,
 ) {
     AnimatedVisibility(
         visible = show,
@@ -910,6 +951,7 @@ private fun BoxScope.MessageJumper(
             }
             Surface(
                 onClick = {
+                    onScrollToBottom?.invoke()
                     scope.launch {
                         state.scrollToItem(state.layoutInfo.totalItemsCount - 1)
                     }

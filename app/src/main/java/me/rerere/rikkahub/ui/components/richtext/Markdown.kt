@@ -328,6 +328,51 @@ private fun extractCodeFence(node: ASTNode, content: String): Pair<String, Strin
     return code to language
 }
 
+/** 从已解析内容收集所有 LaTeX 公式 (formula, isDisplayMode)，供 RaTeX 进程级缓存预热 */
+fun collectLatexFormulas(content: String): List<Pair<String, Boolean>> {
+    val result = parseMarkdownCached(content)
+    if (result.hasHtml) return emptyList()
+    return buildList {
+        result.astTree.walkNodes { node ->
+            when (node.type) {
+                GFMElementTypes.BLOCK_MATH -> {
+                    val formula = node.getTextInNode(result.preprocessed)
+                        .trimStart('$').trimEnd('$').trim()
+                    if (formula.isNotBlank()) add(formula to true)
+                }
+                GFMElementTypes.INLINE_MATH -> {
+                    val formula = node.getTextInNode(result.preprocessed)
+                        .trimStart('$').trimEnd('$').trim()
+                    if (formula.isNotBlank()) add(formula to false)
+                }
+            }
+        }
+    }
+}
+
+/** 后台预热 LaTeX：提前把公式解析为 DisplayList 并存入进程级 displayListLruCache */
+fun prewarmLatex(content: String) {
+    collectLatexFormulas(content).forEach { (latex, displayMode) ->
+        getOrCreateDisplayList(latex, displayMode = displayMode)
+    }
+}
+
+/** 从已解析内容收集所有 Markdown 图片 URL，供 Coil / 宽高比缓存预热 */
+fun collectImageUrls(content: String): List<String> {
+    val result = parseMarkdownCached(content)
+    if (result.hasHtml) return emptyList()
+    return buildList {
+        result.astTree.walkNodes { node ->
+            if (node.type == MarkdownElementTypes.IMAGE) {
+                val url = node.findChildOfTypeRecursive(MarkdownElementTypes.LINK_DESTINATION)
+                    ?.getTextInNode(result.preprocessed)
+                    ?.trim()
+                if (!url.isNullOrBlank()) add(url)
+            }
+        }
+    }
+}
+
 /** 段落 annotated string 构建的缓存 key（影响构建输出的全部输入） */
 private data class ParagraphRenderKey(
     val text: String,                  // 段落原始文本（getTextInNode）

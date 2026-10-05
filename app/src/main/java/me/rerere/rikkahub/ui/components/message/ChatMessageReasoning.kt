@@ -7,6 +7,8 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -131,6 +133,7 @@ private fun ReasoningContent(
     scrollState: ScrollState,
     fadeHeight: Float,
     loading: Boolean,
+    onExpandPreview: (() -> Unit)? = null,
 ) {
     val isPreview = expandState == ReasoningCardState.Preview
     val reasoningTextStyle = MaterialTheme.typography.bodySmall.copy(
@@ -164,7 +167,11 @@ private fun ReasoningContent(
                             }
                         }
                         .heightIn(max = 100.dp)
-                        .verticalScroll(scrollState)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { onExpandPreview?.invoke() }
+                        )
                 } else {
                     contentModifier
                 }
@@ -181,9 +188,9 @@ private fun ReasoningContent(
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        // 流式生成期间不启用 SelectionContainer，避免 selectable 列表并发修改导致的
-        // ConcurrentModificationException（详见 ChatMessage.kt 文本块同样处理）。
-        if (loading) {
+        // 预览态禁用 SelectionContainer，点击区域优先由 onExpandPreview 响应平滑展开；
+        // 展开态下（且非流式）才启用文本选择。
+        if (loading || isPreview) {
             reasoningContent()
         } else {
             SelectionContainer {
@@ -263,6 +270,9 @@ fun ChainOfThoughtScope.ChatMessageReasoningStep(
                 scrollState = state.scrollState,
                 fadeHeight = fadeHeight,
                 loading = loading,
+                onExpandPreview = {
+                    state.onExpandedChange(true, loading)
+                },
             )
         },
     )

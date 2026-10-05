@@ -136,6 +136,7 @@ fun ChatMessage(
     val navController = LocalNavController.current
     val context = LocalContext.current
     val colorScheme = MaterialTheme.colorScheme
+    val isStreaming = loading && lastMessage
     Column(
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = if (message.role == MessageRole.USER) Alignment.End else Alignment.Start,
@@ -170,6 +171,7 @@ fun ChatMessage(
                 parts = message.parts,
                 annotations = message.annotations,
                 loading = loading,
+                isStreaming = isStreaming,
                 model = model,
                 onToolApproval = onToolApproval,
                 onToolAnswer = onToolAnswer,
@@ -301,6 +303,7 @@ private fun MessagePartsBlock(
     parts: List<UIMessagePart>,
     annotations: List<UIMessageAnnotation>,
     loading: Boolean,
+    isStreaming: Boolean = false,
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onUserMessageClick: (() -> Unit)? = null,
@@ -415,7 +418,7 @@ private fun MessagePartsBlock(
                             }
                         }
                     ChainOfThought(
-                        modifier = Modifier.animateContentSize(),
+                        modifier = if (isStreaming) Modifier else Modifier.animateContentSize(),
                         steps = block.steps,
                         collapsedAdaptiveWidth = isReasoningOnlyBlock,
                         autoExpand = loading && !isReasoningOnlyBlock,
@@ -497,7 +500,7 @@ private fun MessagePartsBlock(
                             } else {
                                 if (settings.displaySetting.showAssistantBubble) {
                                     Surface(
-                                        modifier = Modifier.animateContentSize(),
+                                        modifier = if (isStreaming) Modifier else Modifier.animateContentSize(),
                                         shape = RoundedCornerShape(16.dp),
                                         color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = settings.displaySetting.bubbleOpacity),
                                     ) {
@@ -522,8 +525,7 @@ private fun MessagePartsBlock(
                                         ),
                                         onClickCitation = handleClickCitation,
                                         workspaceId = assistant?.workspaceId?.toString(),
-                                        modifier = Modifier
-                                            .animateContentSize()
+                                        modifier = if (isStreaming) Modifier else Modifier.animateContentSize()
                                     )
                                 }
                             }

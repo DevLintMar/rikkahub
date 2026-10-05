@@ -1480,23 +1480,23 @@ object AlarmClockToolUI : ToolUIRenderer {
                     val timeStr = "%02d:%02d".format(hour, minute)
 
                     Surface(
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(6.dp),
                         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.5.dp),
                         ) {
                             Icon(
                                 imageVector = HugeIcons.AlarmClock,
                                 contentDescription = null,
-                                modifier = Modifier.size(16.dp),
+                                modifier = Modifier.size(13.dp),
                                 tint = MaterialTheme.colorScheme.primary,
                             )
                             Text(
                                 text = timeStr,
-                                style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
+                                style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace),
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                             )
@@ -1512,24 +1512,24 @@ object AlarmClockToolUI : ToolUIRenderer {
                     val timeStr = formatTimerDuration(sec)
 
                     Surface(
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(6.dp),
                         color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.6f),
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.5.dp),
                         ) {
                             Icon(
                                 imageVector = HugeIcons.Hourglass,
                                 contentDescription = null,
-                                modifier = Modifier.size(16.dp),
+                                modifier = Modifier.size(13.dp),
                                 tint = MaterialTheme.colorScheme.tertiary,
                             )
                             Text(
                                 text = timeStr,
-                                modifier = Modifier.offset(y = (-1).dp),
-                                style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
+                                modifier = Modifier.offset(y = (-0.5).dp),
+                                style = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace),
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onTertiaryContainer,
                             )
