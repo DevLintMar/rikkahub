@@ -944,28 +944,6 @@ private fun FolderBar(
                         onDismissRequest = { menuExpanded = false },
                     ) {
                         DropdownMenuItem(
-                            text = { Text(stringResource(R.string.chat_page_folder_default)) },
-                            leadingIcon = { Icon(HugeIcons.LeftToRightListBullet, null) },
-                            onClick = {
-                                onSelect(null)
-                                menuExpanded = false
-                            }
-                        )
-                        folders.forEach { f ->
-                            DropdownMenuItem(
-                                text = { Text(f.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                leadingIcon = { Icon(HugeIcons.Folder01, null) },
-                                trailingIcon = if (selectedFolderId == f.id) {
-                                    { Icon(HugeIcons.Tick01, null, tint = MaterialTheme.colorScheme.primary) }
-                                } else null,
-                                onClick = {
-                                    onSelect(f.id)
-                                    menuExpanded = false
-                                }
-                            )
-                        }
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                        DropdownMenuItem(
                             text = { Text(stringResource(R.string.chat_page_rename)) },
                             leadingIcon = { Icon(HugeIcons.PencilEdit01, null) },
                             onClick = {
