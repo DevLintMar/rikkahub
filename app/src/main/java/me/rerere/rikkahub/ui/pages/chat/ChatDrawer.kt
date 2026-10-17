@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerState
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -67,6 +68,8 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ChartColumn
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Folder01
+import me.rerere.hugeicons.stroke.LeftToRightListBullet
+import me.rerere.hugeicons.stroke.Tick01
 import me.rerere.hugeicons.stroke.FolderAdd
 import me.rerere.hugeicons.stroke.Image02
 import me.rerere.hugeicons.stroke.InLove
@@ -865,11 +868,46 @@ private fun FolderBar(
         state = lazyListState,
     ) {
         item(key = "default") {
-            FolderChip(
-                label = stringResource(R.string.chat_page_folder_default),
-                selected = selectedFolderId == null,
-                onClick = { onSelect(null) },
-            )
+            var defaultMenuExpanded by remember { mutableStateOf(false) }
+            Box {
+                FolderChip(
+                    label = stringResource(R.string.chat_page_folder_default),
+                    selected = selectedFolderId == null,
+                    onClick = {
+                        if (selectedFolderId == null) {
+                            defaultMenuExpanded = true
+                        } else {
+                            onSelect(null)
+                        }
+                    },
+                )
+                if (folders.isNotEmpty()) {
+                    DropdownMenu(
+                        expanded = defaultMenuExpanded,
+                        onDismissRequest = { defaultMenuExpanded = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.chat_page_folder_default)) },
+                            leadingIcon = { Icon(HugeIcons.LeftToRightListBullet, null) },
+                            trailingIcon = { Icon(HugeIcons.Tick01, null, tint = MaterialTheme.colorScheme.primary) },
+                            onClick = {
+                                onSelect(null)
+                                defaultMenuExpanded = false
+                            }
+                        )
+                        folders.forEach { f ->
+                            DropdownMenuItem(
+                                text = { Text(f.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                leadingIcon = { Icon(HugeIcons.Folder01, null) },
+                                onClick = {
+                                    onSelect(f.id)
+                                    defaultMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
         }
         itemsIndexed(localFolders, key = { _, folder -> folder.id }) { _, folder ->
             ReorderableItem(
@@ -905,6 +943,28 @@ private fun FolderBar(
                         expanded = menuExpanded,
                         onDismissRequest = { menuExpanded = false },
                     ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.chat_page_folder_default)) },
+                            leadingIcon = { Icon(HugeIcons.LeftToRightListBullet, null) },
+                            onClick = {
+                                onSelect(null)
+                                menuExpanded = false
+                            }
+                        )
+                        folders.forEach { f ->
+                            DropdownMenuItem(
+                                text = { Text(f.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                leadingIcon = { Icon(HugeIcons.Folder01, null) },
+                                trailingIcon = if (selectedFolderId == f.id) {
+                                    { Icon(HugeIcons.Tick01, null, tint = MaterialTheme.colorScheme.primary) }
+                                } else null,
+                                onClick = {
+                                    onSelect(f.id)
+                                    menuExpanded = false
+                                }
+                            )
+                        }
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.chat_page_rename)) },
                             leadingIcon = { Icon(HugeIcons.PencilEdit01, null) },

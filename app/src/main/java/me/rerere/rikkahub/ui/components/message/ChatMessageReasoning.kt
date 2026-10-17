@@ -102,7 +102,7 @@ private fun rememberReasoningState(reasoning: UIMessagePart.Reasoning): Pair<Rea
         if (loading) {
             if (!state.expandState.expanded && settings.displaySetting.showThinkingContent)
                 state.expandState = ReasoningCardState.Preview
-            scrollState.animateScrollTo(scrollState.maxValue)
+            scrollState.scrollTo(scrollState.maxValue)
         } else {
             if (state.expandState.expanded) {
                 state.expandState = if (settings.displaySetting.autoCloseThinking)
@@ -167,6 +167,7 @@ private fun ReasoningContent(
                             }
                         }
                         .heightIn(max = 100.dp)
+                        .verticalScroll(state = scrollState, enabled = false)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,

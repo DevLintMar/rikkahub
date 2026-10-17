@@ -25,11 +25,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.ui.layout.AlignmentLine
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.FirstBaseline
+import androidx.compose.ui.layout.layout
 import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ColorScheme
@@ -96,7 +101,8 @@ import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.mapLatest
@@ -140,12 +146,27 @@ private val parser by lazy {
     MarkdownParser(flavour)
 }
 
+private val CITATION_DOMAIN_COLON_REGEX = Regex("""\[citation:\s*([^\]\(\)]+?)\s*\]\(([^)]+)\)""")
+private val CITATION_MULTI_REGEX = Regex("""\[citation:\s*([^\]]+?)\s*\]""")
 private val INLINE_LATEX_REGEX = Regex("\\\\\\((.+?)\\\\\\)")
 private val BLOCK_LATEX_REGEX = Regex("\\\\\\[(.+?)\\\\\\]", RegexOption.DOT_MATCHES_ALL)
 val THINKING_REGEX = Regex("<think>([\\s\\S]*?)(?:</think>|$)", RegexOption.DOT_MATCHES_ALL)
 private val CODE_BLOCK_REGEX = Regex("```[\\s\\S]*?```|`[^`\n]*`", RegexOption.DOT_MATCHES_ALL)
 private val BREAK_LINE_REGEX = Regex("(?i)<br\\s*/?>")
 private val LATEX_BLOCK_LINE_BREAK_REGEX = Regex("""[ \t]*\r?\n[ \t]*""")
+
+private fun Modifier.propagateFirstBaseline(): Modifier = this.layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints)
+    val baseline = placeable[FirstBaseline]
+    val lines = if (baseline != AlignmentLine.Unspecified) {
+        mapOf<AlignmentLine, Int>(FirstBaseline to baseline)
+    } else {
+        emptyMap()
+    }
+    layout(placeable.width, placeable.height, lines) {
+        placeable.placeRelative(0, 0)
+    }
+}
 
 // 预处理markdown内容
 private fun preProcess(content: String): String {
@@ -160,8 +181,34 @@ private fun preProcess(content: String): String {
         return codeBlocks.any { range -> position in range }
     }
 
+    // 替换 [citation:domain](id) 格式为标准引用语法 [citation,domain](id)
+    var result = CITATION_DOMAIN_COLON_REGEX.replace(content) { matchResult ->
+        if (isInCodeBlock(matchResult.range.first)) {
+            matchResult.value
+        } else {
+            val domain = matchResult.groupValues[1].trim()
+            val id = matchResult.groupValues[2].trim()
+            "[citation," + domain + "](" + id + ")"
+        }
+    }
+
+    // 替换 [citation:id1, id2, ...] 或 [citation:id] 为标准引用语法 [citation,id](id)
+    result = CITATION_MULTI_REGEX.replace(result) { matchResult ->
+        if (isInCodeBlock(matchResult.range.first)) {
+            matchResult.value
+        } else {
+            val raw = matchResult.groupValues[1]
+            val items = raw.split(Regex("[,;\\s]+")).map { it.trim() }.filter { it.isNotEmpty() }
+            if (items.isNotEmpty()) {
+                items.joinToString("") { "[citation," + it + "](" + it + ")" }
+            } else {
+                matchResult.value
+            }
+        }
+    }
+
     // 替换行内公式 \( ... \) 到 $ ... $，但跳过代码块内的内容
-    var result = INLINE_LATEX_REGEX.replace(content) { matchResult ->
+    result = INLINE_LATEX_REGEX.replace(result) { matchResult ->
         if (isInCodeBlock(matchResult.range.first)) {
             matchResult.value // 保持原样
         } else {
@@ -515,12 +562,11 @@ fun MarkdownBlock(
         // 监听内容变化，重新解析AST树
         // 这里在后台线程解析AST树, 防止频繁更新的时候掉帧
         val updatedContent by rememberUpdatedState(content)
-        @OptIn(FlowPreview::class)
         LaunchedEffect(Unit) {
             snapshotFlow { updatedContent }
                 .distinctUntilChanged()
-                .debounce(50L)
-                .mapLatest { parseMarkdownCached(it) }
+                .conflate()
+                .map { parseMarkdownCached(it) }
                 .catch { exception -> exception.printStackTrace() }
                 .flowOn(Dispatchers.Default)
                 .collect { setData(it) }
@@ -656,6 +702,7 @@ private fun MergedParagraphs(
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .propagateFirstBaseline()
             .onSizeChanged { maxWidthPx = it.width.toFloat() }
             .then(modifier)
     ) {
@@ -1138,13 +1185,12 @@ private fun ListItemNode(
         if (directContent.isNotEmpty() || isTaskItem) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top,
             ) {
                 if (isTaskItem) {
                     if (isOrdered) {
                         Text(
                             text = bulletText,
-                            modifier = Modifier.padding(end = 4.dp),
+                            modifier = Modifier.alignByBaseline().padding(end = 4.dp),
                             color = MaterialTheme.colorScheme.primary,
                         )
                     }
@@ -1158,15 +1204,20 @@ private fun ListItemNode(
                 } else {
                     Text(
                         text = bulletText,
-                        modifier = Modifier.padding(end = 4.dp),
+                        modifier = Modifier.alignByBaseline().padding(end = 4.dp),
                         color = MaterialTheme.colorScheme.primary,
                     )
                 }
                 if (directContent.isNotEmpty()) {
                     Box(
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .alignByBaseline()
+                            .propagateFirstBaseline()
                     ) {
-                        Column {
+                        Column(
+                            modifier = Modifier.propagateFirstBaseline()
+                        ) {
                             directContent.fastForEach { contentChild ->
                                 MarkdownNode(
                                     node = contentChild,
@@ -1616,27 +1667,28 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                 ?.trim { it == '[' || it == ']' } ?: linkDest
             if (linkText.startsWith("citation,")) {
                 // 如果是引用，则特殊处理
-                val domain = linkText.substringAfter("citation,")
-                val id = linkDest
-                if (id.length == 6) {
+                val domain = linkText.substringAfter("citation,").trim()
+                val id = linkDest.trim()
+                if (id.isNotEmpty()) {
+                    val displayText = if (domain.isNotEmpty() && domain != id) domain else id
                     inlineContents.putIfAbsent(
-                        "citation:$linkDest", InlineTextContent(
+                        "citation:" + id, InlineTextContent(
                             placeholder = Placeholder(
-                                width = (domain.length * 7).sp,
-                                height = 1.em,
+                                width = (displayText.length * 7).sp,
+                                height = 1.1.em,
                                 placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
                             ), children = {
                                 Box(
                                     modifier = Modifier
                                         .clickable {
-                                            onClickCitation(id.trim())
+                                            onClickCitation(id)
                                         }
                                         .fillMaxSize()
                                         .clip(CircleShape)
                                         .background(colorScheme.tertiaryContainer.copy(0.2f)),
                                     contentAlignment = Alignment.Center) {
                                     Text(
-                                        text = domain,
+                                        text = displayText,
                                         modifier = Modifier.wrapContentSize(),
                                         style = TextStyle(
                                             fontSize = 10.sp,
@@ -1649,7 +1701,7 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                                 }
                             })
                     )
-                    appendInlineContent("citation:$linkDest")
+                    appendInlineContent("citation:" + id)
                 }
             } else {
                 withLink(LinkAnnotation.Url(linkDest)) {
@@ -1703,7 +1755,8 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                 )
 
                 segments.forEachIndexed { index, segment ->
-                    if (index > 0) append("​")
+                    // 在公式前及分段处插 ZWSP 允许智能折行，防止同行前置文本过长导致视口溢出
+                    append("​")
                     val key = "${formula}_$index"
                     appendInlineContent(key, "[Latex]")
 
@@ -1718,36 +1771,45 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
 
                     if (parsedDisplayList != null) {
                         val m = parsedDisplayList.measure(fontSizePx)
-                        val placeholderWidth = with(density) { m.widthPx.toSp() }
-                        val placeholderHeight = with(density) { (m.heightPx + m.depthPx).toSp() }
-                        val depthDp = with(density) { m.depthPx.toDp() }
-                        // 方案一进阶版：按深度动态分流
-                        // 1. 深下沉/大分式公式 (depthDp > 3dp，如分式、大矩阵)：采用 Center 对齐，不加 offset，让排版引擎诚实感知其完整高度并自然撑开行高，彻底消除重叠！
-                        // 2. 平坦型公式 (depthDp <= 3dp，如 x+y=z、普通上下标)：采用 AboveBaseline + offset(depthDp)，保持与文字 100% 绝对水平共线。
-                        val isDeepFormula = depthDp > 3.dp
-                        val verticalAlign = if (isDeepFormula) {
-                            PlaceholderVerticalAlign.Center
-                        } else {
-                            PlaceholderVerticalAlign.AboveBaseline
+                        // 计算文本垂直中心相对基线的偏移 (fontCenterPx):
+                        // 在常规字体中，ascent 约为 -0.9 * fontSizePx, descent 约为 0.25 * fontSizePx
+                        // fontCenterPx = (ascent + descent) / 2 约为 -0.325 * fontSizePx (即文本数学轴高度)
+                        val fontCenterPx = -0.325f * fontSizePx
+
+                        // 对称高度扩展：保证公式基线与文本基线绝对水平共线，且分母与分子均有充足排版间隙（绝不压盖上下行）:
+                        val halfExtentPx = maxOf(m.heightPx + fontCenterPx, m.depthPx - fontCenterPx).coerceAtLeast(fontSizePx * 0.5f)
+                        val placeholderHeightPx = halfExtentPx * 2f
+                        val placeholderHeight = with(density) { placeholderHeightPx.toSp() }
+
+                        // 公式内部垂直位移，使得公式基线与文本基线严格对齐:
+                        val yOffsetPx = halfExtentPx - m.heightPx - fontCenterPx
+                        val yOffsetDp = with(density) { yOffsetPx.toDp() }
+
+                        // 溢出判定与水平滑动支持:
+                        val isOverflow = maxWidthPx > 0f && m.widthPx > maxWidthPx
+                        val placeholderWidth = with(density) {
+                            if (isOverflow) maxWidthPx.toSp() else m.widthPx.toSp()
                         }
-                        val modifier = if (isDeepFormula) {
-                            Modifier
-                        } else {
-                            Modifier.offset(y = depthDp)
-                        }
+
                         inlineContents[key] =
                             InlineTextContent(
                                 placeholder = Placeholder(
                                     width = placeholderWidth,
                                     height = placeholderHeight,
-                                    placeholderVerticalAlign = verticalAlign,
+                                    placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
                                 ),
                                 children = {
-                                    MathInline(
-                                        latex = segment,
-                                        modifier = modifier,
-                                        displayList = parsedDisplayList,
-                                    )
+                                    DisableSelection {
+                                        Box(
+                                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                        ) {
+                                            MathInline(
+                                                latex = segment,
+                                                modifier = Modifier.offset(y = yOffsetDp),
+                                                displayList = parsedDisplayList,
+                                            )
+                                        }
+                                    }
                                 }
                             )
                     } else {

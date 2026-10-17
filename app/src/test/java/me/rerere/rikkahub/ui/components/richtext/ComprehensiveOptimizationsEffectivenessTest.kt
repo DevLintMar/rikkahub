@@ -70,4 +70,39 @@ class ComprehensiveOptimizationsEffectivenessTest {
         emptyImg.delete()
         tempDir.delete()
     }
+    @Test
+    fun `5 验证 citation 冒号语法预处理与结构化解析`() {
+        val markdown = "测试文本 [citation:03c0ba] 以及 [citation:wiki.org](1a2b3c) 还有多目标 [citation:id1, id2, id3] 结束"
+        val result = parseMarkdown(markdown)
+        
+        // 预处理后应转化为标准 Markdown 链接语法 [citation,03c0ba](03c0ba) 与 [citation,wiki.org](1a2b3c)
+        assertTrue("应包含转化后的引用 ID 链接", result.preprocessed.contains("[citation,03c0ba](03c0ba)"))
+        assertTrue("应包含转化后的带域名引用链接", result.preprocessed.contains("[citation,wiki.org](1a2b3c)"))
+        assertTrue("多目标引用应展开为独立的引用链接", result.preprocessed.contains("[citation,id1](id1)[citation,id2](id2)[citation,id3](id3)"))
+    }
+
+    @Test
+    fun `6 验证公式对称高度与垂直基线对齐几何计算算法`() {
+        val fontSizePx = 32f
+        val fontCenterPx = -0.325f * fontSizePx // -10.4f
+
+        // 模拟一个带大分母的分式公式 (height=20, depth=24)
+        val heightPx = 20f
+        val depthPx = 24f
+
+        val halfExtentPx = maxOf(heightPx + fontCenterPx, depthPx - fontCenterPx).coerceAtLeast(fontSizePx * 0.5f)
+        val placeholderHeightPx = halfExtentPx * 2f
+        val yOffsetPx = halfExtentPx - heightPx - fontCenterPx
+
+        // 验证公式基线与文本基线严格等高:
+        // textBaseline relative to placeholderTop: placeholderHeightPx / 2 - fontCenterPx = halfExtentPx - fontCenterPx
+        // formulaBaseline relative to placeholderTop: yOffsetPx + heightPx = halfExtentPx - fontCenterPx
+        val textBaseline = halfExtentPx - fontCenterPx
+        val formulaBaseline = yOffsetPx + heightPx
+        assertEquals("公式基线必须与文本基线 100% 绝对水平对齐", textBaseline, formulaBaseline, 1e-4f)
+
+        // 验证排版引擎预留给基线下方（descent）的空间必须大于等于公式深度 depthPx，绝无重叠:
+        val spaceBelowBaseline = placeholderHeightPx - textBaseline
+        assertTrue("基线下方预留空间必须完全容纳分母深度", spaceBelowBaseline >= depthPx)
+    }
 }

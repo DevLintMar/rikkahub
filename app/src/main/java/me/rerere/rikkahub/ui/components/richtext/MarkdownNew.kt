@@ -2,6 +2,8 @@ package me.rerere.rikkahub.ui.components.richtext
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,7 +39,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.AlignmentLine
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.FirstBaseline
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Size
@@ -72,6 +78,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Tick01
@@ -86,8 +94,23 @@ import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
 
+private fun Modifier.propagateFirstBaseline(): Modifier = this.layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints)
+    val baseline = placeable[FirstBaseline]
+    val lines = if (baseline != AlignmentLine.Unspecified) {
+        mapOf<AlignmentLine, Int>(FirstBaseline to baseline)
+    } else {
+        emptyMap()
+    }
+    layout(placeable.width, placeable.height, lines) {
+        placeable.placeRelative(0, 0)
+    }
+}
+
 // ---- Preprocessing (mirrors Markdown.kt logic) ----
 
+private val CITATION_DOMAIN_COLON_REGEX = Regex("""\[citation:\s*([^\]\(\)]+?)\s*\]\(([^)]+)\)""")
+private val CITATION_MULTI_REGEX = Regex("""\[citation:\s*([^\]]+?)\s*\]""")
 private val INLINE_LATEX_REGEX = Regex("\\\\\\((.+?)\\\\\\)")
 private val BLOCK_LATEX_REGEX = Regex("\\\\\\[(.+?)\\\\\\]", RegexOption.DOT_MATCHES_ALL)
 private val CODE_BLOCK_REGEX = Regex("```[\\s\\S]*?```|`[^`\n]*`", RegexOption.DOT_MATCHES_ALL)
@@ -97,7 +120,23 @@ private fun preProcess(content: String): String {
     CODE_BLOCK_REGEX.findAll(content).forEach { codeBlocks.add(it.range) }
     fun isInCodeBlock(pos: Int) = codeBlocks.any { pos in it }
 
-    var result = INLINE_LATEX_REGEX.replace(content) { m ->
+    var result = CITATION_DOMAIN_COLON_REGEX.replace(content) { m ->
+        if (isInCodeBlock(m.range.first)) m.value else "[citation," + m.groupValues[1].trim() + "](" + m.groupValues[2].trim() + ")"
+    }
+    result = CITATION_MULTI_REGEX.replace(result) { m ->
+        if (isInCodeBlock(m.range.first)) {
+            m.value
+        } else {
+            val raw = m.groupValues[1]
+            val items = raw.split(Regex("[,;\\s]+")).map { it.trim() }.filter { it.isNotEmpty() }
+            if (items.isNotEmpty()) {
+                items.joinToString("") { "[citation," + it + "](" + it + ")" }
+            } else {
+                m.value
+            }
+        }
+    }
+    result = INLINE_LATEX_REGEX.replace(result) { m ->
         if (isInCodeBlock(m.range.first)) m.value else "$" + m.groupValues[1] + "$"
     }
     result = BLOCK_LATEX_REGEX.replace(result) { m ->
@@ -140,7 +179,8 @@ fun MarkdownNew(
     LaunchedEffect(Unit) {
         snapshotFlow { updatedContent }
             .distinctUntilChanged()
-            .mapLatest { generateMarkdownHtml(it) }
+            .conflate()
+            .map { generateMarkdownHtml(it) }
             .catch { it.printStackTrace() }
             .flowOn(Dispatchers.Default)
             .collect { html = it }
@@ -488,7 +528,12 @@ private fun HtmlListItem(
                 }
 
                 // Item inline content (excluding nested lists and the checkbox input)
-                Column(modifier = Modifier.weight(1f)) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .alignByBaseline()
+                        .propagateFirstBaseline()
+                ) {
                     val directContentNodes = item.childNodes().filter { node ->
                         !(node is Element &&
                             (node.tagName().lowercase() in listOf("ul", "ol") ||
@@ -923,28 +968,29 @@ private fun AnnotatedString.Builder.appendHtmlInlineElement(
             when {
                 text.startsWith("citation,") -> {
                     // Citation link: [citation,domain](id)
-                    val domain = text.substringAfter("citation,")
-                    val id = href
-                    if (id.length == 6) {
+                    val domain = text.substringAfter("citation,").trim()
+                    val id = href.trim()
+                    if (id.isNotEmpty()) {
+                        val displayText = if (domain.isNotEmpty() && domain != id) domain else id
                         inlineContents.putIfAbsent(
-                            "citation:$id",
+                            "citation:" + id,
                             InlineTextContent(
                                 placeholder = Placeholder(
-                                    width = (domain.length * 7).sp,
-                                    height = 1.em,
+                                    width = (displayText.length * 7).sp,
+                                    height = 1.1.em,
                                     placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
                                 ),
                                 children = {
                                     Box(
                                         modifier = Modifier
-                                            .clickable { onClickCitation(id.trim()) }
+                                            .clickable { onClickCitation(id) }
                                             .fillMaxSize()
                                             .clip(CircleShape)
                                             .background(colorScheme.tertiaryContainer.copy(0.2f)),
                                         contentAlignment = Alignment.Center,
                                     ) {
                                         Text(
-                                            text = domain,
+                                            text = displayText,
                                             modifier = Modifier.wrapContentSize(),
                                             style = TextStyle(
                                                 fontSize = 10.sp,
@@ -958,7 +1004,7 @@ private fun AnnotatedString.Builder.appendHtmlInlineElement(
                                 },
                             ),
                         )
-                        appendInlineContent("citation:$id")
+                        appendInlineContent("citation:" + id)
                     }
                 }
 
@@ -987,41 +1033,47 @@ private fun AnnotatedString.Builder.appendHtmlInlineElement(
                     val metrics = with(density) {
                         assumeLatexSize(latex = formula, fontSizePx = style.fontSize.toPx(), displayMode = !isInline)
                     }
-                    val placeholderWidth = metrics?.let { with(density) { it.widthPx.toSp() } }
-                    val placeholderHeight = metrics?.let { with(density) { (it.heightPx + it.depthPx).toSp() } }
-                    val depthDp = metrics?.let { with(density) { it.depthPx.toDp() } } ?: 0.dp
-                    val isDeepFormula = depthDp > 3.dp
-                    val verticalAlign = if (isDeepFormula) {
-                        PlaceholderVerticalAlign.Center
-                    } else {
-                        PlaceholderVerticalAlign.AboveBaseline
-                    }
-                    val itemModifier = if (isDeepFormula) {
-                        Modifier
-                    } else {
-                        Modifier.offset(y = depthDp)
-                    }
+                    val fontSizePx = with(density) { style.fontSize.toPx() }
+                    val fontCenterPx = -0.325f * fontSizePx
+
+                    val halfExtentPx = metrics?.let {
+                        maxOf(it.heightPx + fontCenterPx, it.depthPx - fontCenterPx).coerceAtLeast(fontSizePx * 0.5f)
+                    } ?: (fontSizePx * 0.6f)
+                    val placeholderHeightPx = halfExtentPx * 2f
+                    val placeholderHeight = with(density) { placeholderHeightPx.toSp() }
+
+                    val yOffsetPx = metrics?.let { halfExtentPx - it.heightPx - fontCenterPx } ?: 0f
+                    val yOffsetDp = with(density) { yOffsetPx.toDp() }
+
+                    val placeholderWidth = metrics?.let { with(density) { it.widthPx.toSp() } } ?: 0.sp
+                    val itemModifier = Modifier.offset(y = yOffsetDp)
                     inlineContents.putIfAbsent(
                         formula,
                         InlineTextContent(
                             placeholder = Placeholder(
-                                width = placeholderWidth ?: 0.sp,
-                                height = placeholderHeight ?: 0.sp,
-                                placeholderVerticalAlign = verticalAlign,
+                                width = placeholderWidth,
+                                height = placeholderHeight,
+                                placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
                             ),
                             children = {
-                                if (isInline) {
-                                    MathInline(
-                                        latex = formula,
-                                        modifier = itemModifier,
-                                        fontSize = style.fontSize,
-                                    )
-                                } else {
-                                    MathBlock(
-                                        latex = formula,
-                                        modifier = itemModifier,
-                                        fontSize = style.fontSize,
-                                    )
+                                DisableSelection {
+                                    if (isInline) {
+                                        Box(
+                                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                        ) {
+                                            MathInline(
+                                                latex = formula,
+                                                modifier = itemModifier,
+                                                fontSize = style.fontSize,
+                                            )
+                                        }
+                                    } else {
+                                        MathBlock(
+                                            latex = formula,
+                                            modifier = itemModifier,
+                                            fontSize = style.fontSize,
+                                        )
+                                    }
                                 }
                             },
                         ),

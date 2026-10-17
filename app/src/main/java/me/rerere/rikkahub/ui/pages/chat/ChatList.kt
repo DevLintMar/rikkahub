@@ -148,49 +148,47 @@ fun ChatList(
     onToggleFavorite: ((MessageNode) -> Unit)? = null,
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
 ) {
-    AnimatedContent(
-        targetState = previewMode,
-        label = "ChatListMode",
-        transitionSpec = {
-            (fadeIn() + scaleIn(initialScale = 0.8f) togetherWith fadeOut() + scaleOut(targetScale = 0.8f))
-        }
-    ) { target ->
-        if (target) {
+    Box(
+        modifier = Modifier.fillMaxSize()
+    ) {
+        ChatListNormal(
+            innerPadding = innerPadding,
+            conversation = conversation,
+            state = state,
+            loading = loading,
+            processingStatus = processingStatus,
+            settings = settings,
+            hazeState = hazeState,
+            errors = errors,
+            conversationLoaded = conversationLoaded,
+            isNewChat = isNewChat,
+            onDismissError = onDismissError,
+            onClearAllErrors = onClearAllErrors,
+            onRegenerate = onRegenerate,
+            onEdit = onEdit,
+            onForkMessage = onForkMessage,
+            onDelete = onDelete,
+            onUpdateMessage = onUpdateMessage,
+            onClickSuggestion = onClickSuggestion,
+            onTranslate = onTranslate,
+            onClearTranslation = onClearTranslation,
+            onToolApproval = onToolApproval,
+            onToolAnswer = onToolAnswer,
+            onToggleFavorite = onToggleFavorite,
+            onConversationSystemPromptChange = onConversationSystemPromptChange,
+        )
+
+        AnimatedVisibility(
+            visible = previewMode,
+            enter = fadeIn() + scaleIn(initialScale = 0.8f),
+            exit = fadeOut() + scaleOut(targetScale = 0.8f),
+        ) {
             ChatListPreview(
                 innerPadding = innerPadding,
                 conversation = conversation,
                 settings = settings,
                 hazeState = hazeState,
                 onJumpToMessage = onJumpToMessage,
-                animatedVisibilityScope = this@AnimatedContent,
-            )
-        } else {
-            ChatListNormal(
-                innerPadding = innerPadding,
-                conversation = conversation,
-                state = state,
-                loading = loading,
-                processingStatus = processingStatus,
-                settings = settings,
-                hazeState = hazeState,
-                errors = errors,
-                conversationLoaded = conversationLoaded,
-                isNewChat = isNewChat,
-                onDismissError = onDismissError,
-                onClearAllErrors = onClearAllErrors,
-                onRegenerate = onRegenerate,
-                onEdit = onEdit,
-                onForkMessage = onForkMessage,
-                onDelete = onDelete,
-                onUpdateMessage = onUpdateMessage,
-                onClickSuggestion = onClickSuggestion,
-                onTranslate = onTranslate,
-                onClearTranslation = onClearTranslation,
-                animatedVisibilityScope = this@AnimatedContent,
-                onToolApproval = onToolApproval,
-                onToolAnswer = onToolAnswer,
-                onToggleFavorite = onToggleFavorite,
-                onConversationSystemPromptChange = onConversationSystemPromptChange,
             )
         }
     }
@@ -218,7 +216,6 @@ private fun ChatListNormal(
     onClickSuggestion: (String) -> Unit,
     onTranslate: ((UIMessage, java.util.Locale) -> Unit)?,
     onClearTranslation: (UIMessage) -> Unit,
-    animatedVisibilityScope: AnimatedVisibilityScope,
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onToggleFavorite: ((MessageNode) -> Unit)? = null,
@@ -294,6 +291,7 @@ private fun ChatListNormal(
 
     // 切换对话遮罩：conversation 变化时盖上（新建对话初始不盖，零闪），真实内容加载完成 + 列表稳定后淡出
     var covered by remember(conversation.id) { mutableStateOf(!isNewChat) }
+    var hasAutoScrolledToBottom by remember(conversation.id) { mutableStateOf(false) }
     // 硬兜底：无论 conversationLoaded/newConversation 是否到达，8s 后必露出（绝不持久转圈）
     LaunchedEffect(conversation.id) {
         delay(8000)
@@ -349,16 +347,19 @@ private fun ChatListNormal(
                 if (signature == lastSignature) stable++ else { lastSignature = signature; stable = 1 }
             }
 
-            // 预热完成且初次采样稳定后：在解除遮罩前自动把页面弹到最下方（以防预热后有图片/公式等改变了高度定位）
-            val targetIndex = (state.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)
-            if (targetIndex > 0) {
-                state.scrollToItem(targetIndex)
-            }
-            withFrameNanos {}
-            if (state.canScrollForward) {
-                val finalTotal = state.layoutInfo.totalItemsCount
-                if (finalTotal > 0) {
-                    state.scrollToItem(finalTotal - 1)
+            // 预热完成且初次采样稳定后：仅在首次打开对话时在解除遮罩前自动把页面弹到最下方（以防预热后有图片/公式等改变了高度定位）
+            if (!hasAutoScrolledToBottom) {
+                hasAutoScrolledToBottom = true
+                val targetIndex = (state.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)
+                if (targetIndex > 0) {
+                    state.scrollToItem(targetIndex)
+                }
+                withFrameNanos {}
+                if (state.canScrollForward) {
+                    val finalTotal = state.layoutInfo.totalItemsCount
+                    if (finalTotal > 0) {
+                        state.scrollToItem(finalTotal - 1)
+                    }
                 }
             }
         }
@@ -730,7 +731,6 @@ private fun ChatListPreview(
     conversation: Conversation,
     settings: Settings,
     hazeState: HazeState,
-    animatedVisibilityScope: AnimatedVisibilityScope,
     onJumpToMessage: (Int) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -747,6 +747,7 @@ private fun ChatListPreview(
 
     Column(
         modifier = Modifier
+            .background(MaterialTheme.colorScheme.background)
             .padding(top = innerPadding.calculateTopPadding())
             .fillMaxSize()
             .hazeSource(state = hazeState),
