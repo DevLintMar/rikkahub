@@ -11,7 +11,7 @@ class ComprehensiveOptimizationsEffectivenessTest {
 
     @Test
     fun `1 验证 LaTeX 公式缓存池在主机无 JNI 运行时安全降级不崩溃`() {
-        val latex = """\frac{a}{b} + \sqrt{c}"""
+        val latex = """\\frac{a}{b} + \sqrt{c}"""
         // 在没有 Android Rust JNI .so 的主机 JVM 单测环境下，getOrCreateDisplayList 应安全捕获并返回 null，绝不崩溃
         val dl = getOrCreateDisplayList(latex, displayMode = false)
         // 验证 assumeLatexSize 同样安全降级返回 null，绝不抛出任何异常
@@ -104,5 +104,34 @@ class ComprehensiveOptimizationsEffectivenessTest {
         // 验证排版引擎预留给基线下方（descent）的空间必须大于等于公式深度 depthPx，绝无重叠:
         val spaceBelowBaseline = placeholderHeightPx - textBaseline
         assertTrue("基线下方预留空间必须完全容纳分母深度", spaceBelowBaseline >= depthPx)
+    }
+
+    @Test
+    fun `7 验证含雌雄符号特殊生物学公式的测量清洗与拆分点定位`() {
+        val formula = "AA = ♀A \\times ♂A = \\frac{(16 - 10k + k^2)^2}{8(2 - k)^2(32 - 40k + 16k)}"
+
+        // 1. 验证测量预清洗：特殊 Unicode 字符被平稳替换，且公式骨架完好
+        val sanitized = sanitizeLatexForMeasurement(formula)
+        assertFalse("清洗后公式不应再包含 ♀ 字符", sanitized.contains('♀'))
+        assertFalse("清洗后公式不应再包含 ♂ 字符", sanitized.contains('♂'))
+        assertTrue("清洗后公式必须完好保留顶层等号与乘号", sanitized.contains(" = ") && sanitized.contains("\\times"))
+        assertTrue("清洗后公式必须完好保留完整分式结构", sanitized.contains("\\frac{"))
+
+        // 2. 验证顶层拆分点定位：
+        // 应该精准命中第 1 个等号、乘号 \\times、第 2 个等号，而严格跳过大分式内部的所有运算符
+        val splitPositions = findTopLevelSplitPositions(formula)
+        assertEquals("顶层运算符候选切分点应精准命中 3 处", 3, splitPositions.size)
+
+        val splitOps = splitPositions.map { pos ->
+            if (formula.startsWith("\\times", pos)) "\\times" else formula[pos].toString()
+        }
+        assertEquals("候选切分点必须严格对应顶层运算符", listOf("=", "\\times", "="), splitOps)
+
+        // 3. 验证切分执行：
+        val segments = splitLatex(formula, maxWidthPx = 500f, fontSizePx = 32f)
+        assertTrue("切分结果应非空", segments.isNotEmpty())
+        segments.forEach { seg ->
+            assertTrue("每个切分子段都应被正确赋予 displayStyle 样式上下文", seg.contains("\\displaystyle"))
+        }
     }
 }

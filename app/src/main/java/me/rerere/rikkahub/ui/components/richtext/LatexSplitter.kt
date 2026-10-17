@@ -85,7 +85,7 @@ fun splitLatex(
  * 返回 LaTeX 源码中顶层运算符的字符位置。
  * 这些位置是潜在分段点——新段从该位置开始（运算符在行首）。
  */
-private fun findTopLevelSplitPositions(latex: String): List<Int> {
+internal fun findTopLevelSplitPositions(latex: String): List<Int> {
     val positions = mutableListOf<Int>()
     var depth = 0
     var i = 0
@@ -144,7 +144,7 @@ private fun findCommandEnd(latex: String, start: Int): Int {
  * 测量一段 LaTeX 源码的渲染宽度（px）。
  * 测量失败时返回 [Float.MAX_VALUE]，使该段不被容纳，触发进一步拆分。
  */
-private fun sanitizeLatexForMeasurement(latex: String): String {
+internal fun sanitizeLatexForMeasurement(latex: String): String {
     var result = latex
     val specialChars = charArrayOf('♀', '♂', '★', '☆', '▲', '▼', '○', '●')
     for (c in specialChars) {
