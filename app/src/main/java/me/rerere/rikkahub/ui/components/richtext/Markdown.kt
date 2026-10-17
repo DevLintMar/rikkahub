@@ -26,6 +26,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -154,6 +157,31 @@ val THINKING_REGEX = Regex("<think>([\\s\\S]*?)(?:</think>|$)", RegexOption.DOT_
 private val CODE_BLOCK_REGEX = Regex("```[\\s\\S]*?```|`[^`\n]*`", RegexOption.DOT_MATCHES_ALL)
 private val BREAK_LINE_REGEX = Regex("(?i)<br\\s*/?>")
 private val LATEX_BLOCK_LINE_BREAK_REGEX = Regex("""[ \t]*\r?\n[ \t]*""")
+
+private fun Modifier.formulaScrollable(scrollState: androidx.compose.foundation.ScrollState): Modifier = this.pointerInput(scrollState) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        var isHorizontal = false
+        while (true) {
+            val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Main)
+            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+            if (!change.pressed) break
+            val dx = change.position.x - change.previousPosition.x
+            val dy = change.position.y - change.previousPosition.y
+            if (!isHorizontal) {
+                if (kotlin.math.abs(dx) > viewConfiguration.touchSlop) {
+                    if (kotlin.math.abs(dx) > kotlin.math.abs(dy)) {
+                        isHorizontal = true
+                        change.consume()
+                    }
+                }
+            } else {
+                change.consume()
+                scrollState.dispatchRawDelta(-dx)
+            }
+        }
+    }
+}
 
 private fun Modifier.propagateFirstBaseline(): Modifier = this.layout { measurable, constraints ->
     val placeable = measurable.measure(constraints)
@@ -1787,10 +1815,9 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                         val yOffsetPx = halfExtentPx - m.heightPx - fontCenterPx
                         val yOffsetDp = with(density) { yOffsetPx.toDp() }
 
-                        // 溢出判定与水平滑动支持:
-                        val isOverflow = maxWidthPx > 0f && m.widthPx > maxWidthPx
+                        // 宽度自适应与水平滑动支持：超过视口宽度时精确钳位在视口内，产生物理滚动区间
                         val placeholderWidth = with(density) {
-                            if (isOverflow) maxWidthPx.toSp() else m.widthPx.toSp()
+                            if (maxWidthPx > 0f) minOf(m.widthPx, maxWidthPx).toSp() else m.widthPx.toSp()
                         }
 
                         inlineContents[key] =
@@ -1802,8 +1829,11 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                                 ),
                                 children = {
                                     DisableSelection {
+                                        val scrollState = rememberScrollState()
                                         Box(
-                                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                            modifier = Modifier
+                                                .horizontalScroll(scrollState)
+                                                .formulaScrollable(scrollState),
                                         ) {
                                             MathInline(
                                                 latex = segment,
@@ -1828,8 +1858,11 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                                 ),
                                 children = {
                                     DisableSelection {
+                                        val scrollState = rememberScrollState()
                                         Box(
-                                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                            modifier = Modifier
+                                                .horizontalScroll(scrollState)
+                                                .formulaScrollable(scrollState),
                                         ) {
                                             MathInline(latex = segment, modifier = Modifier)
                                         }
