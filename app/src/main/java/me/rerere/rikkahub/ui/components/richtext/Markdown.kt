@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -1755,8 +1757,10 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                 )
 
                 segments.forEachIndexed { index, segment ->
-                    // 在公式前及分段处插 ZWSP 允许智能折行，防止同行前置文本过长导致视口溢出
-                    append("​")
+                    // 仅在分段之间（index > 0）插 ZWSP 允许换行，严禁在首段前插入，彻底杜绝行首多余断行导致圈符悬空与大空行
+                    if (index > 0) {
+                        append("​")
+                    }
                     val key = "${formula}_$index"
                     appendInlineContent(key, "[Latex]")
 
@@ -1800,8 +1804,18 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                                 ),
                                 children = {
                                     DisableSelection {
+                                        val scrollState = rememberScrollState()
                                         Box(
-                                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                            modifier = Modifier
+                                                .horizontalScroll(scrollState)
+                                                .pointerInput(scrollState) {
+                                                    detectHorizontalDragGestures { change, dragAmount ->
+                                                        if (scrollState.maxValue > 0) {
+                                                            change.consume()
+                                                            scrollState.dispatchRawDelta(-dragAmount)
+                                                        }
+                                                    }
+                                                },
                                         ) {
                                             MathInline(
                                                 latex = segment,

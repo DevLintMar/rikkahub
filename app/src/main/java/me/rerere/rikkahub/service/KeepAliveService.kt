@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.PowerManager
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -25,6 +26,8 @@ import me.rerere.rikkahub.utils.AppForegroundTracker
  * - 国产 ROM 兼容：划掉任务后通过发送广播尝试自启动
  */
 class KeepAliveService : Service() {
+
+    private var wakeLock: PowerManager.WakeLock? = null
 
     companion object {
         private const val TAG = "KeepAliveService"
@@ -104,16 +107,27 @@ class KeepAliveService : Service() {
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                // Android 14+ 必须使用 specialUse，彻底消除 dataSync 的 6 小时强制超时强杀 (ForegroundServiceDidNotStopInTimeException)
                 startForeground(
                     NOTIFICATION_ID,
                     notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
                 )
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
+
+            // 类似 Termux 的 CPU 唤醒锁机制：持有 PARTIAL_WAKE_LOCK 防止息屏后系统进入深度休眠 (Doze) 冻结进程
+            if (wakeLock == null || wakeLock?.isHeld == false) {
+                val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+                wakeLock = powerManager?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$TAG:WakeLock")?.apply {
+                    setReferenceCounted(false)
+                    acquire()
+                    Log.d(TAG, "Termux 式 WakeLock 已获取，保持 CPU 在息屏期间持续运转")
+                }
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "startForeground 失败（前台服务配额可能耗尽），停止保活服务", e)
+            Log.e(TAG, "startForeground 失败，停止保活服务", e)
             stopSelf()
             return START_NOT_STICKY
         }
@@ -126,6 +140,18 @@ class KeepAliveService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         Log.d(TAG, "onDestroy")
+        try {
+            wakeLock?.let {
+                if (it.isHeld) {
+                    it.release()
+                    Log.d(TAG, "WakeLock 已释放")
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "释放 WakeLock 时发生异常", e)
+        } finally {
+            wakeLock = null
+        }
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {

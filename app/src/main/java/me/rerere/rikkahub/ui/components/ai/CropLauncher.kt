@@ -21,6 +21,8 @@ import me.rerere.common.android.appTempFolder
 import me.rerere.rikkahub.ui.context.LocalToaster
 import java.io.File
 
+private const val MAX_CROP_RESULT_DIMENSION = 8_000
+
 @Composable
 internal fun useCropLauncher(
     onCroppedImageReady: (Uri) -> Unit,
@@ -73,7 +75,7 @@ internal fun useCropLauncher(
             // no benefit for this flow, so use JPEG to keep confirmation responsive.
             setCompressionFormat(Bitmap.CompressFormat.JPEG)
             setCompressionQuality(90)
-        }).withMaxResultSize(4096, 4096)
+        }).withMaxResultSize(MAX_CROP_RESULT_DIMENSION, MAX_CROP_RESULT_DIMENSION)
         aspectRatio?.let { (x, y) ->
             crop = crop.withAspectRatio(x, y)
         }

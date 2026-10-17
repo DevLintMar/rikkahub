@@ -29,7 +29,7 @@ class FileEncoderExifTransformTest {
         val sampleSize = calculateImageInSampleSize(
             width = 1272,
             height = 2800,
-            maxDimension = 10_000,
+            maxDimension = 8_000,
             maxPixels = 16_000_000L
         )
 
@@ -37,11 +37,24 @@ class FileEncoderExifTransformTest {
     }
 
     @Test
-    fun `very large images should still be downsampled by pixel budget`() {
+    fun `slightly exceeding 8000px height should keep sampleSize 1 for smooth scaling`() {
+        // 1080 x 8500 稍微超出 8000px，初次采样应保留 1，避免短边粗暴砍半，后续交给平滑缩放
         val sampleSize = calculateImageInSampleSize(
-            width = 5000,
-            height = 5000,
-            maxDimension = 10_000,
+            width = 1080,
+            height = 8500,
+            maxDimension = 8_000,
+            maxPixels = 16_000_000L
+        )
+
+        assertEquals(1, sampleSize)
+    }
+
+    @Test
+    fun `very large images should be downsampled safely to prevent OOM`() {
+        val sampleSize = calculateImageInSampleSize(
+            width = 10_000,
+            height = 10_000,
+            maxDimension = 8_000,
             maxPixels = 16_000_000L
         )
 
@@ -49,11 +62,11 @@ class FileEncoderExifTransformTest {
     }
 
     @Test
-    fun `extremely long images should still be downsampled by max dimension`() {
+    fun `extremely long images should be downsampled by max dimension`() {
         val sampleSize = calculateImageInSampleSize(
             width = 1200,
             height = 20_000,
-            maxDimension = 10_000,
+            maxDimension = 8_000,
             maxPixels = 16_000_000L
         )
 

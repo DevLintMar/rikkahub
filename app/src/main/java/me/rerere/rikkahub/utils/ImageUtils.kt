@@ -169,7 +169,7 @@ object ImageUtils {
         context: Context,
         uri: Uri,
         target: File,
-        maxSize: Int = 4096,
+        maxSize: Int = 8_000,
         quality: Int = 95,
     ): Boolean = runCatching {
         val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }

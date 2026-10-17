@@ -46,11 +46,11 @@ import java.util.concurrent.TimeUnit
  * - `http(s)://` 网页图片（下载到 upload/，32MB 上限）
  * 历史记录在 [chat_message_tool_read_image_failed] 的封装统一见 [ReadImageResult]。
  */
-const val READ_IMAGE_MAX_IMAGES_PER_CALL = 8
+const val READ_IMAGE_MAX_IMAGES_PER_CALL = 16
 
 private const val TAG = "ReadImageTools"
 
-private const val READ_IMAGE_MAX_DOWNLOAD_BYTES = 32L * 1024 * 1024
+private const val READ_IMAGE_MAX_DOWNLOAD_BYTES = 48L * 1024 * 1024
 
 /** http 下载失败自动重试：1 次初始 + 3 次重试 = 4 次尝试（网络波动等瞬时错误） */
 private const val DOWNLOAD_MAX_ATTEMPTS = 4
@@ -63,7 +63,7 @@ private const val DOWNLOAD_MAX_ATTEMPTS = 4
  * 完全失效——TCP 已经连上了——一次调用就挂 10 分钟，再乘 4 次重试。
  * 因此这里用独立的 callTimeout 兜住，且超时后**不再重试**（见 [isTimeoutFailure]）。
  */
-private const val READ_IMAGE_TIMEOUT_SECONDS = 20L
+private const val READ_IMAGE_TIMEOUT_SECONDS = 45L
 
 /**
  * 图片下载专用客户端：共享全局客户端的连接池与调度器，只收紧超时。
@@ -89,7 +89,7 @@ fun createReadImageTool(
                 - file:///upload/... — images the user attached to the chat (always available, works without a workspace)
                 - file:///workspace/... — files in the workspace files area
                 - any other absolute path inside the workspace rootfs, e.g. file:///tmp/chart.png or file:///skills/.../x.png
-                - http:// or https:// links — downloaded and read (max 8 MB; the download is capped at 20 seconds and is not retried on timeout, so an unreachable or very slow link fails fast)
+                - http:// or https:// links — downloaded and read (max 48 MB; the download is capped at 45 seconds and is not retried on timeout, so an unreachable or very slow link fails fast)
                 The file:// prefix may be omitted. Paths inside the workspace need a workspace-enabled assistant.
                 Up to $READ_IMAGE_MAX_IMAGES_PER_CALL images per call; any extra URLs are omitted and reported in the result.
                 For vision-capable models, the images themselves are returned — you will see them directly.

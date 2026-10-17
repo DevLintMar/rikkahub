@@ -144,8 +144,22 @@ private fun findCommandEnd(latex: String, start: Int): Int {
  * 测量一段 LaTeX 源码的渲染宽度（px）。
  * 测量失败时返回 [Float.MAX_VALUE]，使该段不被容纳，触发进一步拆分。
  */
+private fun sanitizeLatexForMeasurement(latex: String): String {
+    var result = latex
+    val specialChars = charArrayOf('♀', '♂', '★', '☆', '▲', '▼', '○', '●')
+    for (c in specialChars) {
+        if (result.contains(c)) {
+            result = result.replace(c, 'X')
+        }
+    }
+    return result
+}
+
 private fun measureWidth(latex: String, fontSizePx: Float): Float {
-    return assumeLatexSize(latex, fontSizePx)?.widthPx ?: Float.MAX_VALUE
+    val sanitized = sanitizeLatexForMeasurement(latex)
+    return assumeLatexSize(sanitized, fontSizePx)?.widthPx
+        ?: assumeLatexSize(latex, fontSizePx)?.widthPx
+        ?: Float.MAX_VALUE
 }
 
 /**

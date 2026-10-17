@@ -10,6 +10,8 @@ import androidx.core.net.toUri
 import me.rerere.ai.ui.UIMessagePart
 import java.io.ByteArrayOutputStream
 import java.io.File
+import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 private val supportedTypes = setOf(
     "image/jpeg",
@@ -155,7 +157,7 @@ fun UIMessagePart.Audio.encodeBase64(withPrefix: Boolean = true): Result<String>
 
 private fun File.compressAndEncode(
     mimeType: String,
-    maxDimension: Int = 4_000,
+    maxDimension: Int = 8_000,
     maxPixels: Long = 16_000_000L,
     quality: Int = 85
 ): Pair<String, String> {
@@ -178,22 +180,29 @@ private fun File.compressAndEncode(
     )
     options.inJustDecodeBounds = false
 
-    val bitmap = BitmapFactory.decodeFile(absolutePath, options)
+    val rawBitmap = BitmapFactory.decodeFile(absolutePath, options)
         ?: throw IllegalArgumentException("Failed to decode image: $absolutePath")
-    val normalizedBitmap = normalizeByExif(bitmap)
+    val normalizedBitmap = normalizeByExif(rawBitmap)
+    if (normalizedBitmap !== rawBitmap) {
+        rawBitmap.recycle()
+    }
+
+    // 平滑二次插值缩放，彻底消除 inSampleSize 粗暴下采样带来的短边腰斩问题
+    val finalBitmap = scaleBitmapIfNeeded(
+        bitmap = normalizedBitmap,
+        maxDimension = maxDimension,
+        maxPixels = maxPixels
+    )
 
     return try {
         val byteArrayOutputStream = ByteArrayOutputStream()
         // 强制使用 JPEG 格式，因为很多提供商不支持 webp
         Base64OutputStream(byteArrayOutputStream, Base64.NO_WRAP).use { base64Stream ->
-            normalizedBitmap.compress(Bitmap.CompressFormat.JPEG, quality, base64Stream)
+            finalBitmap.compress(Bitmap.CompressFormat.JPEG, quality, base64Stream)
         }
         Pair(byteArrayOutputStream.toString(Charsets.ISO_8859_1.name()), "image/jpeg")
     } finally {
-        if (normalizedBitmap !== bitmap) {
-            normalizedBitmap.recycle()
-        }
-        bitmap.recycle()
+        finalBitmap.recycle()
     }
 }
 
@@ -252,15 +261,57 @@ internal fun calculateImageInSampleSize(
 ): Int {
     if (width <= 0 || height <= 0) return 1
 
+    val maxDim = maxOf(width, height)
+    val totalPixels = width.toLong() * height.toLong()
+
+    val scaleByDim = if (maxDim > maxDimension) maxDimension.toFloat() / maxDim else 1f
+    val scaleByPixels = if (totalPixels > maxPixels) sqrt(maxPixels.toDouble() / totalPixels).toFloat() else 1f
+    val targetScale = minOf(scaleByDim, scaleByPixels)
+
+    if (targetScale >= 1f) return 1
+
+    val targetWidth = (width * targetScale).toInt().coerceAtLeast(1)
+    val targetHeight = (height * targetScale).toInt().coerceAtLeast(1)
+
+    // Android 官方标准采样算法：寻找最大的 2 的幂 inSampleSize，使得采样后的尺寸仍然 >= 目标尺寸
+    // 这保证了初次解码保留足够的像素细节，不会因为 2 的幂阶梯直接把长图短边粗暴腰斩减半；
+    // 后续再由 scaleBitmapIfNeeded 通过高质量双线性滤波平滑缩小到精确目标。
     var inSampleSize = 1
-    while (
-        (height / inSampleSize) > maxDimension ||
-        (width / inSampleSize) > maxDimension ||
-        (width.toLong() / inSampleSize) * (height.toLong() / inSampleSize) > maxPixels
-    ) {
+    while ((width / (inSampleSize * 2)) >= targetWidth && (height / (inSampleSize * 2)) >= targetHeight) {
         inSampleSize *= 2
     }
     return inSampleSize
+}
+
+internal fun scaleBitmapIfNeeded(
+    bitmap: Bitmap,
+    maxDimension: Int,
+    maxPixels: Long
+): Bitmap {
+    val w = bitmap.width
+    val h = bitmap.height
+    if (w <= 0 || h <= 0) return bitmap
+
+    val maxDim = maxOf(w, h)
+    val totalPixels = w.toLong() * h.toLong()
+
+    val scaleByDim = if (maxDim > maxDimension) maxDimension.toFloat() / maxDim else 1f
+    val scaleByPixels = if (totalPixels > maxPixels) sqrt(maxPixels.toDouble() / totalPixels).toFloat() else 1f
+    val scale = minOf(scaleByDim, scaleByPixels)
+
+    if (scale >= 0.999f) {
+        return bitmap
+    }
+
+    val targetWidth = (w * scale).roundToInt().coerceAtLeast(1)
+    val targetHeight = (h * scale).roundToInt().coerceAtLeast(1)
+
+    // filter = true 启用高质量双线性滤波平滑缩放
+    val scaled = Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
+    if (scaled !== bitmap) {
+        bitmap.recycle()
+    }
+    return scaled
 }
 
 /**

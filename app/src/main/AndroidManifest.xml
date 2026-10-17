@@ -15,6 +15,7 @@
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+  <uses-permission android:name="android.permission.WAKE_LOCK" />
   <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
   <uses-permission
     android:name="android.permission.PACKAGE_USAGE_STATS"
@@ -167,13 +168,17 @@
         tools:node="remove" />
     </provider>
 
-    <!-- KeepAlive Service -->
+    <!-- KeepAlive Service (Termux-style specialUse for persistent execution) -->
     <service
       android:name=".service.KeepAliveService"
       android:enabled="true"
       android:exported="false"
-      android:foregroundServiceType="dataSync"
-      android:stopWithTask="false" />
+      android:foregroundServiceType="specialUse"
+      android:stopWithTask="false">
+      <property
+        android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+        android:value="AI model inference, background tasks and workspace execution" />
+    </service>
 
     <!-- KeepAlive Restart Receiver -->
     <receiver
