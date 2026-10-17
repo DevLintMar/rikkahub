@@ -59,6 +59,13 @@ import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.utils.plus
 import java.io.File
 import java.io.FileOutputStream
+import android.content.ComponentName
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import me.rerere.hugeicons.stroke.Settings02
 
 @Composable
 fun SettingPreferencesAppIconPage() {
@@ -80,6 +87,7 @@ fun SettingPreferencesAppIconPage() {
         target
     }
     var iconRevision by remember { mutableStateOf(System.currentTimeMillis()) }
+    var showPermissionGuideDialog by remember { mutableStateOf(false) }
 
     val (_, launchCrop) = useCropLauncher(
         aspectRatio = 1f to 1f,
@@ -210,6 +218,7 @@ fun SettingPreferencesAppIconPage() {
                                 .build()
 
                             val success = ShortcutManagerCompat.requestPinShortcut(context, shortcutInfo, null)
+                            showPermissionGuideDialog = true
                             if (success) {
                                 toaster.show(
                                     context.getString(R.string.setting_app_icon_shortcut_success),
@@ -225,6 +234,13 @@ fun SettingPreferencesAppIconPage() {
                         leadingContent = { Icon(HugeIcons.SmartPhone01, null) },
                         headlineContent = { Text(stringResource(R.string.setting_app_icon_create_shortcut)) },
                         supportingContent = { Text("将当前图标固定为手机桌面快捷方式，点击秒开应用") }
+                    )
+
+                    item(
+                        onClick = { openAppShortcutPermissionSettings(context) },
+                        leadingContent = { Icon(HugeIcons.Settings02, null) },
+                        headlineContent = { Text("开启桌面快捷方式权限") },
+                        supportingContent = { Text("若添加后桌面无图标，点击一键跳转系统设置允许权限") }
                     )
 
                     if (customIconFile.exists()) {
@@ -273,5 +289,67 @@ fun SettingPreferencesAppIconPage() {
                 }
             }
         }
+        if (showPermissionGuideDialog) {
+            AlertDialog(
+                onDismissRequest = { showPermissionGuideDialog = false },
+                title = { Text("桌面快捷方式权限提示") },
+                text = {
+                    Text("已向系统发送创建请求。\n\n由于多数手机厂商系统（小米/华为/OPPO/vivo等）默认禁止应用在桌面创建快捷方式，若桌面未出现新图标，请点击【前往设置】在应用权限管理中允许【桌面快捷方式】权限。")
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showPermissionGuideDialog = false
+                            openAppShortcutPermissionSettings(context)
+                        }
+                    ) {
+                        Text("前往设置")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showPermissionGuideDialog = false }) {
+                        Text("我知道了")
+                    }
+                }
+            )
+        }
+    }
+}
+
+internal fun openAppShortcutPermissionSettings(context: android.content.Context) {
+    val packageName = context.packageName
+    val manufacturer = Build.MANUFACTURER.lowercase()
+    val intents = listOfNotNull(
+        if (manufacturer.contains("xiaomi") || manufacturer.contains("redmi")) {
+            Intent("miui.intent.action.APP_PERM_EDITOR").apply {
+                putExtra("extra_pkgname", packageName)
+            }
+        } else null,
+        if (manufacturer.contains("huawei") || manufacturer.contains("honor")) {
+            Intent().apply {
+                component = ComponentName("com.huawei.systemmanager", "com.huawei.permissionmanager.ui.MainActivity")
+            }
+        } else null,
+        if (manufacturer.contains("oppo") || manufacturer.contains("oneplus") || manufacturer.contains("realme")) {
+            Intent().apply {
+                component = ComponentName("com.coloros.safecenter", "com.coloros.safecenter.permission.PermissionManagerActivity")
+            }
+        } else null,
+        if (manufacturer.contains("vivo") || manufacturer.contains("iqoo")) {
+            Intent().apply {
+                component = ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.SoftPermissionDetailActivity")
+            }
+        } else null,
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.fromParts("package", packageName, null)
+        }
+    )
+
+    for (intent in intents) {
+        try {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            return
+        } catch (_: Exception) {}
     }
 }
