@@ -26,12 +26,28 @@ import kotlin.uuid.Uuid
  * Tools that let the assistant query the user's past conversations on demand, instead of
  * statically injecting recent chats into the system prompt (which would break prompt caching).
  */
-fun createConversationTools(
+suspend fun createConversationTools(
     conversationRepo: ConversationRepository,
     folderRepo: FolderRepository,
     assistantId: Uuid,
     conversationId: Uuid,
-): List<Tool> = listOf(
+): List<Tool> {
+    val isSemanticSearch = conversationRepo.isSemanticSearchConfigured()
+    val searchModeDesc = if (isSemanticSearch) {
+        """
+            [SEMANTIC SEARCH: ENABLED] Hybrid semantic + keyword search across the user's past conversations.
+            Matches on meaning, concepts, and intent as well as exact keywords, so paraphrased or natural-language queries can find relevant past messages.
+            Run multiple searches with different phrasings if needed.
+        """.trimIndent()
+    } else {
+        """
+            [SEMANTIC SEARCH: DISABLED - EXACT KEYWORD MATCHING ONLY] Full-text search (SQLite FTS5) across the user's past conversations.
+            Semantic embedding is NOT configured, so it does NOT match by meaning, synonyms, or paraphrasing.
+            You MUST supply exact keywords, specific names, or substrings that likely appeared verbatim in the user's messages.
+        """.trimIndent()
+    }
+
+    return listOf(
     Tool(
         name = "list_conversation_folders",
         description = """
@@ -146,9 +162,7 @@ fun createConversationTools(
     Tool(
         name = "conversation_search",
         description = """
-            Hybrid semantic + keyword search across the user's past conversations to recall specific information they mentioned before.
-            Matches on meaning as well as exact keywords, so paraphrased queries can find relevant past messages.
-            Run multiple searches with different phrasings if needed.
+            $searchModeDesc
             Pass `folder_id` to search only conversations in a specific folder: `"default"` (or an empty string) for the unfiled "chat" folder, or a folder UUID from `list_conversation_folders`. Omit it to search all.
             Returns each specific matched message, with the matched keywords marked in [brackets] in `snippet`, the conversation
             (`conversation_id`, `title`), the message's `index` within it, and its `date` (yyyy-MM-dd).
@@ -197,6 +211,7 @@ fun createConversationTools(
             val payload = buildJsonObject {
                 put("type", "conversation_search")
                 put("query", query)
+                put("semantic_search_enabled", isSemanticSearch)
                 put("offset", offset)
                 put("has_more", page.hasMore)
                 putJsonArray("results") {
@@ -279,7 +294,8 @@ fun createConversationTools(
             listOf(UIMessagePart.Text(JsonInstantPretty.encodeToString(payload)))
         },
     )
-)
+    )
+}
 
 /** 默认「聊天」（未归类）文件夹的固定 id，供 AI 通过 folder_id 访问。 */
 private const val DEFAULT_FOLDER_ID = "default"

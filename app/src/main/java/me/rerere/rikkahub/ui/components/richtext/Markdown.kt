@@ -350,10 +350,15 @@ fun collectLatexFormulas(content: String): List<Pair<String, Boolean>> {
     }
 }
 
-/** 后台预热 LaTeX：提前把公式解析为 DisplayList 并存入进程级 displayListLruCache */
-fun prewarmLatex(content: String) {
+/** 后台预热 LaTeX：提前把公式解析为 DisplayList 并存入进程级 displayListLruCache
+ * 同时填充 Color.Unspecified（供 assumeLatexSize/splitLatex 测量使用）以及 contentColor（供 MathInline/LatexText 实际绘制使用）
+ */
+fun prewarmLatex(content: String, contentColor: Color = Color.Unspecified) {
     collectLatexFormulas(content).forEach { (latex, displayMode) ->
-        getOrCreateDisplayList(latex, displayMode = displayMode)
+        getOrCreateDisplayList(latex, displayMode = displayMode, color = Color.Unspecified)
+        if (contentColor != Color.Unspecified) {
+            getOrCreateDisplayList(latex, displayMode = displayMode, color = contentColor)
+        }
     }
 }
 
@@ -1715,18 +1720,32 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                         val m = parsedDisplayList.measure(fontSizePx)
                         val placeholderWidth = with(density) { m.widthPx.toSp() }
                         val placeholderHeight = with(density) { (m.heightPx + m.depthPx).toSp() }
-                        val depthOffset = with(density) { m.depthPx.toDp() }
+                        val depthDp = with(density) { m.depthPx.toDp() }
+                        // 方案一进阶版：按深度动态分流
+                        // 1. 深下沉/大分式公式 (depthDp > 3dp，如分式、大矩阵)：采用 Center 对齐，不加 offset，让排版引擎诚实感知其完整高度并自然撑开行高，彻底消除重叠！
+                        // 2. 平坦型公式 (depthDp <= 3dp，如 x+y=z、普通上下标)：采用 AboveBaseline + offset(depthDp)，保持与文字 100% 绝对水平共线。
+                        val isDeepFormula = depthDp > 3.dp
+                        val verticalAlign = if (isDeepFormula) {
+                            PlaceholderVerticalAlign.Center
+                        } else {
+                            PlaceholderVerticalAlign.AboveBaseline
+                        }
+                        val modifier = if (isDeepFormula) {
+                            Modifier
+                        } else {
+                            Modifier.offset(y = depthDp)
+                        }
                         inlineContents[key] =
                             InlineTextContent(
                                 placeholder = Placeholder(
                                     width = placeholderWidth,
                                     height = placeholderHeight,
-                                    placeholderVerticalAlign = PlaceholderVerticalAlign.AboveBaseline,
+                                    placeholderVerticalAlign = verticalAlign,
                                 ),
                                 children = {
                                     MathInline(
                                         latex = segment,
-                                        modifier = Modifier.offset(y = depthOffset),
+                                        modifier = modifier,
                                         displayList = parsedDisplayList,
                                     )
                                 }

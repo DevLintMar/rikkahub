@@ -989,26 +989,37 @@ private fun AnnotatedString.Builder.appendHtmlInlineElement(
                     }
                     val placeholderWidth = metrics?.let { with(density) { it.widthPx.toSp() } }
                     val placeholderHeight = metrics?.let { with(density) { (it.heightPx + it.depthPx).toSp() } }
-                    val depthOffset = metrics?.let { with(density) { it.depthPx.toDp() } } ?: 0.dp
+                    val depthDp = metrics?.let { with(density) { it.depthPx.toDp() } } ?: 0.dp
+                    val isDeepFormula = depthDp > 3.dp
+                    val verticalAlign = if (isDeepFormula) {
+                        PlaceholderVerticalAlign.Center
+                    } else {
+                        PlaceholderVerticalAlign.AboveBaseline
+                    }
+                    val itemModifier = if (isDeepFormula) {
+                        Modifier
+                    } else {
+                        Modifier.offset(y = depthDp)
+                    }
                     inlineContents.putIfAbsent(
                         formula,
                         InlineTextContent(
                             placeholder = Placeholder(
                                 width = placeholderWidth ?: 0.sp,
                                 height = placeholderHeight ?: 0.sp,
-                                placeholderVerticalAlign = PlaceholderVerticalAlign.AboveBaseline,
+                                placeholderVerticalAlign = verticalAlign,
                             ),
                             children = {
                                 if (isInline) {
                                     MathInline(
                                         latex = formula,
-                                        modifier = Modifier.offset(y = depthOffset),
+                                        modifier = itemModifier,
                                         fontSize = style.fontSize,
                                     )
                                 } else {
                                     MathBlock(
                                         latex = formula,
-                                        modifier = Modifier.offset(y = depthOffset),
+                                        modifier = itemModifier,
                                         fontSize = style.fontSize,
                                     )
                                 }

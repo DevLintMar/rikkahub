@@ -50,21 +50,39 @@ fun buildMemoryTools(
     val tools = mutableListOf<Tool>()
     tools += Tool(
         name = "read_memory",
-        description = "Read the full content of a saved memory by its title. Use this when you need the complete text of a memory whose title and description are listed in the system prompt; only titles and descriptions are injected, not full contents.",
+        description = """
+            Read the full content of a saved memory by its exact title.
+            REQUIRED: You MUST specify the "title" parameter matching a memory title from the <memories> list in your system prompt. This tool CANNOT list or fetch all memories at once; only individual memories can be read by title.
+        """.trimIndent(),
         parameters = {
             InputSchema.Obj(
                 properties = buildJsonObject {
                     put("title", buildJsonObject {
                         put("type", "string")
-                        put("description", "The exact title of the memory to read")
+                        put("description", "The exact title of the memory to read (REQUIRED; must match a title from the system prompt's saved memories list)")
                     })
                 },
                 required = listOf("title"),
             )
         },
         execute = {
-            val title = it.jsonObject.string("title") ?: error("title is required")
-            val memory = readMemoryByTitle(title) ?: error("Memory not found: $title")
+            val title = it.jsonObject.string("title")?.trim()
+            if (title.isNullOrBlank()) {
+                return@Tool listOf(UIMessagePart.Text(json.encodeToString(buildJsonObject {
+                    put("type", JsonPrimitive("read_memory"))
+                    put("error", JsonPrimitive("Parameter 'title' is required. You cannot fetch all memories at once. Please specify an exact memory title from the <memories> list in your system prompt."))
+                    put("success", JsonPrimitive(false))
+                })))
+            }
+            val memory = readMemoryByTitle(title)
+            if (memory == null) {
+                return@Tool listOf(UIMessagePart.Text(json.encodeToString(buildJsonObject {
+                    put("type", JsonPrimitive("read_memory"))
+                    put("title", JsonPrimitive(title))
+                    put("error", JsonPrimitive("Memory not found with title '$title'. Please check the exact title from the <memories> list in your system prompt."))
+                    put("success", JsonPrimitive(false))
+                })))
+            }
             listOf(UIMessagePart.Text(json.encodeToString(buildJsonObject {
                 put("type", JsonPrimitive("read_memory"))
                 put("id", memory.id)
@@ -194,13 +212,16 @@ private fun buildEditTool(
     ) -> AssistantMemory,
 ): Tool = Tool(
     name = toolName,
-    description = toolDescription,
+    description = """
+        $toolDescription
+        REQUIRED: You must provide "title" AND at least one modification field: "content" (full rewrite), "old_text" + "new_text" (replacement), "new_title" (rename), or "description" (update description).
+    """.trimIndent(),
     parameters = {
         InputSchema.Obj(
             properties = buildJsonObject {
                 put("title", buildJsonObject {
                     put("type", "string")
-                    put("description", "The current title of the memory to edit")
+                    put("description", "The current title of the memory to edit (REQUIRED)")
                 })
                 put("content", buildJsonObject {
                     put("type", "string")
@@ -231,7 +252,14 @@ private fun buildEditTool(
         )
     },
     execute = {
-        val title = it.jsonObject.string("title") ?: error("title is required")
+        val title = it.jsonObject.string("title")?.trim()
+        if (title.isNullOrBlank()) {
+            return@Tool listOf(UIMessagePart.Text(json.encodeToString(buildJsonObject {
+                put("type", JsonPrimitive(toolName))
+                put("error", JsonPrimitive("Parameter 'title' is required. Please specify the title of the memory to edit."))
+                put("success", JsonPrimitive(false))
+            })))
+        }
         val newTitle = it.jsonObject.string("new_title")
         val description = it.jsonObject.string("description")
         val content = it.jsonObject.string("content")
@@ -239,9 +267,22 @@ private fun buildEditTool(
         val newText = it.jsonObject.string("new_text")
         val replaceAll = it.jsonObject["replace_all"]
             ?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false
-        require(
-            content != null || newTitle != null || description != null || oldText != null
-        ) { "At least one of content, new_title, description, or old_text must be provided" }
+        if (content == null && oldText == null && newTitle == null && description == null) {
+            return@Tool listOf(UIMessagePart.Text(json.encodeToString(buildJsonObject {
+                put("type", JsonPrimitive(toolName))
+                put("title", JsonPrimitive(title))
+                put("error", JsonPrimitive("At least one modification field must be provided: 'content', 'old_text' + 'new_text', 'new_title', or 'description'."))
+                put("success", JsonPrimitive(false))
+            })))
+        }
+        if (oldText != null && newText == null) {
+            return@Tool listOf(UIMessagePart.Text(json.encodeToString(buildJsonObject {
+                put("type", JsonPrimitive(toolName))
+                put("title", JsonPrimitive(title))
+                put("error", JsonPrimitive("Parameter 'new_text' is required when 'old_text' is provided."))
+                put("success", JsonPrimitive(false))
+            })))
+        }
         val previous = readFn(title)
         val memory = editFn(title, newTitle, description, content, oldText, newText, replaceAll)
         listOf(UIMessagePart.Text(json.encodeToString(buildJsonObject {

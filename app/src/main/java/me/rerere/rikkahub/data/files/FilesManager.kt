@@ -7,6 +7,8 @@ import android.util.Log
 import androidx.core.net.toFile
 import androidx.core.net.toUri
 import java.io.File
+import me.rerere.workspace.WorkspaceManager
+import kotlin.uuid.Uuid
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
@@ -244,6 +246,32 @@ class FilesManager(
         val count = files.size
         val size = files.sumOf { it.length() }
         Pair(count, size)
+    }
+
+    fun saveFileToWorkspaceUpload(
+        workspaceId: Uuid,
+        uri: Uri,
+        displayName: String,
+    ): File? {
+        val baseDir = context.filesDir
+            .resolve(WorkspaceManager.WORKSPACES_BASE_DIR)
+            .resolve(workspaceId.toString())
+            .resolve(WorkspaceManager.FILES_DIR)
+            .resolve("upload")
+        if (!baseDir.exists()) {
+            baseDir.mkdirs()
+        }
+        val safeName = displayName.ifBlank { "upload_${System.currentTimeMillis()}" }
+        val targetFile = baseDir.resolve(safeName)
+        return runCatching {
+            val input = context.contentResolver.openInputStream(uri) ?: return null
+            input.use { inStream ->
+                targetFile.outputStream().use { outStream ->
+                    inStream.copyTo(outStream)
+                }
+            }
+            targetFile
+        }.getOrNull()
     }
 
     fun createChatTextFile(text: String): UIMessagePart.Document {

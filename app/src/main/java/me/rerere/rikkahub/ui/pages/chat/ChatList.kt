@@ -96,6 +96,8 @@ import me.rerere.ai.ui.UIMessage
 import me.rerere.highlight.Highlighter
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
+import java.io.File
+import me.rerere.rikkahub.data.files.WorkspaceFileUrlResolver
 import me.rerere.rikkahub.data.datastore.getAssistantById
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.MessageNode
@@ -282,6 +284,13 @@ private fun ChatListNormal(
         settings.getAssistantById(conversation.assistantId)
     }
     val highlighter: Highlighter = koinInject()
+    val workspaceId = assistant?.workspaceId?.toString()
+    val workspaceResolver: ((String) -> File?)? = remember(workspaceId) {
+        if (workspaceId != null) {
+            { href: String -> WorkspaceFileUrlResolver.resolveFile(context.filesDir, workspaceId, href) }
+        } else null
+    }
+    val contentColor = MaterialTheme.colorScheme.onSurface
 
     // 切换对话遮罩：conversation 变化时盖上（新建对话初始不盖，零闪），真实内容加载完成 + 列表稳定后淡出
     var covered by remember(conversation.id) { mutableStateOf(!isNewChat) }
@@ -313,6 +322,8 @@ private fun ChatListNormal(
                     assistant = assistant,
                     highlighter = highlighter,
                     priorityCount = 10,
+                    contentColor = contentColor,
+                    workspaceResolver = workspaceResolver,
                     onPriorityReady = {
                         priorityReady = true
                     }
@@ -336,6 +347,19 @@ private fun ChatListNormal(
                 val info = state.layoutInfo
                 val signature = listOf(info.totalItemsCount, info.visibleItemsInfo.firstOrNull()?.index, state.isScrollInProgress)
                 if (signature == lastSignature) stable++ else { lastSignature = signature; stable = 1 }
+            }
+
+            // 预热完成且初次采样稳定后：在解除遮罩前自动把页面弹到最下方（以防预热后有图片/公式等改变了高度定位）
+            val targetIndex = (state.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)
+            if (targetIndex > 0) {
+                state.scrollToItem(targetIndex)
+            }
+            withFrameNanos {}
+            if (state.canScrollForward) {
+                val finalTotal = state.layoutInfo.totalItemsCount
+                if (finalTotal > 0) {
+                    state.scrollToItem(finalTotal - 1)
+                }
             }
         }
         covered = false   // 确保最新10条预热完成且列表稳定后，才揭开遮罩！

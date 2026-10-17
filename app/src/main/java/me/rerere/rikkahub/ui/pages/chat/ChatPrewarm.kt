@@ -3,6 +3,7 @@ package me.rerere.rikkahub.ui.pages.chat
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.compose.ui.graphics.Color
 import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
@@ -38,8 +39,15 @@ suspend fun prewarmConversation(
     assistant: Assistant?,
     highlighter: Highlighter,
     priorityCount: Int = 4,
+    contentColor: Color = Color.Unspecified,
+    workspaceResolver: ((String) -> File?)? = null,
     onPriorityReady: (() -> Unit)? = null,
 ) {
+    // 扩展抓手 C: 后台静默预唤醒 QuickJS / Prism.js 引擎，将冷启动 40~60ms 转移至后台协程
+    runCatching {
+        prewarmHighlight(highlighter, " ", "plaintext")
+    }
+
     var prioritySignaled = false
     var processedCount = 0
 
@@ -49,10 +57,10 @@ suspend fun prewarmConversation(
         message.parts.forEach { part ->
             try {
                 when (part) {
-                    is UIMessagePart.Text -> prewarmText(context, part.text, assistant, scope, highlighter)
-                    is UIMessagePart.Reasoning -> prewarmText(context, part.reasoning, assistant, AssistantAffectScope.ASSISTANT, highlighter)
+                    is UIMessagePart.Text -> prewarmText(context, part.text, assistant, scope, highlighter, contentColor, workspaceResolver)
+                    is UIMessagePart.Reasoning -> prewarmText(context, part.reasoning, assistant, AssistantAffectScope.ASSISTANT, highlighter, contentColor, workspaceResolver)
                     is UIMessagePart.Tool -> prewarmToolOutput(highlighter, part)
-                    is UIMessagePart.Image -> prewarmSingleImage(context, part.url)
+                    is UIMessagePart.Image -> prewarmSingleImage(context, part.url, workspaceResolver)
                     else -> {}
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -81,40 +89,63 @@ private suspend fun prewarmText(
     assistant: Assistant?,
     scope: AssistantAffectScope,
     highlighter: Highlighter,
+    contentColor: Color = Color.Unspecified,
+    workspaceResolver: ((String) -> File?)? = null,
 ) {
     val transformed = text.replaceRegexes(assistant, scope, visual = true)
     // 抓手 3: AST 树预热
     prewarmMarkdown(transformed)
-    // 抓手 1: LaTeX 公式预编译进进程级 LRU 缓存池
-    prewarmLatex(transformed)
+    // 抓手 1: LaTeX 公式预编译进进程级 LRU 缓存池（同时预热测量 Unspecified 与绘制 contentColor）
+    prewarmLatex(transformed, contentColor)
     // 代码高亮预热
     collectCodeFences(transformed).forEach { (code, language) ->
         prewarmHighlight(highlighter, code, language)
     }
-    // 抓手 2: Markdown 内嵌图片预取与尺寸缓存
+    // 抓手 2: Markdown 内嵌图片预取与尺寸缓存（支持沙箱与宿主物理文件）
     collectImageUrls(transformed).forEach { url ->
-        prewarmSingleImage(context, url)
+        prewarmSingleImage(context, url, workspaceResolver)
     }
 }
 
-private suspend fun prewarmSingleImage(context: Context, url: String?) {
+private suspend fun prewarmSingleImage(
+    context: Context,
+    url: String?,
+    workspaceResolver: ((String) -> File?)? = null,
+) {
     if (url.isNullOrBlank()) return
     if (ImageAspectRatioCache.get(url) != null) return
 
     runCatching {
-        if (url.startsWith("file://") || url.startsWith("/")) {
-            val filePath = if (url.startsWith("file://")) {
-                Uri.parse(url).path ?: url.removePrefix("file://")
-            } else url
-            val file = File(filePath)
-            if (file.exists() && file.isFile) {
-                val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeFile(file.absolutePath, opts)
-                if (opts.outWidth > 0 && opts.outHeight > 0) {
-                    ImageAspectRatioCache.put(url, opts.outWidth, opts.outHeight)
-                    return
-                }
+        // 扩展抓手 A: 宿主物理文件与工作区沙箱路径解析
+        val file: File? = when {
+            url.startsWith("file://") -> {
+                val filePath = Uri.parse(url).path ?: url.removePrefix("file://")
+                File(filePath).takeIf { it.isFile && it.length() > 0 }
             }
+            url.startsWith("/") -> File(url).takeIf { it.isFile && it.length() > 0 }
+            workspaceResolver != null -> {
+                var f = workspaceResolver(url)?.takeIf { it.isFile && it.length() > 0 }
+                if (f == null && url.startsWith("file://") && !url.startsWith("file:///")) {
+                    f = workspaceResolver("file:///" + url.removePrefix("file://"))?.takeIf { it.isFile && it.length() > 0 }
+                }
+                if (f == null && !url.startsWith("/") && !url.contains("://")) {
+                    f = workspaceResolver("/workspace/${url.removePrefix("./")}")?.takeIf { it.isFile && it.length() > 0 }
+                }
+                f
+            }
+            else -> null
+        }
+
+        if (file != null) {
+            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(file.absolutePath, opts)
+            if (opts.outWidth > 0 && opts.outHeight > 0) {
+                ImageAspectRatioCache.put(url, opts.outWidth, opts.outHeight)
+                ImageAspectRatioCache.put(file.absolutePath, opts.outWidth, opts.outHeight)
+            }
+            val request = ImageRequest.Builder(context).data(file).build()
+            context.imageLoader.execute(request)
+            return
         }
 
         // 网络或 Content URI 走 Coil 预解码

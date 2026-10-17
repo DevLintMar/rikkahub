@@ -42,6 +42,7 @@ internal data class ChatAttachmentPickerActions(
 internal fun rememberChatAttachmentPickerActions(
     inputState: ChatInputState,
     setting: Settings,
+    workspaceId: Uuid? = null,
     onAttachmentAdded: () -> Unit,
 ): ChatAttachmentPickerActions {
     val context = LocalContext.current
@@ -170,6 +171,17 @@ internal fun rememberChatAttachmentPickerActions(
                                 return@mapNotNull null
                             }
                         UIMessagePart.Document(url = localUri.toString(), fileName = fileName, mime = mime)
+                    } else if (workspaceId != null) {
+                        // 格式未识别或压缩包，但工作区已启用：落盘到 /workspace/upload
+                        val localFile = filesManager.saveFileToWorkspaceUpload(workspaceId, uri, fileName)
+                            ?: run {
+                                toaster.show(
+                                    resources.getString(R.string.chat_input_file_read_failed, fileName),
+                                    type = ToastType.Error
+                                )
+                                return@mapNotNull null
+                            }
+                        UIMessagePart.Document(url = localFile.toURI().toString(), fileName = fileName, mime = mime)
                     } else {
                         toaster.show(
                             resources.getString(R.string.chat_input_unsupported_file_type, fileName),

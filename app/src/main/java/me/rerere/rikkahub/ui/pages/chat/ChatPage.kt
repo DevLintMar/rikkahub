@@ -302,6 +302,7 @@ private fun ChatPageContent(
     val attachmentPickerActions = rememberChatAttachmentPickerActions(
         inputState = inputState,
         setting = setting,
+        workspaceId = assistant.workspaceId,
         onAttachmentAdded = { showFilesSheet = false },
     )
     val allowAudioVideoAttachments =

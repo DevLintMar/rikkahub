@@ -633,9 +633,7 @@ private fun ExportedChatMessage(
     val groupedParts = remember(parts) { parts.groupMessageParts() }
     val messageContent: @Composable () -> Unit = {
         Column(
-            modifier = Modifier
-                .widthIn(max = (540 * 0.9).dp)
-                .fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             horizontalAlignment = if (message.role == MessageRole.USER) Alignment.End else Alignment.Start
         ) {
@@ -686,6 +684,7 @@ private fun ExportedChatMessage(
                                         if (message.role == MessageRole.USER) {
                                             Card(
                                                 shape = MaterialTheme.shapes.medium,
+                                                modifier = Modifier.widthIn(max = (540 * 0.85).dp),
                                             ) {
                                                 MarkdownBlock(
                                                     content = part.text,

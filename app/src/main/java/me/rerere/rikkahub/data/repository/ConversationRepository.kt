@@ -445,6 +445,8 @@ class ConversationRepository(
      * （与 read_conversation 的 offset 对齐）与 FTS [brackets] 着重标记 snippet。
      * @param scope 非 [ConversationFolderScope.All] 时仅搜索该范围内的会话。
      */
+    suspend fun isSemanticSearchConfigured(): Boolean = semanticIndexManager.isConfigured()
+
     suspend fun searchConversationMessages(
         query: String,
         scope: ConversationFolderScope = ConversationFolderScope.All,
