@@ -26,8 +26,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -1804,18 +1802,8 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                                 ),
                                 children = {
                                     DisableSelection {
-                                        val scrollState = rememberScrollState()
                                         Box(
-                                            modifier = Modifier
-                                                .horizontalScroll(scrollState)
-                                                .pointerInput(scrollState) {
-                                                    detectHorizontalDragGestures { change, dragAmount ->
-                                                        if (scrollState.maxValue > 0) {
-                                                            change.consume()
-                                                            scrollState.dispatchRawDelta(-dragAmount)
-                                                        }
-                                                    }
-                                                },
+                                            modifier = Modifier.horizontalScroll(rememberScrollState()),
                                         ) {
                                             MathInline(
                                                 latex = segment,
@@ -1827,16 +1815,25 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                                 }
                             )
                     } else {
-                        // parse 失败：Placeholder 0 尺寸；MathInline 会自行重试/降级渲染
+                        // parse 降级分支：为异常/未解析公式分配有效尺寸并同样支持水平滑动
+                        val fallbackWidth = with(density) {
+                            if (maxWidthPx > 0f) maxWidthPx.toSp() else 300.sp
+                        }
                         inlineContents[key] =
                             InlineTextContent(
                                 placeholder = Placeholder(
-                                    width = 0.sp,
-                                    height = 0.sp,
-                                    placeholderVerticalAlign = PlaceholderVerticalAlign.AboveBaseline,
+                                    width = fallbackWidth,
+                                    height = with(density) { (fontSizePx * 1.5f).toSp() },
+                                    placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
                                 ),
                                 children = {
-                                    MathInline(latex = segment, modifier = Modifier)
+                                    DisableSelection {
+                                        Box(
+                                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                        ) {
+                                            MathInline(latex = segment, modifier = Modifier)
+                                        }
+                                    }
                                 }
                             )
                     }

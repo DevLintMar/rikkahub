@@ -51,6 +51,13 @@ private val displayListLruCache = object : LinkedHashMap<DisplayListCacheKey, Di
 /**
  * 线程安全地从缓存池获取或创建 DisplayList。
  */
+internal fun sanitizeLatexForParsing(latex: String): String {
+    var result = latex
+    if (result.contains('♀')) result = result.replace("♀", "	ext{♀}")
+    if (result.contains('♂')) result = result.replace("♂", "	ext{♂}")
+    return result
+}
+
 fun getOrCreateDisplayList(
     latex: String,
     displayMode: Boolean = false,
@@ -62,6 +69,13 @@ fun getOrCreateDisplayList(
         displayListLruCache[key]
     } ?: runCatching {
         RaTeXEngine.parseBlocking(latex, displayMode = displayMode, color = color)
+    }.recoverCatching {
+        val sanitized = sanitizeLatexForParsing(latex)
+        if (sanitized != latex) {
+            RaTeXEngine.parseBlocking(sanitized, displayMode = displayMode, color = color)
+        } else {
+            throw it
+        }
     }.getOrNull()?.also { dl ->
         synchronized(displayListLruCache) {
             displayListLruCache[key] = dl
