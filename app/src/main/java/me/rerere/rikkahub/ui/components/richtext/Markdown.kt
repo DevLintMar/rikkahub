@@ -25,16 +25,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.ui.layout.AlignmentLine
-import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.layout
@@ -157,31 +152,6 @@ val THINKING_REGEX = Regex("<think>([\\s\\S]*?)(?:</think>|$)", RegexOption.DOT_
 private val CODE_BLOCK_REGEX = Regex("```[\\s\\S]*?```|`[^`\n]*`", RegexOption.DOT_MATCHES_ALL)
 private val BREAK_LINE_REGEX = Regex("(?i)<br\\s*/?>")
 private val LATEX_BLOCK_LINE_BREAK_REGEX = Regex("""[ \t]*\r?\n[ \t]*""")
-
-private fun Modifier.formulaScrollable(scrollState: androidx.compose.foundation.ScrollState): Modifier = this.pointerInput(scrollState) {
-    awaitEachGesture {
-        val down = awaitFirstDown(requireUnconsumed = false)
-        var isHorizontal = false
-        while (true) {
-            val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Main)
-            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-            if (!change.pressed) break
-            val dx = change.position.x - change.previousPosition.x
-            val dy = change.position.y - change.previousPosition.y
-            if (!isHorizontal) {
-                if (kotlin.math.abs(dx) > viewConfiguration.touchSlop) {
-                    if (kotlin.math.abs(dx) > kotlin.math.abs(dy)) {
-                        isHorizontal = true
-                        change.consume()
-                    }
-                }
-            } else {
-                change.consume()
-                scrollState.dispatchRawDelta(-dx)
-            }
-        }
-    }
-}
 
 private fun Modifier.propagateFirstBaseline(): Modifier = this.layout { measurable, constraints ->
     val placeable = measurable.measure(constraints)
@@ -1815,10 +1785,7 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                         val yOffsetPx = halfExtentPx - m.heightPx - fontCenterPx
                         val yOffsetDp = with(density) { yOffsetPx.toDp() }
 
-                        // 宽度自适应与水平滑动支持：超过视口宽度时精确钳位在视口内，产生物理滚动区间
-                        val placeholderWidth = with(density) {
-                            if (maxWidthPx > 0f) minOf(m.widthPx, maxWidthPx).toSp() else m.widthPx.toSp()
-                        }
+                        val placeholderWidth = with(density) { m.widthPx.toSp() }
 
                         inlineContents[key] =
                             InlineTextContent(
@@ -1828,45 +1795,24 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                                     placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
                                 ),
                                 children = {
-                                    DisableSelection {
-                                        val scrollState = rememberScrollState()
-                                        Box(
-                                            modifier = Modifier
-                                                .horizontalScroll(scrollState)
-                                                .formulaScrollable(scrollState),
-                                        ) {
-                                            MathInline(
-                                                latex = segment,
-                                                modifier = Modifier.offset(y = yOffsetDp),
-                                                displayList = parsedDisplayList,
-                                            )
-                                        }
-                                    }
+                                    MathInline(
+                                        latex = segment,
+                                        modifier = Modifier.offset(y = yOffsetDp),
+                                        displayList = parsedDisplayList,
+                                    )
                                 }
                             )
                     } else {
-                        // parse 降级分支：为异常/未解析公式分配有效尺寸并同样支持水平滑动
-                        val fallbackWidth = with(density) {
-                            if (maxWidthPx > 0f) maxWidthPx.toSp() else 300.sp
-                        }
+                        // parse 失败：Placeholder 0 尺寸；MathInline 会自行重试/降级渲染
                         inlineContents[key] =
                             InlineTextContent(
                                 placeholder = Placeholder(
-                                    width = fallbackWidth,
-                                    height = with(density) { (fontSizePx * 1.5f).toSp() },
-                                    placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
+                                    width = 0.sp,
+                                    height = 0.sp,
+                                    placeholderVerticalAlign = PlaceholderVerticalAlign.AboveBaseline,
                                 ),
                                 children = {
-                                    DisableSelection {
-                                        val scrollState = rememberScrollState()
-                                        Box(
-                                            modifier = Modifier
-                                                .horizontalScroll(scrollState)
-                                                .formulaScrollable(scrollState),
-                                        ) {
-                                            MathInline(latex = segment, modifier = Modifier)
-                                        }
-                                    }
+                                    MathInline(latex = segment, modifier = Modifier)
                                 }
                             )
                     }
