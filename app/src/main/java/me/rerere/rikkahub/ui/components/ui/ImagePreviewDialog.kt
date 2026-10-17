@@ -22,7 +22,12 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
+import android.graphics.BitmapFactory
+import java.io.File
+import androidx.core.net.toFile
 import androidx.core.net.toUri
+import coil3.request.CachePolicy
+import me.rerere.rikkahub.ui.components.richtext.ImageAspectRatioCache
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
 
@@ -39,6 +44,31 @@ import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.ui.components.richtext.LocalWorkspaceFileProvider
 import me.rerere.rikkahub.ui.context.LocalToaster
 import org.koin.compose.koinInject
+
+private fun resolveSynchronousImageSize(url: String): Size? = runCatching {
+    val file = when {
+        url.startsWith("file://") -> url.toUri().toFile()
+        url.startsWith("/") -> File(url)
+        else -> null
+    }
+    if (file != null && file.exists() && file.isFile && file.length() > 0) {
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.absolutePath, options)
+        if (options.outWidth > 0 && options.outHeight > 0) {
+            return@runCatching Size(options.outWidth.toFloat(), options.outHeight.toFloat())
+        }
+    }
+    val ratio = ImageAspectRatioCache.get(url)
+    if (ratio != null && ratio > 0f) {
+        if (ratio < 1f) {
+            Size(1080f, 1080f / ratio)
+        } else {
+            Size(1080f * ratio, 1080f)
+        }
+    } else {
+        null
+    }
+}.getOrNull()
 
 @Composable
 fun ImagePreviewDialog(
@@ -71,20 +101,22 @@ fun ImagePreviewDialog(
                             rawUrl
                         }
                     }
+                    val syncSize = remember(realUrl) { resolveSynchronousImageSize(realUrl) }
                     val request = remember(realUrl) {
                         ImageRequest.Builder(context)
                             .data(realUrl)
                             .size(coil3.size.Size.ORIGINAL)
                             .precision(coil3.size.Precision.EXACT)
                             .allowHardware(false)
+                            .memoryCachePolicy(coil3.request.CachePolicy.WRITE_ONLY)
                             .build()
                     }
                     val painter = rememberAsyncImagePainter(request)
-                    val size = painter.intrinsicSize
-                    val safeSize = if (size.isSpecified && size.width > 0f && size.height > 0f) {
-                        size
-                    } else {
-                        Size(1024f, 1024f)
+                    val painterSize = painter.intrinsicSize
+                    val safeSize = when {
+                        painterSize.isSpecified && painterSize.width > 0f && painterSize.height > 0f -> painterSize
+                        syncSize != null && syncSize.width > 0f && syncSize.height > 0f -> syncSize
+                        else -> Size(1024f, 1024f)
                     }
                     return@ImagePager Pair(painter, safeSize)
                 },
